@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 88 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 92 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -74,6 +74,23 @@ begin
       return;
   end;
   raise exception 'FAILED: % -- statement was accepted but should have been refused', p_label;
+end;
+$f$;
+
+-- Like `rejects`, but for a statement a row level security policy turns away.
+-- A policy violation raises insufficient_privilege, not a constraint error, so
+-- it needs its own catch — and catching only that one means a genuine
+-- constraint failure still surfaces as a failure rather than passing quietly.
+create or replace function pg_temp.refused(p_label text, p_stmt text)
+returns void language plpgsql as $f$
+begin
+  perform pg_temp.bump();
+  begin
+    execute p_stmt;
+  exception when insufficient_privilege then
+    return;
+  end;
+  raise exception 'FAILED: % -- row level security accepted a statement it should have refused', p_label;
 end;
 $f$;
 
@@ -428,6 +445,26 @@ begin
     perform pg_temp.act_as(v_sus);
     perform pg_temp.eq('RLS: a suspended super admin sees only themselves',
       (select count(*)::text from public.users), '1');
+
+    -- Creating a role is what the New role button does. The policy on
+    -- public.roles is `app.can('role_permission','edit')`, so the button being
+    -- hidden is a courtesy and this is the part that actually holds.
+    perform pg_temp.act_as(v_sa);
+    insert into public.roles (key, name, description, sort_order)
+      values ('higtest_new_role', 'HIGTest New Role', 'created under RLS', 99);
+    perform pg_temp.eq('RLS: role_permission.edit may create a role',
+      (select count(*)::text from public.roles where key = 'higtest_new_role'), '1');
+    perform pg_temp.eq('RLS: a new role starts with no permissions at all',
+      (select count(*)::text from public.role_permissions rp
+        join public.roles r on r.id = rp.role_id
+       where r.key = 'higtest_new_role'), '0');
+
+    perform pg_temp.act_as(v_rep);
+    perform pg_temp.refused('RLS: a sales rep may not create a role',
+      'insert into public.roles (key, name, sort_order)
+         values (''higtest_rep_role'', ''HIGTest Rep Role'', 98)');
+    perform pg_temp.eq('RLS: and the refused role was not created',
+      (select count(*)::text from public.roles where key = 'higtest_rep_role'), '0');
 
     execute 'reset role';
     v_rls := 'ran';

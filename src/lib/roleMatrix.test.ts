@@ -5,6 +5,8 @@ import {
   buildMatrix,
   diffMatrix,
   grantedCount,
+  nextScope,
+  roleKeyFrom,
   setCell,
   setModule,
   type Matrix,
@@ -150,5 +152,45 @@ describe("the option lists", () => {
   it("orders scopes from least to most reach", () => {
     // The selector reads as a dial, so the order is part of the design.
     expect(SCOPES).toEqual(["deny", "own", "sub", "any"]);
+  });
+});
+
+describe("nextScope", () => {
+  it("advances one step along the dial", () => {
+    expect(nextScope("deny")).toBe("own");
+    expect(nextScope("own")).toBe("sub");
+    expect(nextScope("sub")).toBe("any");
+  });
+
+  it("wraps from the widest reach back to deny", () => {
+    // Otherwise a cell tapped past Any would be stuck open with no way back.
+    expect(nextScope("any")).toBe("deny");
+  });
+
+  it("returns to where it started after one full cycle", () => {
+    expect(SCOPES.reduce((scope) => nextScope(scope), "own" as const)).toBe("own");
+  });
+});
+
+describe("roleKeyFrom", () => {
+  it("matches the snake_case of the seeded roles", () => {
+    expect(roleKeyFrom("Sales Supervisor")).toBe("sales_supervisor");
+    expect(roleKeyFrom("HR")).toBe("hr");
+  });
+
+  it("collapses punctuation and runs of separators", () => {
+    expect(roleKeyFrom("Warehouse & Logistics")).toBe("warehouse_logistics");
+    expect(roleKeyFrom("  Field   Sales  ")).toBe("field_sales");
+  });
+
+  it("strips accents rather than dropping the letters", () => {
+    expect(roleKeyFrom("Contrôleur")).toBe("controleur");
+  });
+
+  it("is empty when a name carries nothing usable", () => {
+    // The form treats an empty key as invalid, which is what stops a role
+    // being created with a key the unique index would reject anyway.
+    expect(roleKeyFrom("!!!")).toBe("");
+    expect(roleKeyFrom("   ")).toBe("");
   });
 });

@@ -28,17 +28,6 @@ export const SCOPE_HELP: Record<StoredScope, string> = {
 };
 
 /**
- * The next scope in the dial, wrapping back to deny.
- *
- * A compact grid cell has room for one control, not four, so a cell advances
- * on tap. The order is least to most reach, so repeated taps open access up
- * and then close it again rather than jumping about.
- */
-export function nextScope(scope: StoredScope): StoredScope {
-  return SCOPES[(SCOPES.indexOf(scope) + 1) % SCOPES.length];
-}
-
-/**
  * A role key derived from its name, matching the snake_case of the seeded roles.
  *
  * `key` is what any future code would reference a role by, so it is generated

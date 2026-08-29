@@ -5,7 +5,6 @@ import {
   buildMatrix,
   diffMatrix,
   grantedCount,
-  nextScope,
   roleKeyFrom,
   setCell,
   setModule,
@@ -150,25 +149,9 @@ describe("the option lists", () => {
   });
 
   it("orders scopes from least to most reach", () => {
-    // The selector reads as a dial, so the order is part of the design.
+    // The dropdown lists them in this order, least reach first, so it is part
+    // of the design rather than an accident of how the enum was declared.
     expect(SCOPES).toEqual(["deny", "own", "sub", "any"]);
-  });
-});
-
-describe("nextScope", () => {
-  it("advances one step along the dial", () => {
-    expect(nextScope("deny")).toBe("own");
-    expect(nextScope("own")).toBe("sub");
-    expect(nextScope("sub")).toBe("any");
-  });
-
-  it("wraps from the widest reach back to deny", () => {
-    // Otherwise a cell tapped past Any would be stuck open with no way back.
-    expect(nextScope("any")).toBe("deny");
-  });
-
-  it("returns to where it started after one full cycle", () => {
-    expect(SCOPES.reduce((scope) => nextScope(scope), "own" as const)).toBe("own");
   });
 });
 

@@ -181,11 +181,19 @@ export function UserForm({
       }
 
       const photoPath = await uploadPhoto(record.id);
-      const { error } = await supabase
+      // `.select()` matters here: an update the policy refuses matches no rows
+      // and reports no error, because the USING clause hides the row rather
+      // than rejecting the statement. Without asking for the row back, a
+      // refused save would announce itself as a successful one.
+      const { data, error } = await supabase
         .from("users")
         .update(photoPath ? { ...row, photo_path: photoPath } : row)
-        .eq("id", record.id);
+        .eq("id", record.id)
+        .select("id");
       if (error) throw error;
+      if (!data?.length) {
+        throw new Error("That record could not be saved. You may not have permission.");
+      }
 
       haptic("success");
       setPhoto(null);

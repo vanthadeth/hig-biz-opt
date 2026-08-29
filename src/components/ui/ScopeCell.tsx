@@ -1,33 +1,31 @@
 "use client";
 
 import { haptic } from "@/lib/haptics";
-import { nextScope, SCOPE_HELP, SCOPE_LABELS } from "@/lib/roleMatrix";
+import { SCOPES, SCOPE_HELP, SCOPE_LABELS } from "@/lib/roleMatrix";
 import type { StoredScope } from "@/lib/access";
 
 /**
- * Deny reads as a refusal; the three grants deepen as reach widens.
+ * Green grants everything, blue grants some of it, amber grants none.
  *
- * The label is body text, so it carries the reach through the fill rather than
- * through its own colour: brand-on-brand/40 is 2.75:1 in light mode and 3.22:1
- * in dark, well short of the 4.5:1 a 12px label needs. Computed, not eyeballed.
+ * Own and Sub share the blue family and are told apart by weight, so the two
+ * partial reaches read as related rather than as separate decisions. Every
+ * label is body text on its fill, and every pair clears 4.5:1 in both themes —
+ * computed, not eyeballed; the lowest is 4.84:1 (white on blue, light mode).
  */
 const TONE: Record<StoredScope, string> = {
-  deny: "border-line bg-transparent text-muted",
-  own: "border-transparent bg-brand/15 text-fg",
-  sub: "border-transparent bg-brand/40 text-fg",
-  any: "border-transparent bg-brand text-brand-fg",
+  deny: "bg-warn text-warn-fg",
+  own: "bg-brand/15 text-fg",
+  sub: "bg-brand text-brand-fg",
+  any: "bg-accent text-accent-fg",
 };
 
 /**
  * One cell of the permission grid: a module's scope for a single action.
  *
- * A row has to carry four of these and still fit a 390px phone, which rules out
- * four buttons per action. So the cell shows its current scope and advances on
- * tap, least reach to most and back to deny — one gesture per change, and the
- * whole row readable at a glance because the colour tracks the reach.
- *
- * The label names the action and both states, since "Own" alone tells a screen
- * reader nothing about which column it is in or what a tap would do.
+ * A native select, so the four choices are all visible at once and picking one
+ * is a single decision rather than a count of taps. It is styled down to fit
+ * four across a 390px phone: the chevron is drawn rather than native, since the
+ * platform one costs more width than the label has to spare.
  */
 export function ScopeCell({
   value,
@@ -40,23 +38,46 @@ export function ScopeCell({
   label: string;
   disabled?: boolean;
 }) {
-  const next = nextScope(value);
-
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-label={`${label}: ${SCOPE_HELP[value]}.${
-        disabled ? "" : ` Change to ${SCOPE_HELP[next].toLowerCase()}.`
-      }`}
-      title={`${label} — ${SCOPE_HELP[value]}`}
-      onClick={() => {
-        haptic("select");
-        onChange(next);
-      }}
-      className={`pressable min-h-9 w-full rounded-lg border text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-60 ${TONE[value]}`}
+    // The fill and the text colour sit on the wrapper so the drawn chevron can
+    // pick them up through currentColor and stay legible on every tone.
+    <div
+      className={`relative rounded-lg transition-colors has-[select:focus-visible]:ring-2 has-[select:focus-visible]:ring-brand has-[select:disabled]:opacity-60 ${TONE[value]}`}
     >
-      {SCOPE_LABELS[value]}
-    </button>
+      <select
+        value={value}
+        disabled={disabled}
+        aria-label={`${label}: ${SCOPE_HELP[value]}`}
+        title={`${label} — ${SCOPE_HELP[value]}`}
+        onChange={(e) => {
+          haptic("select");
+          onChange(e.target.value as StoredScope);
+        }}
+        className="w-full appearance-none rounded-lg bg-transparent py-2 pl-1.5 pr-2.5 text-xs font-medium text-inherit outline-none"
+      >
+        {SCOPES.map((scope) => (
+          // The options themselves are drawn by the platform, so they get the
+          // fuller wording there is room for in a native menu.
+          <option key={scope} value={scope}>
+            {SCOPE_LABELS[scope]}
+          </option>
+        ))}
+      </select>
+
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        className="pointer-events-none absolute right-0.5 top-1/2 size-2 -translate-y-1/2 opacity-60"
+      >
+        <path
+          d="m6 9 6 6 6-6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
   );
 }

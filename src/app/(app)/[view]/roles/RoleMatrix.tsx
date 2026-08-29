@@ -38,7 +38,7 @@ type Props = {
  * Each cell holds its own scope, so the columns line up down the whole list and
  * a role's shape is legible in one pass — which a stack of per-module cards
  * never was. It fits a 390px phone because a cell is a single control rather
- * than four buttons; see ScopeCell for why it advances on tap.
+ * than four buttons; see ScopeCell for how it is kept that narrow.
  */
 export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
   const moduleKeys = useMemo(() => modules.map((m) => m.key), [modules]);
@@ -147,8 +147,8 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        What a role may do in each module, and over whose records. Tap a cell to
-        widen its reach; it returns to Deny after Any.
+        What a role may do in each module, and over whose records. Green reaches
+        every record, blue only some, amber none.
       </p>
 
       {/* Stacked on a phone: side by side, the button eats the width the tabs
@@ -185,7 +185,7 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
                 <th
                   key={action}
                   scope="col"
-                  className="w-13 px-0.5 pb-2 text-center text-xs font-medium text-muted sm:w-20"
+                  className="w-14 px-0.5 pb-2 text-center text-xs font-medium text-muted sm:w-20"
                 >
                   {ACTION_LABELS[action]}
                 </th>

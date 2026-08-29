@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 101 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 116 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -134,6 +134,8 @@ declare
   v_dis uuid := '00000000-0000-4000-8000-0000000f0007';  -- sales, discharged
   v_nol uuid;                                            -- an employee with no login
   v_new uuid := '00000000-0000-4000-8000-0000000f00aa';  -- the login they are later given
+  v_prn uuid;                                            -- a printer, for the settings policy
+  v_hit int;                                             -- rows a statement actually touched
   v_rls text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -422,6 +424,13 @@ begin
     format('insert into public.user_views (user_id, view_key, effect)
             values (%L, ''not_a_view'', ''allow'')', v_jr));
 
+  -- Printers (0018). The address CHECK is deliberately loose — it catches the
+  -- paste that dropped half the address, not every RFC violation.
+  perform pg_temp.rejects('a printer address needs an @ and a dotted host',
+    'insert into public.printers (label, eprint_address) values (''Bad'', ''not-an-address'')');
+  perform pg_temp.rejects('a printer needs a label that is not just spaces',
+    'insert into public.printers (label, eprint_address) values (''  '', ''blank@print.example.com'')');
+
   ----------------------------------------------------------------------------
   -- Row visibility under RLS
   --
@@ -486,6 +495,57 @@ begin
     perform pg_temp.eq('RLS: and the refused employee was not created',
       (select count(*)::text from public.users where full_name = 'HIGTest Sneaky'), '0');
 
+    ------------------------------------------------------------------------
+    -- Printers (0018), and the shape of a refusal
+    ------------------------------------------------------------------------
+    perform pg_temp.act_as(v_sa);
+    insert into public.printers (label, eprint_address, sort_order)
+      values ('HIGTest Counter', 'higtest-counter@print.example.com', 1)
+      returning id into v_prn;
+    insert into public.printers (label, eprint_address, sort_order)
+      values ('HIGTest Depot', 'higtest-depot@print.example.com', 2);
+    perform pg_temp.eq('RLS: settings.edit may add a printer',
+      (select count(*)::text from public.printers where label like 'HIGTest%'), '2');
+    perform pg_temp.eq('a new printer does not make itself the default',
+      (select count(*)::text from public.printers where label like 'HIGTest%' and is_default), '0');
+
+    perform public.set_default_printer(v_prn);
+    perform pg_temp.eq('promoting sets the default',
+      (select is_default::text from public.printers where id = v_prn), 'true');
+    perform public.set_default_printer(
+      (select id from public.printers where eprint_address = 'higtest-depot@print.example.com'));
+    perform pg_temp.eq('promoting another clears the first',
+      (select is_default::text from public.printers where id = v_prn), 'false');
+    perform pg_temp.eq('and only one is ever the default',
+      (select count(*)::text from public.printers where is_default), '1');
+
+    perform pg_temp.act_as(v_rep);
+    perform pg_temp.eq('anyone signed in may read printers, since anyone may print',
+      (select count(*)::text from public.printers where label like 'HIGTest%'), '2');
+    perform pg_temp.refused('RLS: a sales rep may not add a printer',
+      'insert into public.printers (label, eprint_address)
+         values (''HIGTest Sneaky'', ''sneaky@print.example.com'')');
+
+    -- The distinction the settings screen depends on. INSERT is rejected by
+    -- WITH CHECK and raises; UPDATE and DELETE are filtered by USING, match no
+    -- rows, and raise nothing at all. A client that only checks for an error
+    -- would report a refused edit as a successful one, which is why both write
+    -- paths ask for the affected rows back.
+    update public.printers set label = 'Hijacked' where id = v_prn;
+    get diagnostics v_hit = row_count;
+    perform pg_temp.eq('a refused update touches no rows and raises nothing', v_hit::text, '0');
+    perform pg_temp.eq('and the label is untouched',
+      (select label from public.printers where id = v_prn), 'HIGTest Counter');
+
+    delete from public.printers where id = v_prn;
+    get diagnostics v_hit = row_count;
+    perform pg_temp.eq('a refused delete touches no rows', v_hit::text, '0');
+
+    -- set_default_printer turns that silence back into an error, because a
+    -- promotion that quietly did nothing is worse than one that says why not.
+    perform pg_temp.refused('promoting a default says so rather than failing quietly',
+      format('select public.set_default_printer(%L)', v_prn));
+
     execute 'reset role';
     v_rls := 'ran';
   exception when insufficient_privilege then
@@ -521,6 +581,15 @@ begin
         where u.id = v_new), 'Warehouse & Logistic');
     perform pg_temp.eq('reports follow the re-key',
       (select manager_id::text from public.users where id = v_rep), v_new::text);
+  end if;
+
+  -- Two printers may not claim the same address, or the same defaultness.
+  if v_prn is not null then
+    perform pg_temp.rejects('two printers may not share an address',
+      'insert into public.printers (label, eprint_address)
+         values (''Dupe'', ''HIGTEST-DEPOT@print.example.com'')');
+    perform pg_temp.rejects('only one printer may be the default',
+      format('update public.printers set is_default = true where id = %L', v_prn));
   end if;
 
   ----------------------------------------------------------------------------

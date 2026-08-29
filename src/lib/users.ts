@@ -152,3 +152,107 @@ export function groupByDepartment(
 export function countPeople(groups: DepartmentGroup[]): number {
   return groups.reduce((total, group) => total + group.people.length, 0);
 }
+
+/** One line of the profile: what it is, what it says, and where it leads. */
+export type InfoRow = { label: string; value: string | null; href?: string };
+export type InfoGroup = { title: string; rows: InfoRow[] };
+
+/** 1994-07-12 as "12 July 1994". The stored form is unambiguous; this is not. */
+export function formatDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** A Telegram handle with or without its @, as a link. */
+export function telegramHref(id: string | null): string | undefined {
+  const handle = id?.trim().replace(/^@/, "");
+  return handle ? `https://t.me/${handle}` : undefined;
+}
+
+/**
+ * The whole record, in the groups the form edits it in.
+ *
+ * Same grouping as the form on purpose: someone who has just filled a section in
+ * should find it under the same heading when they come back to read it. Every
+ * field appears even when empty, so the page answers "is this set?" rather than
+ * leaving you to wonder whether it was omitted or never filled in.
+ */
+export function profileGroups(
+  record: UserRecord,
+  lookups: { department: string | null; role: string | null },
+  options: { includeBank?: boolean } = {},
+): InfoGroup[] {
+  const groups: InfoGroup[] = [
+    {
+      title: "Information",
+      rows: [
+        { label: "Full name", value: record.full_name },
+        { label: "Nickname", value: record.nickname },
+        {
+          label: "Gender",
+          value: record.gender ? GENDER_LABELS[record.gender] : null,
+        },
+        { label: "Date of birth", value: formatDate(record.date_of_birth) },
+      ],
+    },
+    {
+      title: "Contact",
+      rows: [
+        {
+          label: "Primary phone",
+          value: record.phone_primary,
+          href: record.phone_primary ? `tel:${record.phone_primary}` : undefined,
+        },
+        {
+          label: "Secondary phone",
+          value: record.phone_secondary,
+          href: record.phone_secondary ? `tel:${record.phone_secondary}` : undefined,
+        },
+        {
+          label: "Telegram",
+          value: record.telegram_id,
+          href: telegramHref(record.telegram_id),
+        },
+        {
+          label: "Email",
+          value: record.email,
+          href: record.email ? `mailto:${record.email}` : undefined,
+        },
+      ],
+    },
+    {
+      title: "Position",
+      rows: [
+        { label: "Department", value: lookups.department },
+        { label: "Position", value: record.position },
+      ],
+    },
+  ];
+
+  if (options.includeBank) {
+    groups.push({
+      title: "Bank info",
+      rows: [
+        { label: "Bank name", value: record.bank_name },
+        { label: "Account name", value: record.bank_account_name },
+        { label: "Account number", value: record.bank_account_number },
+      ],
+    });
+  }
+
+  groups.push({
+    title: "Role",
+    rows: [
+      { label: "Role", value: lookups.role },
+      { label: "Status", value: STATUS_LABELS[record.status] },
+    ],
+  });
+
+  return groups;
+}

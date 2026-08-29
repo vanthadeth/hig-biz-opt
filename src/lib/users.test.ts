@@ -4,9 +4,13 @@ import {
   displayName,
   groupByDepartment,
   initials,
+  formatDate,
   matches,
+  profileGroups,
+  telegramHref,
   type Department,
   type DirectoryEntry,
+  type UserRecord,
 } from "./users";
 
 const SALES: Department = { id: "d1", name: "Sales", sort_order: 1 };
@@ -177,5 +181,139 @@ describe("countPeople", () => {
 
   it("is zero for no groups", () => {
     expect(countPeople([])).toBe(0);
+  });
+});
+
+describe("formatDate", () => {
+  it("writes a stored date the way a person reads one", () => {
+    expect(formatDate("1994-07-12")).toBe("12 July 1994");
+  });
+
+  it("does not shift the day across a timezone", () => {
+    // Parsed as local midnight rather than UTC, so a date west of Greenwich
+    // does not render as the day before.
+    expect(formatDate("2026-01-01")).toBe("1 January 2026");
+  });
+
+  it("passes null through", () => {
+    expect(formatDate(null)).toBeNull();
+  });
+
+  it("returns junk unchanged rather than rendering 'Invalid Date'", () => {
+    expect(formatDate("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("telegramHref", () => {
+  it("links a handle with or without its @", () => {
+    expect(telegramHref("@sokha")).toBe("https://t.me/sokha");
+    expect(telegramHref("sokha")).toBe("https://t.me/sokha");
+  });
+
+  it("has nowhere to go for an empty handle", () => {
+    expect(telegramHref(null)).toBeUndefined();
+    expect(telegramHref("  ")).toBeUndefined();
+  });
+});
+
+describe("profileGroups", () => {
+  const record: UserRecord = {
+    id: "u1",
+    full_name: "Sokha Chan",
+    nickname: "Dara",
+    gender: "female",
+    date_of_birth: "1994-07-12",
+    photo_path: null,
+    phone_primary: "012 345 678",
+    phone_secondary: null,
+    telegram_id: "@sokha",
+    email: "sokha@hig.com",
+    department_id: "d1",
+    position: "Sales Supervisor",
+    bank_name: "ABA Bank",
+    bank_account_name: "CHAN SOKHA",
+    bank_account_number: "000 123 456",
+    role_id: "r2",
+    status: "active",
+  };
+  const lookups = { department: "Sales", role: "Sales Team" };
+
+  it("groups under the same headings the form edits by", () => {
+    const titles = profileGroups(record, lookups).map((g) => g.title);
+
+    expect(titles).toEqual(["Information", "Contact", "Position", "Role"]);
+  });
+
+  it("adds bank info only when asked", () => {
+    const titles = profileGroups(record, lookups, { includeBank: true }).map(
+      (g) => g.title,
+    );
+
+    expect(titles).toContain("Bank info");
+    expect(titles).toEqual([
+      "Information",
+      "Contact",
+      "Position",
+      "Bank info",
+      "Role",
+    ]);
+  });
+
+  it("resolves the lookups rather than showing raw ids", () => {
+    const groups = profileGroups(record, lookups);
+    const position = groups.find((g) => g.title === "Position")!;
+
+    expect(position.rows).toEqual([
+      { label: "Department", value: "Sales" },
+      { label: "Position", value: "Sales Supervisor" },
+    ]);
+  });
+
+  it("keeps an unset field as a row so the page answers 'is this set?'", () => {
+    const contact = profileGroups(record, lookups).find((g) => g.title === "Contact")!;
+    const secondary = contact.rows.find((r) => r.label === "Secondary phone")!;
+
+    expect(secondary.value).toBeNull();
+    expect(secondary.href).toBeUndefined();
+  });
+
+  it("makes the contact rows actionable", () => {
+    const contact = profileGroups(record, lookups).find((g) => g.title === "Contact")!;
+
+    expect(contact.rows.map((r) => r.href)).toEqual([
+      "tel:012 345 678",
+      undefined,
+      "https://t.me/sokha",
+      "mailto:sokha@hig.com",
+    ]);
+  });
+
+  it("reports the status in words", () => {
+    const role = profileGroups(
+      { ...record, status: "suspended" },
+      lookups,
+    ).find((g) => g.title === "Role")!;
+
+    expect(role.rows).toContainEqual({ label: "Status", value: "Suspended" });
+  });
+
+  it("survives a record with almost nothing filled in", () => {
+    const bare: UserRecord = {
+      ...record,
+      nickname: null,
+      gender: null,
+      date_of_birth: null,
+      phone_primary: null,
+      telegram_id: null,
+      email: null,
+      position: null,
+    };
+    const groups = profileGroups(bare, { department: null, role: null });
+
+    expect(groups).toHaveLength(4);
+    expect(groups.flatMap((g) => g.rows).filter((r) => r.value !== null)).toEqual([
+      { label: "Full name", value: "Sokha Chan" },
+      { label: "Status", value: "Active" },
+    ]);
   });
 });

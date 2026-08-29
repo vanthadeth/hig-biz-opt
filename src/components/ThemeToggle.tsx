@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 import {
   applyTheme,
   getServerThemeSnapshot,
@@ -58,7 +59,10 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
   return (
     <button
       type="button"
-      onClick={() => setTheme(next)}
+      onClick={() => {
+        haptic("select");
+        setTheme(next);
+      }}
       aria-label={`Theme: ${NAME[theme]}. Switch to ${NAME[next].toLowerCase()}.`}
       title={`Theme: ${NAME[theme]}`}
       className={`pressable flex size-11 items-center justify-center rounded-full border border-line bg-surface text-muted transition-colors hover:text-fg ${className}`}

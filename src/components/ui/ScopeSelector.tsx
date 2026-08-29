@@ -1,5 +1,6 @@
 "use client";
 
+import { haptic } from "@/lib/haptics";
 import { SCOPES, SCOPE_HELP, SCOPE_LABELS } from "@/lib/roleMatrix";
 import type { StoredScope } from "@/lib/access";
 
@@ -45,7 +46,10 @@ export function ScopeSelector({
             aria-checked={active}
             disabled={disabled}
             title={SCOPE_HELP[scope]}
-            onClick={() => onChange(scope)}
+            onClick={() => {
+              haptic("select");
+              onChange(scope);
+            }}
             className={`min-h-8 flex-1 rounded-md px-1 text-xs font-medium transition-colors disabled:opacity-50 ${
               active ? TONE[scope] : "text-muted hover:text-fg"
             }`}

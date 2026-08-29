@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/ui/Sheet";
+import { haptic } from "@/lib/haptics";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { QuickActions } from "./QuickActions";
 import { useShell } from "./ShellContext";
@@ -31,6 +32,8 @@ export function BottomNav() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
+  // Four nav slots around the centre button, five equal columns in total.
+  // Anything past the fourth collapses into More rather than shrinking labels.
   const all = entries(nav);
   const overflow = all.length > 4 ? all.slice(3) : [];
   const slots = overflow.length ? all.slice(0, 3) : all.slice(0, 4);
@@ -45,11 +48,12 @@ export function BottomNav() {
       <li key={entry.key} className="flex-1">
         <Link
           href={href}
+          onClick={() => haptic("tap")}
           aria-current={active ? "page" : undefined}
-          className="flex min-h-14 flex-col items-center justify-center gap-1 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
+          className="flex min-h-16 flex-col items-center justify-center gap-1.5 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
         >
-          <Icon name={entry.icon} className="size-5.5" />
-          <span className="max-w-full truncate text-[10px] font-medium leading-none">
+          <Icon name={entry.icon} className="size-6" />
+          <span className="max-w-full truncate text-[11px] font-medium leading-none">
             {entry.name}
           </span>
         </Link>
@@ -73,16 +77,19 @@ export function BottomNav() {
         <ul className="flex items-center">
           {left.map(item)}
 
-          <li className="flex w-20 shrink-0 justify-center">
+          <li className="flex flex-1 justify-center">
             <button
               type="button"
-              onClick={() => setQuickOpen(true)}
+              onClick={() => {
+                haptic("select");
+                setQuickOpen(true);
+              }}
               aria-label="Quick actions"
               aria-haspopup="dialog"
               aria-expanded={quickOpen}
-              className="pressable -mt-6 flex size-14 items-center justify-center rounded-full bg-brand text-brand-fg shadow-[var(--shadow-fab)]"
+              className="pressable -mt-7 flex size-15 items-center justify-center rounded-full bg-brand text-brand-fg shadow-[var(--shadow-fab)]"
             >
-              <Icon name="plus" className="size-6" />
+              <Icon name="plus" className="size-7" />
             </button>
           </li>
 
@@ -92,12 +99,15 @@ export function BottomNav() {
             <li className="flex-1">
               <button
                 type="button"
-                onClick={() => setMoreOpen(true)}
+                onClick={() => {
+                  haptic("tap");
+                  setMoreOpen(true);
+                }}
                 aria-current={moreActive ? "page" : undefined}
-                className="flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
+                className="flex min-h-16 w-full flex-col items-center justify-center gap-1.5 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
               >
-                <Icon name="dots" className="size-5.5" />
-                <span className="text-[10px] font-medium leading-none">More</span>
+                <Icon name="dots" className="size-6" />
+                <span className="text-[11px] font-medium leading-none">More</span>
               </button>
             </li>
           )}
@@ -112,7 +122,10 @@ export function BottomNav() {
             <li key={entry.key} style={{ "--i": i } as React.CSSProperties}>
               <Link
                 href={`/${view.key}/${entry.href}`}
-                onClick={() => setMoreOpen(false)}
+                onClick={() => {
+                  haptic("tap");
+                  setMoreOpen(false);
+                }}
                 className="pressable flex min-h-14 items-center gap-3 rounded-2xl px-3 hover:bg-subtle"
               >
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-subtle text-muted">

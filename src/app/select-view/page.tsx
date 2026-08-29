@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Icon } from "@/components/Icon";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ViewChooserList } from "@/components/ViewChooserList";
 import { getMyViews, requireViewer } from "@/lib/access";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -30,28 +29,9 @@ export default async function SelectViewPage() {
         Select view
       </h1>
 
-      <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-        {views.map((view) => (
-          <li key={view.key}>
-            <Link
-              href={`/${view.key}/home`}
-              className="flex h-full items-start gap-4 rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-brand/40 hover:bg-subtle"
-            >
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
-                <Icon name={view.icon} className="size-5.5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block font-medium">{view.name}</span>
-                {view.description && (
-                  <span className="mt-0.5 block text-sm text-muted">
-                    {view.description}
-                  </span>
-                )}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <div className="mt-8">
+        <ViewChooserList views={views} />
+      </div>
 
       <div className="mt-8">
         <SignOutButton />

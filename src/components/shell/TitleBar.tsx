@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { Logo } from "@/components/Logo";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { Notifications } from "./Notifications";
 import { createClient } from "@/lib/supabase/client";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { useShell, usePageTitle } from "./ShellContext";
@@ -55,14 +55,13 @@ export function TitleBar() {
       className="fixed inset-x-0 top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md transition-transform duration-200 ease-out max-md:data-[hidden=true]:-translate-y-full md:left-18 lg:left-60"
       style={{ paddingTop: "env(safe-area-inset-top)", viewTransitionName: "shell-titlebar" }}
     >
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-        <Logo className="h-6 shrink-0" />
+      <div className="mx-auto flex h-14 max-w-5xl items-center gap-1 px-4">
 
-        <span className="h-5 w-px shrink-0 bg-line" aria-hidden="true" />
-
-        <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
+        <h1 className="min-w-0 flex-1 truncate pr-2 text-base font-semibold tracking-tight">
           {title}
         </h1>
+
+        <Notifications />
 
         <div className="relative" ref={menuRef}>
           <button

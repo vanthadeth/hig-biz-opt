@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { Icon } from "@/components/Icon";
+import { haptic } from "@/lib/haptics";
 import {
   applyTheme,
   getServerThemeSnapshot,
@@ -54,7 +55,10 @@ export function ThemeSwitcher() {
             type="button"
             role="radio"
             aria-checked={theme === option.value}
-            onClick={() => setTheme(option.value)}
+            onClick={() => {
+              haptic("select");
+              setTheme(option.value);
+            }}
             className="flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-muted transition-colors aria-checked:bg-surface aria-checked:text-fg aria-checked:shadow-sm hover:text-fg"
           >
             <Icon name={option.icon} className="size-4" />

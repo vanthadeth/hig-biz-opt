@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { ScopeSelector } from "@/components/ui/ScopeSelector";
 import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
+import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
   ACTIONS,
@@ -79,11 +80,13 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
     if (error) {
       // Row level security refuses the write when the permission is not held,
       // so a failure here is meaningful rather than a glitch to retry.
+      haptic("error");
       setError(error.message);
       setBusy(false);
       return;
     }
 
+    haptic("success");
     setSaved((s) => ({ ...s, [roleId]: current }));
     setBusy(false);
   }
@@ -131,7 +134,10 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
                       <button
                         key={scope}
                         type="button"
-                        onClick={() => update(setModule(current, module.key, scope))}
+                        onClick={() => {
+                          haptic("select");
+                          update(setModule(current, module.key, scope));
+                        }}
                         className="pressable rounded-md border border-line px-2 py-1 text-xs font-medium text-muted hover:text-fg"
                       >
                         {SCOPE_LABELS[scope]}
@@ -176,7 +182,10 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
           </span>
           <button
             type="button"
-            onClick={() => update(saved[roleId])}
+            onClick={() => {
+              haptic("tap");
+              update(saved[roleId]);
+            }}
             disabled={busy}
             className="pressable min-h-10 rounded-xl border border-line px-3 text-sm font-medium text-muted disabled:opacity-60"
           >

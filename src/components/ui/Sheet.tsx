@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * A bottom sheet: the phone-native way to offer a short list of choices.
  *
  * Rises from the bottom on small screens and centres as a dialog from `sm` up,
  * because a sheet glued to the bottom of a desktop window reads as a mistake.
+ *
+ * Rendered into `document.body` rather than in place. Both bars that open one
+ * slide themselves out of the way with a transform, and a transformed ancestor
+ * becomes the containing block for `position: fixed` — so left where it sits,
+ * the sheet anchors to the title bar instead of the viewport.
  */
 export function Sheet({
   open,
@@ -42,9 +48,9 @@ export function Sheet({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <button
         type="button"
@@ -73,6 +79,7 @@ export function Sheet({
         <h2 className="px-5 pb-1 pt-3 text-base font-semibold tracking-tight">{title}</h2>
         <div className="px-2 pb-2">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

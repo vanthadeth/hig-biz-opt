@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/ui/Sheet";
+import { haptic } from "@/lib/haptics";
 import { quickActionsFor } from "@/lib/quickActions";
 import { useShell } from "./ShellContext";
 
@@ -29,7 +30,10 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
             <li key={action.moduleKey} style={{ "--i": i } as React.CSSProperties}>
               <Link
                 href={action.href}
-                onClick={onClose}
+                onClick={() => {
+                  haptic("tap");
+                  onClose();
+                }}
                 className="pressable flex min-h-14 items-center gap-3 rounded-2xl px-3 hover:bg-subtle"
               >
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">

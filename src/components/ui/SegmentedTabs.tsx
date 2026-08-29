@@ -1,5 +1,7 @@
 "use client";
 
+import { haptic } from "@/lib/haptics";
+
 export type Segment = { value: string; label: string; count?: number };
 
 /**
@@ -31,7 +33,10 @@ export function SegmentedTabs({
             type="button"
             role="tab"
             aria-selected={active}
-            onClick={() => onChange(segment.value)}
+            onClick={() => {
+              haptic("tap");
+              onChange(segment.value);
+            }}
             className="pressable flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-line px-4 text-sm font-medium text-muted aria-selected:border-brand aria-selected:bg-brand aria-selected:text-brand-fg"
           >
             {segment.label}

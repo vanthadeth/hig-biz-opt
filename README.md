@@ -139,6 +139,48 @@ ERROR:  ACCESS MODEL OK - 85 assertions passed (rls: ran)
 Any other message names the assertion that broke. Re-run it after every
 migration.
 
+## Deploy
+
+The app runs on **Vercel**. It cannot go on GitHub Pages: `src/proxy.ts` is
+middleware and several routes are server components that read cookies and
+redirect, none of which survive a static export.
+
+`main` is the production branch. Every push to it redeploys.
+
+### First-time setup
+
+1. At [vercel.com](https://vercel.com), *Continue with GitHub*.
+2. *Add New…* → *Project* → import this repository.
+3. The Next.js preset is detected automatically — leave the build settings alone.
+4. Add both environment variables, for all environments:
+
+   | Name | Where it comes from |
+   | --- | --- |
+   | `NEXT_PUBLIC_SUPABASE_URL` | Supabase dashboard → Project Settings → Data API |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | same page, the `sb_publishable_…` key |
+
+5. Deploy.
+
+Neither value is a secret. The publishable key is meant to reach browsers, and
+`anon` holds no privileges on anything since migration `0011` — an
+unauthenticated caller gets nothing regardless of what it knows.
+
+### After the first deploy
+
+- **Supabase → Authentication → URL Configuration**: set *Site URL* to the
+  production URL and add `https://<your-url>/**` to *Redirect URLs*. Password
+  sign-in works without this; password-reset emails do not.
+- **Vercel → Settings → Functions → Region**: set it near the database
+  (`ap-northeast-2`, Seoul). Singapore is the closest sensible choice for a
+  Cambodia-based team. Every page render makes several Supabase calls, so the
+  default US region is felt on mobile.
+
+### On a phone
+
+The app ships a web manifest and runs standalone, so *Add to Home Screen* gives
+it an icon and drops the browser chrome. That is the intended way to test the
+mobile layout — the auto-hiding title bar and bottom bar are built for it.
+
 ## Scripts
 
 | Command | Does |

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Vercel builds the deployed app, but that build is not visible from every
+# environment this repo is worked on from. This is the check that a clean
+# machine can install, lint, typecheck, test and build the thing.
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    env:
+      # Nothing rendered at build time talks to Supabase — the only static page
+      # is /login, whose client component creates its client in the browser. So
+      # placeholders are enough and CI needs no secrets.
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

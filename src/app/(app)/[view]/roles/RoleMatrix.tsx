@@ -12,9 +12,7 @@ import {
   ACTION_LABELS,
   buildMatrix,
   diffMatrix,
-  grantedCount,
   setCell,
-  setModule,
   type Matrix,
   type PermissionRow,
 } from "@/lib/roleMatrix";
@@ -148,7 +146,7 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
     <div className="space-y-5">
       <p className="text-sm text-muted">
         What a role may do in each module, and over whose records. Green reaches
-        every record, blue only some, amber none.
+        every record, blue only some, and an empty cell none.
       </p>
 
       {/* Stacked on a phone: side by side, the button eats the width the tabs
@@ -195,29 +193,19 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
           <tbody>
             {modules.map((module) => (
               <tr key={module.key} className="border-t border-line/70">
-                <th scope="row" className="py-1.5 pr-2 text-left align-middle">
-                  <button
-                    type="button"
-                    disabled={!canEdit}
-                    title={module.name}
-                    // The row heading doubles as the row shortcut: tapping it
-                    // sweeps every action to the same scope, which is how most
-                    // of a matrix actually gets filled in.
-                    onClick={() => {
-                      haptic("select");
-                      update(
-                        setModule(
-                          current,
-                          module.key,
-                          grantedCount(current, module.key) === 4 ? "deny" : "any",
-                        ),
-                      );
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm font-medium enabled:hover:bg-subtle disabled:cursor-default"
-                  >
+                {/* A label, not a control. Tapping it used to sweep the whole
+                    row to Any or Deny, which put "grant this role everything"
+                    one stray tap away on a phone — too cheap an action for what
+                    it does. Each cell is now set on purpose. */}
+                <th
+                  scope="row"
+                  title={module.name}
+                  className="py-1.5 pr-2 text-left align-middle"
+                >
+                  <span className="flex items-center gap-2 px-1 py-1 text-sm font-medium">
                     <Icon name={module.icon} className="size-4 shrink-0 text-muted" />
                     <span className="min-w-0 truncate">{module.name}</span>
-                  </button>
+                  </span>
                 </th>
                 {ACTIONS.map((action: PermissionAction) => (
                   <td key={action} className="px-0.5 py-1.5">

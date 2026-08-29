@@ -5,18 +5,23 @@ import { SCOPES, SCOPE_HELP, SCOPE_LABELS } from "@/lib/roleMatrix";
 import type { StoredScope } from "@/lib/access";
 
 /**
- * Green grants everything, blue grants some of it, amber grants none.
+ * The whole scale is the brand: green grants everything, the brand blue grants
+ * some of it, and nothing at all grants none.
  *
- * Own and Sub share the blue family and are told apart by weight, so the two
- * partial reaches read as related rather than as separate decisions. Every
- * label is body text on its fill, and every pair clears 4.5:1 in both themes —
- * computed, not eyeballed; the lowest is 4.84:1 (white on blue, light mode).
+ * Own and Sub share the blue and are told apart by weight, so the two partial
+ * reaches read as related rather than as separate decisions. Deny carries no
+ * fill — an empty outline says "nothing here" more directly than any colour,
+ * and a fill would have to come from outside the palette to be distinct.
+ *
+ * Every label is body text on its own fill and every pair clears 4.5:1 in both
+ * themes; computed, not eyeballed. The lowest is 4.84:1, white on the light
+ * blue. A grey fill was the near miss: --muted on --subtle is 4.49:1.
  */
 const TONE: Record<StoredScope, string> = {
-  deny: "bg-warn text-warn-fg",
-  own: "bg-brand/15 text-fg",
-  sub: "bg-brand text-brand-fg",
-  any: "bg-accent text-accent-fg",
+  deny: "border-line bg-transparent text-muted",
+  own: "border-transparent bg-brand/15 text-fg",
+  sub: "border-transparent bg-brand text-brand-fg",
+  any: "border-transparent bg-accent text-accent-fg",
 };
 
 /**
@@ -42,7 +47,7 @@ export function ScopeCell({
     // The fill and the text colour sit on the wrapper so the drawn chevron can
     // pick them up through currentColor and stay legible on every tone.
     <div
-      className={`relative rounded-lg transition-colors has-[select:focus-visible]:ring-2 has-[select:focus-visible]:ring-brand has-[select:disabled]:opacity-60 ${TONE[value]}`}
+      className={`relative rounded-lg border transition-colors has-[select:focus-visible]:ring-2 has-[select:focus-visible]:ring-brand has-[select:disabled]:opacity-60 ${TONE[value]}`}
     >
       <select
         value={value}

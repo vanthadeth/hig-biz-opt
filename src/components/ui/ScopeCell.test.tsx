@@ -51,7 +51,7 @@ describe("ScopeCell", () => {
     expect(cell()).toHaveAccessibleName("Users — Read: Own records only");
   });
 
-  it("colours by reach: green for any, blue for own and sub, amber for deny", () => {
+  it("colours by reach, all from the brand: green for any, blue for own and sub, no fill for deny", () => {
     const tone = (value: "deny" | "own" | "sub" | "any") => {
       const { container, unmount } = render(
         <ScopeCell value={value} onChange={vi.fn()} label="Users — Read" />,
@@ -64,7 +64,7 @@ describe("ScopeCell", () => {
     expect(tone("any")).toContain("bg-accent");
     expect(tone("sub")).toContain("bg-brand");
     expect(tone("own")).toContain("bg-brand/15");
-    expect(tone("deny")).toContain("bg-warn");
+    expect(tone("deny")).toContain("bg-transparent");
   });
 
   it("is disabled when read-only", () => {

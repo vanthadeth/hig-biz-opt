@@ -106,18 +106,3 @@ export function setCell(
     [moduleKey]: { ...matrix[moduleKey], [action]: scope },
   };
 }
-
-/** Applies one scope across every action of a module — the row shortcut. */
-export function setModule(matrix: Matrix, moduleKey: string, scope: StoredScope): Matrix {
-  return {
-    ...matrix,
-    [moduleKey]: { view: scope, add: scope, edit: scope, delete: scope },
-  };
-}
-
-/** How many actions in a module are granted at all. */
-export function grantedCount(matrix: Matrix, moduleKey: string): number {
-  const row = matrix[moduleKey];
-  if (!row) return 0;
-  return ACTIONS.filter((action) => row[action] !== "deny").length;
-}

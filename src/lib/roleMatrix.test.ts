@@ -4,10 +4,8 @@ import {
   SCOPES,
   buildMatrix,
   diffMatrix,
-  grantedCount,
   roleKeyFrom,
   setCell,
-  setModule,
   type Matrix,
   type PermissionRow,
 } from "./roleMatrix";
@@ -83,13 +81,16 @@ describe("diffMatrix", () => {
     ]);
   });
 
-  it("reports every cell of a bulk change", () => {
-    const after = setModule(before, "invoice", "any");
+  it("reports every cell that moved", () => {
+    const after = ACTIONS.reduce(
+      (matrix, action) => setCell(matrix, "invoice", action, "any"),
+      before,
+    );
     expect(diffMatrix(before, after)).toHaveLength(4);
   });
 
-  it("does not report a bulk change back to where it started", () => {
-    const after = setModule(setModule(before, "invoice", "any"), "invoice", "deny");
+  it("does not report a cell that was changed and changed back", () => {
+    const after = setCell(setCell(before, "invoice", "view", "any"), "invoice", "view", "deny");
     expect(diffMatrix(before, after)).toEqual([]);
   });
 
@@ -101,7 +102,7 @@ describe("diffMatrix", () => {
   });
 });
 
-describe("setCell and setModule", () => {
+describe("setCell", () => {
   const matrix = buildMatrix(MODULES, []);
 
   it("leaves the original untouched", () => {
@@ -113,33 +114,6 @@ describe("setCell and setModule", () => {
     const next = setCell(matrix, "customer", "view", "any");
     expect(next.customer.add).toBe("deny");
     expect(next.invoice).toBe(matrix.invoice);
-  });
-
-  it("applies one scope across all four actions", () => {
-    const next = setModule(matrix, "user", "sub");
-    expect(next.user).toEqual({ view: "sub", add: "sub", edit: "sub", delete: "sub" });
-  });
-});
-
-describe("grantedCount", () => {
-  it("counts nothing when everything is denied", () => {
-    expect(grantedCount(buildMatrix(MODULES, []), "customer")).toBe(0);
-  });
-
-  it("counts the actions that are granted", () => {
-    const matrix = buildMatrix(MODULES, [
-      row("customer", "view", "any"),
-      row("customer", "add", "own"),
-    ]);
-    expect(grantedCount(matrix, "customer")).toBe(2);
-  });
-
-  it("counts four when a module is fully open", () => {
-    expect(grantedCount(setModule(buildMatrix(MODULES, []), "user", "any"), "user")).toBe(4);
-  });
-
-  it("is zero for a module the grid does not carry", () => {
-    expect(grantedCount(buildMatrix(MODULES, []), "nonexistent")).toBe(0);
   });
 });
 

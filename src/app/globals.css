@@ -1,27 +1,64 @@
 @import "tailwindcss";
 
+/* Brand palette, taken from the logo.
+   Light-mode blue is a shade deeper than the logo's own blue: at the logo value
+   white-on-blue and blue-on-white both land near 4.2:1, short of the 4.5:1 that
+   button labels and active nav text need. The logo artwork itself keeps its true
+   colours; this is the interface accent. */
 :root {
-  --bg: #f5f7f9;
+  color-scheme: light;
+
+  --bg: #f4f7fa;
   --surface: #ffffff;
-  --fg: #101720;
-  --muted: #69737f;
-  --line: #e3e7ec;
-  --subtle: #eff2f6;
-  --brand: #0f62d6;
+  --fg: #0f1720;
+  --muted: #64707d;
+  --line: #e2e8ef;
+  --subtle: #eef2f7;
+
+  --brand: #1975bf;
+  --brand-fg: #ffffff;
+  --accent: #3ab54a;
+  --accent-fg: #06180a;
   --danger: #d92d20;
 }
 
+/* Dark values live in two places on purpose. `light-dark()` would say them once
+   but needs Chrome 123+ / Safari 17.5+, and this has to work on whatever phones
+   the team already carry. Keep the two blocks in step. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0e13;
-    --surface: #131a22;
-    --fg: #e7ecf2;
-    --muted: #8a95a2;
-    --line: #212a35;
-    --subtle: #1a222b;
-    --brand: #5a9dff;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #080d13;
+    --surface: #121a23;
+    --fg: #e8edf3;
+    --muted: #8b96a3;
+    --line: #263140;
+    --subtle: #19212b;
+
+    --brand: #35aeea;
+    --brand-fg: #06121c;
+    --accent: #4ecb5e;
+    --accent-fg: #06180a;
     --danger: #ff6b60;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #080d13;
+  --surface: #121a23;
+  --fg: #e8edf3;
+  --muted: #8b96a3;
+  --line: #263140;
+  --subtle: #19212b;
+
+  --brand: #35aeea;
+  --brand-fg: #06121c;
+  --accent: #4ecb5e;
+  --accent-fg: #06180a;
+  --danger: #ff6b60;
 }
 
 @theme inline {
@@ -32,6 +69,9 @@
   --color-line: var(--line);
   --color-subtle: var(--subtle);
   --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
@@ -58,6 +98,29 @@ button,
 [role="button"] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Logo variants. Both are in the markup and CSS picks one, so the right mark is
+   painted on the first frame with no JavaScript and nothing to hydrate. Mirrors
+   the token rule above. */
+[data-logo="dark"] {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) [data-logo="light"] {
+    display: none;
+  }
+  :root:not([data-theme="light"]) [data-logo="dark"] {
+    display: block;
+  }
+}
+
+:root[data-theme="dark"] [data-logo="light"] {
+  display: none;
+}
+:root[data-theme="dark"] [data-logo="dark"] {
+  display: block;
 }
 
 @media (prefers-reduced-motion: reduce) {

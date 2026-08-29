@@ -28,6 +28,10 @@ const PATHS: Record<string, string> = {
   check: "m5 12.5 4.5 4.5L19 7.5",
   user: "M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20.5a7.5 7.5 0 0 1 15 0",
   menu: "M4 7h16M4 12h16M4 17h16",
+  sun: "M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9ZM12 2.5v2M12 19.5v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2.5 12h2M19.5 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42",
+  moon: "M20 14.5A8.2 8.2 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5Z",
+  display:
+    "M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1ZM9 20.5h6M12 16.5v4",
 };
 
 type IconProps = SVGProps<SVGSVGElement> & { name: string };

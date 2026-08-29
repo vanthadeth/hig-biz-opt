@@ -5,6 +5,10 @@ import { afterEach, vi } from "vitest";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // clearAllMocks only wipes call history; without this a spy's replacement
+  // implementation leaks into the next test in the file.
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // next/navigation has no router in jsdom. Tests that care about the path set

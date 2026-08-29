@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { createClient } from "@/lib/supabase/client";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { useShell, usePageTitle } from "./ShellContext";
@@ -71,7 +72,7 @@ export function TitleBar() {
             aria-label="Account menu"
             className="flex size-11 items-center justify-center rounded-full text-muted transition-colors hover:text-fg"
           >
-            <span className="flex size-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
+            <span className="flex size-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-brand-fg">
               {initials || "?"}
             </span>
           </button>
@@ -84,6 +85,10 @@ export function TitleBar() {
               <div className="border-b border-line px-4 py-3">
                 <p className="truncate text-sm font-medium">{viewer.full_name}</p>
                 <p className="truncate text-xs text-muted">{viewer.email}</p>
+              </div>
+
+              <div className="border-b border-line">
+                <ThemeSwitcher />
               </div>
 
               <Link

@@ -59,6 +59,54 @@ Permission is granted per role, per module, per action (`view`/`add`/`edit`/
 `delete`), at a scope (`own`/`sub`/`any`). A per-user override layers on top and
 can both grant and revoke. See [`docs/access-model.md`](docs/access-model.md).
 
+## Theme and brand
+
+Colours come from the logo and live as CSS custom properties in
+`src/app/globals.css` — one light block, and the dark values in two places (an
+explicit `[data-theme="dark"]`, and a `prefers-color-scheme` block for anyone who
+has not chosen). **Keep those two dark blocks in step.** `light-dark()` would say
+it once, but needs Chrome 123+/Safari 17.5+ and this has to run on whatever
+phones the team already carry.
+
+| Token | Light | Dark |
+| --- | --- | --- |
+| `--brand` | `#1975bf` | `#35aeea` |
+| `--brand-fg` | `#ffffff` | `#06121c` |
+| `--accent` | `#3ab54a` | `#4ecb5e` |
+
+Two things that are easy to get wrong:
+
+- **Never hardcode `text-white` on `bg-brand`.** Use `text-brand-fg`. The
+  dark-mode blue is bright enough that white on it fails contrast; the token is
+  dark there for that reason.
+- The light-mode blue is slightly deeper than the logo's own blue. At the logo
+  value, white-on-blue and blue-on-white both land near 4.2:1, short of the
+  4.5:1 that button labels and active nav text need. The logo artwork keeps its
+  true colours; this is only the interface accent.
+
+Every foreground/background pair clears WCAG AA. If you change a token, re-check
+it before shipping.
+
+### Appearance switcher
+
+Light / Dark / Auto sits in the profile dropdown. Auto is the default and follows
+the operating system, including while the app is open. The choice is kept in
+`localStorage` and re-applied by a small blocking script in `<head>`
+(`src/components/ThemeScript.tsx`) so a dark-mode user never sees a white flash.
+That script restates what `applyTheme()` does because nothing is imported that
+early; the values it needs are interpolated from `src/lib/theme.ts` so the two
+cannot drift.
+
+### Swapping in the real logo
+
+`public/logo-light.svg` and `public/logo-dark.svg` are **placeholder wordmarks**,
+not the HIG mark. Replace both files — same paths, similar aspect ratio — and
+nothing in the code changes. Then:
+
+```bash
+npm run icons   # regenerates the home-screen and tab icons
+```
+
 ## Pages start blank
 
 Every module page is deliberately empty:
@@ -104,7 +152,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 47 tests
+npm test          # Vitest, 69 tests
 npm run test:watch
 ```
 
@@ -189,3 +237,4 @@ mobile layout — the auto-hiding title bar and bottom bar are built for it.
 | `npm run build` | Production build |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
+| `npm run icons` | Regenerate app icons from the brand palette |

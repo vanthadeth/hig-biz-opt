@@ -20,6 +20,11 @@
   --accent: #3ab54a;
   --accent-fg: #06180a;
   --danger: #d92d20;
+  /* A suspension is reversible, so it is a caution rather than a failure. The
+     grey tint that stood in for this made Suspended and Discharged read the
+     same on the staff list. 6.36:1 in light, 8.33:1 in dark. */
+  --warn: #fdf0cf;
+  --warn-fg: #7a4e00;
 
   /* Tinted surfaces for stat tiles, derived from the brand blue and green so
      the set stays on-palette instead of importing new hues. */
@@ -56,6 +61,8 @@
     --accent: #4ecb5e;
     --accent-fg: #06180a;
     --danger: #ff6b60;
+    --warn: #2c2113;
+    --warn-fg: #e8b45c;
 
   --tint-1: #10202e;
   --tint-2: #0e2422;
@@ -100,6 +107,8 @@
   --accent: #4ecb5e;
   --accent-fg: #06180a;
   --danger: #ff6b60;
+  --warn: #2c2113;
+  --warn-fg: #e8b45c;
 }
 
 @theme inline {
@@ -114,6 +123,8 @@
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-warn-fg: var(--warn-fg);
   --color-tint-1: var(--tint-1);
   --color-tint-2: var(--tint-2);
   --color-tint-3: var(--tint-3);

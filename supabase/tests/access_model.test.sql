@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 92 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 101 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -132,6 +132,8 @@ declare
   v_sa  uuid := '00000000-0000-4000-8000-0000000f0005';  -- super admin, active
   v_sus uuid := '00000000-0000-4000-8000-0000000f0006';  -- super admin, suspended
   v_dis uuid := '00000000-0000-4000-8000-0000000f0007';  -- sales, discharged
+  v_nol uuid;                                            -- an employee with no login
+  v_new uuid := '00000000-0000-4000-8000-0000000f00aa';  -- the login they are later given
   v_rls text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -466,12 +468,60 @@ begin
     perform pg_temp.eq('RLS: and the refused role was not created',
       (select count(*)::text from public.roles where key = 'higtest_rep_role'), '0');
 
+    -- Adding an employee, which is what the Add new user form does. Since 0016
+    -- this needs no auth account, so it is an ordinary insert under the
+    -- `app.can('user','add')` policy rather than a privileged operation.
+    perform pg_temp.act_as(v_sa);
+    insert into public.users (full_name, nickname, telegram_id, department_id, position, role_id)
+    select 'HIGTest NoLogin', 'Noli', '@noli', d.id, 'Driver', r.id
+      from public.departments d, public.roles r
+     where d.name = 'Warehouse & Logistic' and r.key = 'warehouse'
+    returning id into v_nol;
+    perform pg_temp.eq('RLS: user.add creates an employee with no login',
+      (select count(*)::text from public.users where id = v_nol), '1');
+
+    perform pg_temp.act_as(v_rep);
+    perform pg_temp.refused('RLS: a sales rep may not add an employee',
+      'insert into public.users (full_name) values (''HIGTest Sneaky'')');
+    perform pg_temp.eq('RLS: and the refused employee was not created',
+      (select count(*)::text from public.users where full_name = 'HIGTest Sneaky'), '0');
+
     execute 'reset role';
     v_rls := 'ran';
   exception when insufficient_privilege then
     execute 'reset role';
     v_rls := 'skipped (cannot assume the authenticated role)';
   end;
+
+  ----------------------------------------------------------------------------
+  -- Granting a login to an employee who already has a record (0016)
+  --
+  -- These read auth.users, which `authenticated` cannot, so they sit outside the
+  -- block above. v_nol is null when that block skipped, and the section skips
+  -- with it rather than reporting a pass it never made.
+  ----------------------------------------------------------------------------
+  if v_nol is not null then
+    perform pg_temp.rejects('two employees may not share an email',
+      format('update public.users set email = ''fx.rep@example.test'' where id = %L', v_nol));
+
+    update public.users set email = 'fx.nologin@example.test' where id = v_nol;
+    update public.users set manager_id = v_nol where id = v_rep;
+
+    -- Signing them up now: the trigger should adopt the waiting record.
+    perform pg_temp.new_user(v_new, 'fx.nologin@example.test', 'Should Be Ignored', 'sales');
+
+    perform pg_temp.eq('a later login adopts the waiting record, not a second one',
+      (select count(*)::text from public.users where email = 'fx.nologin@example.test'), '1');
+    perform pg_temp.eq('the record moved onto the auth id',
+      (select id::text from public.users where email = 'fx.nologin@example.test'), v_new::text);
+    perform pg_temp.eq('and kept the name the admin typed, not the signup metadata',
+      (select full_name from public.users where id = v_new), 'HIGTest NoLogin');
+    perform pg_temp.eq('and kept its department',
+      (select d.name from public.users u join public.departments d on d.id = u.department_id
+        where u.id = v_new), 'Warehouse & Logistic');
+    perform pg_temp.eq('reports follow the re-key',
+      (select manager_id::text from public.users where id = v_rep), v_new::text);
+  end if;
 
   ----------------------------------------------------------------------------
   -- Everything passed. Raise, so the whole transaction unwinds and the fixtures

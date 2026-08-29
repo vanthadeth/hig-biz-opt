@@ -13,6 +13,9 @@ export type PermissionScope = "own" | "sub" | "any";
  */
 export type StoredScope = PermissionScope | "deny";
 
+/** Mirrors public.user_status. A suspension is reversible; a discharge is not. */
+export type UserStatus = "active" | "suspended" | "discharged";
+
 export type Permission = {
   module_key: string;
   action: PermissionAction;

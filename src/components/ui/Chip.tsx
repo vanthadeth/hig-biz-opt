@@ -4,7 +4,7 @@ const TONES: Record<ChipTone, string> = {
   neutral: "bg-subtle text-muted",
   brand: "bg-brand/10 text-brand",
   accent: "bg-accent/12 text-tint-3-fg",
-  warn: "bg-tint-4 text-tint-4-fg",
+  warn: "bg-warn text-warn-fg",
   danger: "bg-danger/10 text-danger",
 };
 

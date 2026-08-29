@@ -1,13 +1,21 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { LoginForm } from "./LoginForm";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-dvh flex-col justify-center px-6 py-12">
+    <main className="relative flex min-h-dvh flex-col justify-center px-6 py-12">
+      <div
+        className="absolute right-5 top-5"
+        style={{ top: "max(env(safe-area-inset-top), 1.25rem)" }}
+      >
+        <ThemeToggle />
+      </div>
+
       <div className="mx-auto w-full max-w-sm">
         {/* The mark carries the identity here, so the wordmark heading it used
             to sit above would only repeat it. The accessible name comes from

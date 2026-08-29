@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { getMyViews, requireViewer } from "@/lib/access";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -17,7 +18,11 @@ export default async function SelectViewPage() {
   if (views.length === 1) redirect(`/${views[0].key}/home`);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">
+    <main className="relative mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">
+      <div className="absolute right-5 top-8 sm:top-14">
+        <ThemeToggle />
+      </div>
+
       <Logo className="h-8" />
 
       <p className="mt-8 text-sm text-muted">Signed in as {viewer.full_name}</p>

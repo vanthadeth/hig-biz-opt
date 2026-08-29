@@ -89,8 +89,12 @@ it before shipping.
 
 ### Appearance switcher
 
-Light / Dark / Auto sits in the profile dropdown. Auto is the default and follows
-the operating system, including while the app is open. The choice is kept in
+Light / Dark / Auto sits in the profile dropdown as a segmented control, and as
+a single cycling button in the top right of login and the view chooser — those
+two screens have no title bar, so without it there would be no way to change the
+theme until after signing in. Both read and write the same store, so they cannot
+disagree. Auto is the default and follows the operating system, including while
+the app is open. The choice is kept in
 `localStorage` and re-applied by a small blocking script in `<head>`
 (`src/components/ThemeScript.tsx`) so a dark-mode user never sees a white flash.
 That script restates what `applyTheme()` does because nothing is imported that
@@ -157,7 +161,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 94 tests
+npm test          # Vitest, 122 tests
 npm run test:watch
 ```
 

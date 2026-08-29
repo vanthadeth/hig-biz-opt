@@ -90,7 +90,16 @@ migration — add a new one.
 0006_rls.sql                  row level security on every table
 0007_seed.sql                 modules, views, roles, default permission matrix
 0008_storage.sql              private avatars bucket
+0009_bootstrap_super_admin    the first login (password placeholder, see file)
+0010_grants.sql               explicit privileges for `authenticated`
+0011_revoke_anon.sql          the anonymous role gets nothing
+0012_revoke_public_execute    no function is callable just by being PUBLIC
+0013_advisor_fixes.sql        database-linter findings
 ```
+
+Run `get_advisors` (security and performance) after adding a migration. The only
+finding left open is leaked-password protection, which is a project auth setting
+rather than schema — enable it under Authentication → Policies in the dashboard.
 
 ## Scripts
 

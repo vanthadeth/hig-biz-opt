@@ -1,0 +1,421 @@
+-- access_model.test.sql
+--
+-- The access rules are the part of this system where a bug leaks payroll data
+-- rather than misaligning a button, so they get a suite that can be re-run after
+-- every migration.
+--
+-- Everything happens inside one transaction that is deliberately rolled back, so
+-- a run leaves no trace: no fixtures, no sequence drift, and not even a
+-- supabase_migrations row when it is applied through a migration API.
+--
+--     psql "$DATABASE_URL" -f supabase/tests/access_model.test.sql
+--
+-- Success looks like an error, because the rollback is what forces it:
+--
+--     ERROR:  ACCESS MODEL OK - 85 assertions passed (rls: ran)
+--
+-- Anything else is a real failure and names the assertion that broke:
+--
+--     ERROR:  FAILED: deny override beats role grant -- expected null, got any
+--
+-- The fixtures are self-contained: they do not read the seeded employee, so this
+-- runs against a freshly migrated database as well as a populated one.
+
+-- Assertion helpers. pg_temp is session-local, so these never touch the schema.
+create or replace function pg_temp.bump() returns void language plpgsql as $f$
+begin
+  perform set_config('higtest.checks',
+    (coalesce(current_setting('higtest.checks', true), '0')::int + 1)::text, false);
+end;
+$f$;
+
+create or replace function pg_temp.eq(p_label text, p_actual text, p_expected text)
+returns void language plpgsql as $f$
+begin
+  perform pg_temp.bump();
+  if p_actual is distinct from p_expected then
+    raise exception 'FAILED: % -- expected %, got %',
+      p_label, coalesce(p_expected, 'null'), coalesce(p_actual, 'null');
+  end if;
+end;
+$f$;
+
+create or replace function pg_temp.ok(p_label text, p_actual boolean)
+returns void language plpgsql as $f$
+begin
+  perform pg_temp.bump();
+  if p_actual is distinct from true then
+    raise exception 'FAILED: % -- expected true, got %', p_label, coalesce(p_actual::text, 'null');
+  end if;
+end;
+$f$;
+
+create or replace function pg_temp.notok(p_label text, p_actual boolean)
+returns void language plpgsql as $f$
+begin
+  perform pg_temp.bump();
+  if p_actual is distinct from false then
+    raise exception 'FAILED: % -- expected false, got %', p_label, coalesce(p_actual::text, 'null');
+  end if;
+end;
+$f$;
+
+-- Asserts that a statement is refused. Used for the CHECK constraints, where the
+-- point is that the database says no.
+create or replace function pg_temp.rejects(p_label text, p_stmt text)
+returns void language plpgsql as $f$
+begin
+  perform pg_temp.bump();
+  begin
+    execute p_stmt;
+  exception
+    when check_violation or not_null_violation or foreign_key_violation
+      or unique_violation or raise_exception then
+      return;
+  end;
+  raise exception 'FAILED: % -- statement was accepted but should have been refused', p_label;
+end;
+$f$;
+
+-- Becomes a given user, for the functions that read auth.uid().
+create or replace function pg_temp.act_as(p_user uuid)
+returns void language plpgsql as $f$
+begin
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', p_user::text, 'role', 'authenticated')::text, true);
+end;
+$f$;
+
+create or replace function pg_temp.new_user(
+  p_id uuid, p_email text, p_name text, p_role_key text
+) returns void language plpgsql as $f$
+begin
+  -- Inserting into auth.users exercises handle_new_auth_user from 0002, which is
+  -- what provisions the profile row and resolves the role from the metadata.
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change
+  ) values (
+    '00000000-0000-0000-0000-000000000000', p_id, 'authenticated', 'authenticated',
+    p_email, '', now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    jsonb_build_object('full_name', p_name, 'role_key', p_role_key),
+    now(), now(), '', '', '', ''
+  );
+end;
+$f$;
+
+do $$
+declare
+  v_mgr uuid := '00000000-0000-4000-8000-0000000f0001';  -- sales, no manager
+  v_rep uuid := '00000000-0000-4000-8000-0000000f0002';  -- sales, reports to mgr
+  v_jr  uuid := '00000000-0000-4000-8000-0000000f0003';  -- sales, reports to rep
+  v_wh  uuid := '00000000-0000-4000-8000-0000000f0004';  -- warehouse
+  v_sa  uuid := '00000000-0000-4000-8000-0000000f0005';  -- super admin, active
+  v_sus uuid := '00000000-0000-4000-8000-0000000f0006';  -- super admin, suspended
+  v_dis uuid := '00000000-0000-4000-8000-0000000f0007';  -- sales, discharged
+  v_rls text := 'skipped (cannot assume the authenticated role)';
+begin
+  perform set_config('higtest.checks', '0', false);
+
+  ----------------------------------------------------------------------------
+  -- Fixtures
+  ----------------------------------------------------------------------------
+  perform pg_temp.new_user(v_mgr, 'fx.mgr@example.test', 'Fixture Manager',   'sales');
+  perform pg_temp.new_user(v_rep, 'fx.rep@example.test', 'Fixture Rep',       'sales');
+  perform pg_temp.new_user(v_jr,  'fx.jr@example.test',  'Fixture Junior',    'sales');
+  perform pg_temp.new_user(v_wh,  'fx.wh@example.test',  'Fixture Warehouse', 'warehouse');
+  perform pg_temp.new_user(v_sa,  'fx.sa@example.test',  'Fixture Admin',     'system_admin');
+  perform pg_temp.new_user(v_sus, 'fx.sus@example.test', 'Fixture Suspended', 'system_admin');
+  perform pg_temp.new_user(v_dis, 'fx.dis@example.test', 'Fixture Discharged','sales');
+
+  -- The trigger provisioned every profile; check that before relying on it.
+  perform pg_temp.eq('trigger provisions a profile row',
+    (select count(*)::text from public.users where email like 'fx.%@example.test'), '7');
+  perform pg_temp.eq('trigger resolves role from metadata',
+    (select r.key from public.users u join public.roles r on r.id = u.role_id where u.id = v_wh),
+    'warehouse');
+
+  -- junior -> rep -> manager, a two-level chain for `sub` scope.
+  update public.users set manager_id = v_mgr where id = v_rep;
+  update public.users set manager_id = v_rep where id = v_jr;
+
+  update public.users set is_super_admin = true where id in (v_sa, v_sus);
+  update public.users
+     set status = 'suspended', suspended_from = current_date, suspended_to = current_date + 30
+   where id = v_sus;
+  update public.users
+     set status = 'discharged', discharged_date = current_date
+   where id = v_dis;
+
+  ----------------------------------------------------------------------------
+  -- app.is_subordinate
+  ----------------------------------------------------------------------------
+  perform pg_temp.ok('subordinate: direct report',        app.is_subordinate(v_mgr, v_rep));
+  perform pg_temp.ok('subordinate: two levels down',      app.is_subordinate(v_mgr, v_jr));
+  perform pg_temp.ok('subordinate: direct, lower level',  app.is_subordinate(v_rep, v_jr));
+  perform pg_temp.notok('subordinate: upward is not',     app.is_subordinate(v_jr, v_mgr));
+  perform pg_temp.notok('subordinate: unrelated is not',  app.is_subordinate(v_wh, v_rep));
+  perform pg_temp.notok('subordinate: self is not',       app.is_subordinate(v_rep, v_rep));
+
+  ----------------------------------------------------------------------------
+  -- app.effective_scope: role defaults
+  ----------------------------------------------------------------------------
+  perform pg_temp.eq('sales: customer.view',    app.effective_scope(v_rep, 'customer', 'view')::text,   'any');
+  perform pg_temp.eq('sales: customer.add',     app.effective_scope(v_rep, 'customer', 'add')::text,    'own');
+  perform pg_temp.eq('sales: sale_order.view',  app.effective_scope(v_rep, 'sale_order', 'view')::text, 'sub');
+  perform pg_temp.eq('sales: payment.view',     app.effective_scope(v_rep, 'payment', 'view')::text,    'own');
+  perform pg_temp.eq('sales: product.view',     app.effective_scope(v_rep, 'product', 'view')::text,    'any');
+  perform pg_temp.eq('sales: no user.view',     app.effective_scope(v_rep, 'user', 'view')::text,       null);
+  perform pg_temp.eq('sales: no customer.delete', app.effective_scope(v_rep, 'customer', 'delete')::text, null);
+
+  perform pg_temp.eq('warehouse: product.edit', app.effective_scope(v_wh, 'product', 'edit')::text,   'any');
+  perform pg_temp.eq('warehouse: customer.view',app.effective_scope(v_wh, 'customer', 'view')::text,  'sub');
+  perform pg_temp.eq('warehouse: no invoice',   app.effective_scope(v_wh, 'invoice', 'view')::text,   null);
+
+  perform pg_temp.eq('super admin: user.delete',  app.effective_scope(v_sa, 'user', 'delete')::text,   'any');
+  perform pg_temp.eq('super admin: audit_log.view', app.effective_scope(v_sa, 'audit_log', 'view')::text, 'any');
+
+  perform pg_temp.eq('unknown module resolves to nothing',
+    app.effective_scope(v_rep, 'not_a_module', 'view')::text, null);
+  perform pg_temp.eq('unknown user resolves to nothing',
+    app.effective_scope('00000000-0000-4000-8000-0000000fdead', 'customer', 'view')::text, null);
+  perform pg_temp.eq('null user resolves to nothing',
+    app.effective_scope(null, 'customer', 'view')::text, null);
+
+  ----------------------------------------------------------------------------
+  -- Status is checked before is_super_admin, on purpose
+  ----------------------------------------------------------------------------
+  perform pg_temp.eq('suspended super admin loses everything',
+    app.effective_scope(v_sus, 'user', 'view')::text, null);
+  perform pg_temp.eq('suspended super admin loses settings too',
+    app.effective_scope(v_sus, 'settings', 'edit')::text, null);
+  perform pg_temp.eq('discharged employee loses everything',
+    app.effective_scope(v_dis, 'customer', 'view')::text, null);
+
+  ----------------------------------------------------------------------------
+  -- Per-user overrides, in both directions
+  ----------------------------------------------------------------------------
+  insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
+  values
+    (v_rep, 'customer', 'view', 'deny',  null),   -- role grants 'any'
+    (v_rep, 'user',     'view', 'allow', 'own'),  -- role grants nothing
+    (v_rep, 'product',  'view', 'allow', 'own');  -- role grants 'any', narrowed
+
+  perform pg_temp.eq('deny override beats role grant',
+    app.effective_scope(v_rep, 'customer', 'view')::text, null);
+  perform pg_temp.eq('allow override grants what the role lacks',
+    app.effective_scope(v_rep, 'user', 'view')::text, 'own');
+  perform pg_temp.eq('allow override can narrow a role grant',
+    app.effective_scope(v_rep, 'product', 'view')::text, 'own');
+  perform pg_temp.eq('untouched action keeps its role scope',
+    app.effective_scope(v_rep, 'sale_order', 'view')::text, 'sub');
+  perform pg_temp.eq('override does not leak to another user',
+    app.effective_scope(v_jr, 'customer', 'view')::text, 'any');
+  perform pg_temp.eq('a deny cannot override a super admin''s status-based loss',
+    app.effective_scope(v_sus, 'customer', 'view')::text, null);
+
+  ----------------------------------------------------------------------------
+  -- app.can: scope tested against a record's owner
+  ----------------------------------------------------------------------------
+  -- The junior still has customer.view at 'any'; the rep's was denied above.
+  perform pg_temp.act_as(v_jr);
+  perform pg_temp.ok('can: any scope reaches an unrelated owner',
+    app.can('customer', 'view', v_wh));
+
+  perform pg_temp.act_as(v_rep);
+  perform pg_temp.ok('can: sub scope reaches a subordinate',   app.can('sale_order', 'view', v_jr));
+  perform pg_temp.ok('can: sub scope reaches self',            app.can('sale_order', 'view', v_rep));
+  perform pg_temp.notok('can: sub scope does not reach upward',app.can('sale_order', 'view', v_mgr));
+  perform pg_temp.notok('can: sub scope does not reach sideways', app.can('sale_order', 'view', v_wh));
+  perform pg_temp.ok('can: own scope reaches self',            app.can('payment', 'view', v_rep));
+  perform pg_temp.notok('can: own scope does not reach a subordinate', app.can('payment', 'view', v_jr));
+  perform pg_temp.notok('can: a denied module is refused',     app.can('customer', 'view', v_rep));
+  perform pg_temp.ok('can: no owner asks only whether it is held', app.can('sale_order', 'view'));
+  perform pg_temp.notok('can: no owner, permission not held',  app.can('audit_log', 'view'));
+
+  perform pg_temp.act_as(v_sa);
+  perform pg_temp.ok('can: super admin reaches anyone',        app.can('user', 'edit', v_rep));
+  perform pg_temp.act_as(v_sus);
+  perform pg_temp.notok('can: suspended super admin reaches no one', app.can('user', 'edit', v_rep));
+
+  ----------------------------------------------------------------------------
+  -- app.my_views
+  ----------------------------------------------------------------------------
+  perform pg_temp.act_as(v_rep);
+  perform pg_temp.eq('my_views: role default',
+    (select string_agg(name, ', ' order by sort_order) from app.my_views()), 'Sale');
+
+  insert into public.user_views (user_id, view_key, effect) values (v_rep, 'accounting', 'allow');
+  perform pg_temp.eq('my_views: plus a per-user grant',
+    (select string_agg(name, ', ' order by sort_order) from app.my_views()), 'Sale, Accountant');
+
+  insert into public.user_views (user_id, view_key, effect) values (v_rep, 'sales', 'deny');
+  perform pg_temp.eq('my_views: a deny beats the role default',
+    (select string_agg(name, ', ' order by sort_order) from app.my_views()), 'Accountant');
+
+  perform pg_temp.act_as(v_jr);
+  perform pg_temp.eq('my_views: untouched user keeps the role default',
+    (select string_agg(name, ', ' order by sort_order) from app.my_views()), 'Sale');
+
+  perform pg_temp.act_as(v_sa);
+  perform pg_temp.eq('my_views: super admin reaches every active view',
+    (select count(*)::text from app.my_views()),
+    (select count(*)::text from public.views where active));
+
+  perform pg_temp.act_as(v_sus);
+  perform pg_temp.eq('my_views: suspended user reaches none',
+    (select count(*)::text from app.my_views()), '0');
+  perform pg_temp.act_as(v_dis);
+  perform pg_temp.eq('my_views: discharged user reaches none',
+    (select count(*)::text from app.my_views()), '0');
+
+  ----------------------------------------------------------------------------
+  -- app.my_nav: navigation and permissions cannot disagree
+  ----------------------------------------------------------------------------
+  perform pg_temp.act_as(v_jr);
+  perform pg_temp.eq('my_nav: the full sale nav set',
+    (select string_agg(name, ', ' order by sort_order) from app.my_nav('sales')),
+    'Customer, Sales Order, Payment, Product');
+
+  perform pg_temp.act_as(v_rep);
+  perform pg_temp.eq('my_nav: a denied module drops out of the nav set',
+    (select string_agg(name, ', ' order by sort_order) from app.my_nav('accounting')),
+    'Invoice, Payment, Sales Order');
+  perform pg_temp.eq('my_nav: an unentitled view returns nothing',
+    (select count(*)::text from app.my_nav('admin')), '0');
+  perform pg_temp.eq('my_nav: a revoked view returns nothing',
+    (select count(*)::text from app.my_nav('sales')), '0');
+  perform pg_temp.eq('my_nav: an unknown view returns nothing',
+    (select count(*)::text from app.my_nav('not_a_view')), '0');
+
+  perform pg_temp.act_as(v_wh);
+  perform pg_temp.eq('my_nav: warehouse nav set',
+    (select string_agg(name, ', ' order by sort_order) from app.my_nav('warehouse')),
+    'Product, Sales Order, Settings');
+
+  ----------------------------------------------------------------------------
+  -- app.my_permissions
+  ----------------------------------------------------------------------------
+  perform pg_temp.act_as(v_rep);
+  perform pg_temp.eq('my_permissions: reports the overridden scope',
+    (select scope::text from app.my_permissions() where module_key = 'user' and action = 'view'),
+    'own');
+  perform pg_temp.eq('my_permissions: omits a denied action',
+    (select count(*)::text from app.my_permissions() where module_key = 'customer' and action = 'view'),
+    '0');
+  perform pg_temp.eq('my_permissions: never reports a null scope',
+    (select count(*)::text from app.my_permissions() where scope is null), '0');
+  perform pg_temp.act_as(v_sus);
+  perform pg_temp.eq('my_permissions: suspended user holds none',
+    (select count(*)::text from app.my_permissions()), '0');
+
+  ----------------------------------------------------------------------------
+  -- The columns the directory deliberately does not carry
+  ----------------------------------------------------------------------------
+  perform pg_temp.eq('user_directory hides date_of_birth',
+    (select count(*)::text from information_schema.columns
+      where table_schema = 'public' and table_name = 'user_directory'
+        and column_name = 'date_of_birth'), '0');
+  perform pg_temp.eq('user_directory hides the bank columns',
+    (select count(*)::text from information_schema.columns
+      where table_schema = 'public' and table_name = 'user_directory'
+        and column_name like 'bank\_%'), '0');
+  perform pg_temp.ok('user_directory still carries the contact columns',
+    (select count(*) from information_schema.columns
+      where table_schema = 'public' and table_name = 'user_directory'
+        and column_name in ('full_name', 'phone_primary', 'telegram_id')) = 3);
+
+  ----------------------------------------------------------------------------
+  -- The anonymous role reaches nothing (0011, 0012)
+  ----------------------------------------------------------------------------
+  perform pg_temp.notok('anon cannot read users',      has_table_privilege('anon', 'public.users', 'SELECT'));
+  perform pg_temp.notok('anon cannot read the directory', has_table_privilege('anon', 'public.user_directory', 'SELECT'));
+  perform pg_temp.notok('anon cannot read modules',    has_table_privilege('anon', 'public.modules', 'SELECT'));
+  perform pg_temp.notok('anon cannot call my_views',   has_function_privilege('anon', 'public.my_views()', 'EXECUTE'));
+  perform pg_temp.ok('authenticated can read users',   has_table_privilege('authenticated', 'public.users', 'SELECT'));
+  perform pg_temp.ok('authenticated can call my_views',has_function_privilege('authenticated', 'public.my_views()', 'EXECUTE'));
+
+  -- Trigger functions are not API surface (0013).
+  perform pg_temp.notok('handle_new_auth_user is not callable',
+    has_function_privilege('authenticated', 'public.handle_new_auth_user()', 'EXECUTE'));
+  perform pg_temp.notok('harvest_position is not callable',
+    has_function_privilege('authenticated', 'public.harvest_position()', 'EXECUTE'));
+
+  ----------------------------------------------------------------------------
+  -- Every table carries row level security
+  ----------------------------------------------------------------------------
+  perform pg_temp.eq('every public table has RLS enabled',
+    (select coalesce(string_agg(c.relname, ', '), '')
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity), '');
+
+  ----------------------------------------------------------------------------
+  -- Constraints refuse what they should
+  ----------------------------------------------------------------------------
+  perform pg_temp.rejects('a suspension needs dates',
+    format('update public.users set status = ''suspended'', suspended_from = null,
+            suspended_to = null where id = %L', v_mgr));
+  perform pg_temp.rejects('a suspension cannot end before it starts',
+    format('update public.users set status = ''suspended'', suspended_from = current_date,
+            suspended_to = current_date - 1 where id = %L', v_mgr));
+  perform pg_temp.rejects('a discharge needs a date',
+    format('update public.users set status = ''discharged'', discharged_date = null
+            where id = %L', v_mgr));
+  perform pg_temp.rejects('nobody manages themselves',
+    format('update public.users set manager_id = %L where id = %L', v_mgr, v_mgr));
+  perform pg_temp.rejects('an allow override needs a scope',
+    format('insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
+            values (%L, ''invoice'', ''view'', ''allow'', null)', v_jr));
+  perform pg_temp.rejects('a deny override cannot carry a scope',
+    format('insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
+            values (%L, ''invoice'', ''view'', ''deny'', ''any'')', v_jr));
+  perform pg_temp.rejects('a permission needs a real module',
+    format('insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
+            values (%L, ''not_a_module'', ''view'', ''allow'', ''own'')', v_jr));
+  perform pg_temp.rejects('a view assignment needs a real view',
+    format('insert into public.user_views (user_id, view_key, effect)
+            values (%L, ''not_a_view'', ''allow'')', v_jr));
+
+  ----------------------------------------------------------------------------
+  -- Row visibility under RLS
+  --
+  -- These need `set local role authenticated`, which not every connection is
+  -- allowed to do. Rather than fail on a restricted one, the block reports
+  -- whether it ran or skipped in the final message.
+  ----------------------------------------------------------------------------
+  begin
+    execute 'set local role authenticated';
+
+    perform pg_temp.act_as(v_rep);
+    -- The rep holds user.view at 'own' from the override above, so the policy
+    -- `id = auth.uid() or app.can('user','view', id)` should resolve to one row.
+    perform pg_temp.eq('RLS: own scope shows only your own row',
+      (select count(*)::text from public.users), '1');
+    perform pg_temp.eq('RLS: and it is the right row',
+      (select id::text from public.users), v_rep::text);
+
+    perform pg_temp.act_as(v_sa);
+    perform pg_temp.ok('RLS: a super admin sees the fixtures',
+      (select count(*) from public.users) >= 7);
+
+    perform pg_temp.act_as(v_sus);
+    perform pg_temp.eq('RLS: a suspended super admin sees only themselves',
+      (select count(*)::text from public.users), '1');
+
+    execute 'reset role';
+    v_rls := 'ran';
+  exception when insufficient_privilege then
+    execute 'reset role';
+    v_rls := 'skipped (cannot assume the authenticated role)';
+  end;
+
+  ----------------------------------------------------------------------------
+  -- Everything passed. Raise, so the whole transaction unwinds and the fixtures
+  -- never existed.
+  ----------------------------------------------------------------------------
+  raise exception 'ACCESS MODEL OK - % assertions passed (rls: %)',
+    current_setting('higtest.checks'), v_rls;
+end;
+$$;

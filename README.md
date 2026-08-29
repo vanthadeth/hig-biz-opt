@@ -101,6 +101,44 @@ Run `get_advisors` (security and performance) after adding a migration. The only
 finding left open is leaked-password protection, which is a project auth setting
 rather than schema — enable it under Authentication → Policies in the dashboard.
 
+## Tests
+
+```bash
+npm test          # Vitest, 47 tests
+npm run test:watch
+```
+
+Vitest covers the logic that decides what a person sees: `usePageTitle` (the one
+place page headings come from), `useScrollHidden` (the auto-hiding chrome),
+`resolveEntryPath` (the 0/1/many rule every sign-in goes through), the
+signed-in/signed-out redirects in `src/lib/supabase/middleware.ts`, and the
+entitlement check in `src/app/(app)/[view]/layout.tsx`. It never touches the
+network — the Supabase client is mocked.
+
+### Access-model tests
+
+The permission and RLS rules are tested in the database, because that is where
+they run:
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/access_model.test.sql
+```
+
+85 assertions over `app.effective_scope`, `app.can`, `app.is_subordinate`,
+`app.my_views`, `app.my_nav`, `app.my_permissions`, the CHECK constraints, the
+grants, and row visibility under RLS. It builds its own fixtures — a two-level
+report-to chain, overrides in both directions, a suspended super admin — and
+rolls the whole transaction back, so a run leaves nothing behind.
+
+**Success is reported as an error**, because the rollback is what forces it:
+
+```
+ERROR:  ACCESS MODEL OK - 85 assertions passed (rls: ran)
+```
+
+Any other message names the assertion that broke. Re-run it after every
+migration.
+
 ## Scripts
 
 | Command | Does |
@@ -108,3 +146,4 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 | `npm run dev` | Development server |
 | `npm run build` | Production build |
 | `npm run lint` | ESLint |
+| `npm test` | Vitest |

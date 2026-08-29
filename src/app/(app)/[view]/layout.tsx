@@ -1,6 +1,6 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/AppShell";
-import { getMyNav, getMyViews, requireViewer, resolveEntryPath } from "@/lib/access";
+import { getMyNav, getMyViews, requireViewer } from "@/lib/access";
 
 /**
  * Entitlement is re-checked here on every request. Hiding a view from the
@@ -20,10 +20,12 @@ export default async function ViewLayout({
 
   const view = views.find((v) => v.key === viewKey);
   if (!view) {
-    const fallback = await resolveEntryPath();
-    // Sending them back to /[view] they cannot enter would loop.
-    if (fallback.startsWith(`/${viewKey}/`)) notFound();
-    redirect(fallback);
+    // The same 0/1/many rule as resolveEntryPath, but resolved from the views
+    // already in hand. There is no loop to guard against: every destination
+    // here is either a view this user does hold, or not a view route at all.
+    if (views.length === 0) redirect("/no-access");
+    if (views.length === 1) redirect(`/${views[0].key}/home`);
+    redirect("/select-view");
   }
 
   const nav = await getMyNav(view.key);

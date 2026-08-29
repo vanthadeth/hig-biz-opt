@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f5f7f9;
+  --surface: #ffffff;
+  --fg: #101720;
+  --muted: #69737f;
+  --line: #e3e7ec;
+  --subtle: #eff2f6;
+  --brand: #0f62d6;
+  --danger: #d92d20;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0e13;
+    --surface: #131a22;
+    --fg: #e7ecf2;
+    --muted: #8a95a2;
+    --line: #212a35;
+    --subtle: #1a222b;
+    --brand: #5a9dff;
+    --danger: #ff6b60;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-subtle: var(--subtle);
+  --color-brand: var(--brand);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+html {
+  /* Keep the layout stable when a page is short enough not to scroll, and stop
+     iOS from resizing type in landscape. */
+  -webkit-text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  /* Rubber-banding past the top of the document makes a fixed title bar look
+     detached, and it is the main tell that this is a web page. */
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Touch targets respond immediately and never show a grey flash. */
+a,
+button,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

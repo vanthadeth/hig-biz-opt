@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { Logo } from "@/components/Logo";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { createClient } from "@/lib/supabase/client";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
@@ -55,9 +56,9 @@ export function TitleBar() {
       style={{ paddingTop: "env(safe-area-inset-top)", viewTransitionName: "shell-titlebar" }}
     >
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand md:hidden">
-          <Icon name={view.icon} className="size-4.5" />
-        </span>
+        <Logo className="h-6 shrink-0" />
+
+        <span className="h-5 w-px shrink-0 bg-line" aria-hidden="true" />
 
         <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
           {title}

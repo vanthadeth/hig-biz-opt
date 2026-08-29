@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { Logo } from "@/components/Logo";
 import { useShell } from "./ShellContext";
 
 /**
@@ -39,7 +38,7 @@ export function SideNav() {
           <span className="block truncate text-sm font-semibold leading-tight">
             {view.name}
           </span>
-          <Logo className="mt-0.5 h-4" />
+          <span className="block truncate text-xs text-muted">HIG Biz Operation</span>
         </span>
       </div>
 

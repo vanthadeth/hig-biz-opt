@@ -2,7 +2,16 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 export type PermissionAction = "view" | "add" | "edit" | "delete";
+
+/** A reach that has actually been granted. `my_permissions()` returns only these. */
 export type PermissionScope = "own" | "sub" | "any";
+
+/**
+ * What a matrix cell holds. `deny` is a decision somebody made, which is not
+ * the same as a permission nobody has configured — the difference is invisible
+ * once resolved, but the editing screen needs both.
+ */
+export type StoredScope = PermissionScope | "deny";
 
 export type Permission = {
   module_key: string;

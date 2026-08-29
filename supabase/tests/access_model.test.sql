@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 85 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 88 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -197,11 +197,11 @@ begin
   ----------------------------------------------------------------------------
   -- Per-user overrides, in both directions
   ----------------------------------------------------------------------------
-  insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
+  insert into public.user_permission_overrides (user_id, module_key, action, scope)
   values
-    (v_rep, 'customer', 'view', 'deny',  null),   -- role grants 'any'
-    (v_rep, 'user',     'view', 'allow', 'own'),  -- role grants nothing
-    (v_rep, 'product',  'view', 'allow', 'own');  -- role grants 'any', narrowed
+    (v_rep, 'customer', 'view', 'deny'),  -- role grants 'any'
+    (v_rep, 'user',     'view', 'own'),   -- role grants nothing
+    (v_rep, 'product',  'view', 'own');   -- role grants 'any', narrowed
 
   perform pg_temp.eq('deny override beats role grant',
     app.effective_scope(v_rep, 'customer', 'view')::text, null);
@@ -215,6 +215,31 @@ begin
     app.effective_scope(v_jr, 'customer', 'view')::text, 'any');
   perform pg_temp.eq('a deny cannot override a super admin''s status-based loss',
     app.effective_scope(v_sus, 'customer', 'view')::text, null);
+
+  ----------------------------------------------------------------------------
+  -- `deny` as a stored scope
+  ----------------------------------------------------------------------------
+  -- An explicit denial on the role reads the same as no grant at all once
+  -- resolved, but is a recorded decision rather than an omission.
+  insert into public.role_permissions (role_id, module_key, action, scope)
+  select r.id, 'audit_log', 'view', 'deny' from public.roles r where r.key = 'warehouse'
+  on conflict (role_id, module_key, action) do update set scope = 'deny';
+
+  perform pg_temp.eq('a role-level deny resolves to no access',
+    app.effective_scope(v_wh, 'audit_log', 'view')::text, null);
+  perform pg_temp.eq('the deny is stored, not just absent',
+    (select rp.scope::text from public.role_permissions rp
+      join public.roles r on r.id = rp.role_id
+     where r.key = 'warehouse' and rp.module_key = 'audit_log' and rp.action = 'view'),
+    'deny');
+
+  -- An override may also grant where the role denies.
+  insert into public.user_permission_overrides (user_id, module_key, action, scope)
+  values (v_wh, 'audit_log', 'view', 'any');
+  perform pg_temp.eq('an override outranks a role-level deny',
+    app.effective_scope(v_wh, 'audit_log', 'view')::text, 'any');
+  delete from public.user_permission_overrides
+   where user_id = v_wh and module_key = 'audit_log';
 
   ----------------------------------------------------------------------------
   -- app.can: scope tested against a record's owner
@@ -307,6 +332,9 @@ begin
     '0');
   perform pg_temp.eq('my_permissions: never reports a null scope',
     (select count(*)::text from app.my_permissions() where scope is null), '0');
+  -- `deny` is a stored decision, not a reach; it must never reach a caller.
+  perform pg_temp.eq('my_permissions: never reports deny',
+    (select count(*)::text from app.my_permissions() where scope::text = 'deny'), '0');
   perform pg_temp.act_as(v_sus);
   perform pg_temp.eq('my_permissions: suspended user holds none',
     (select count(*)::text from app.my_permissions()), '0');
@@ -365,15 +393,12 @@ begin
             where id = %L', v_mgr));
   perform pg_temp.rejects('nobody manages themselves',
     format('update public.users set manager_id = %L where id = %L', v_mgr, v_mgr));
-  perform pg_temp.rejects('an allow override needs a scope',
-    format('insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
-            values (%L, ''invoice'', ''view'', ''allow'', null)', v_jr));
-  perform pg_temp.rejects('a deny override cannot carry a scope',
-    format('insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
-            values (%L, ''invoice'', ''view'', ''deny'', ''any'')', v_jr));
+  perform pg_temp.rejects('an override always needs a scope',
+    format('insert into public.user_permission_overrides (user_id, module_key, action, scope)
+            values (%L, ''invoice'', ''view'', null)', v_jr));
   perform pg_temp.rejects('a permission needs a real module',
-    format('insert into public.user_permission_overrides (user_id, module_key, action, effect, scope)
-            values (%L, ''not_a_module'', ''view'', ''allow'', ''own'')', v_jr));
+    format('insert into public.user_permission_overrides (user_id, module_key, action, scope)
+            values (%L, ''not_a_module'', ''view'', ''own'')', v_jr));
   perform pg_temp.rejects('a view assignment needs a real view',
     format('insert into public.user_views (user_id, view_key, effect)
             values (%L, ''not_a_view'', ''allow'')', v_jr));

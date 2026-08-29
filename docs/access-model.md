@@ -32,12 +32,24 @@ navigation set that the caller may not view simply does not appear.
 
 A permission is a **module** × **action** pair held at a **scope**.
 
-- Actions: `view`, `add`, `edit`, `delete`
-- Scopes: `own`, `sub`, `any`
+- Actions: `view`, `add`, `edit`, `delete` — read, create, update, delete
+- Scopes: `deny`, `own`, `sub`, `any`
+
+`deny` is a scope like the others, not a separate flag. That is what lets one
+value answer the whole question: `any`, `sub` and `own` grant at that reach, and
+`deny` refuses. A per-user override is simply the scope that person gets instead
+of their role's, which covers overriding in both directions without a second
+column.
 
 `role_permissions` carries the defaults for a role.
-`user_permission_overrides` layers on one person, in both directions:
-`effect = 'allow'` grants at a scope, `effect = 'deny'` revokes outright.
+`user_permission_overrides` layers on one person and replaces the role's answer
+outright — granting what the role lacks, narrowing what it allows, or refusing
+it entirely.
+
+An absent `role_permissions` row still means no access. The difference is that a
+stored `deny` is a decision somebody made and can be told apart from a
+permission nobody has configured, which is what the matrix screen needs in order
+to show a definite value in every cell.
 
 ### Resolution order
 
@@ -46,10 +58,13 @@ no access, in this order — the first match wins:
 
 1. Employee is not `active` → **no access**
 2. `is_super_admin` → **`any`**
-3. A `deny` override for this module and action → **no access**
-4. An `allow` override → **its scope**
-5. The role's permission → **its scope**
-6. Otherwise → **no access**
+3. A per-user override exists → **its scope**
+4. Otherwise the role's permission → **its scope**
+5. A resolved scope of `deny`, or nothing at all → **no access**
+
+Steps 3 and 4 return the stored scope; step 5 is what turns `deny` into the same
+answer as an unset permission. Callers only ever see `own`, `sub`, `any` or
+nothing — `my_permissions()` never reports `deny`.
 
 ## Scope
 

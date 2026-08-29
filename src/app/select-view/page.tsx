@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { Logo } from "@/components/Logo";
 import { getMyViews, requireViewer } from "@/lib/access";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -17,7 +18,9 @@ export default async function SelectViewPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">
-      <p className="text-sm text-muted">Signed in as {viewer.full_name}</p>
+      <Logo className="h-8" />
+
+      <p className="mt-8 text-sm text-muted">Signed in as {viewer.full_name}</p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
         Select view
       </h1>

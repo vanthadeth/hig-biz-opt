@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/AppShell";
-import { getMyNav, getMyViews, requireViewer } from "@/lib/access";
+import { getMyNav, getMyPermissions, getMyViews, requireViewer } from "@/lib/access";
 
 /**
  * Entitlement is re-checked here on every request. Hiding a view from the
@@ -28,7 +28,15 @@ export default async function ViewLayout({
     redirect("/select-view");
   }
 
-  const nav = await getMyNav(view.key);
+  // Fetched together rather than in sequence: the nav and the quick actions are
+  // both needed before the shell can render, and they do not depend on one
+  // another.
+  const [nav, permissions] = await Promise.all([
+    getMyNav(view.key),
+    getMyPermissions(),
+  ]);
 
-  return <AppShell data={{ viewer, view, views, nav }}>{children}</AppShell>;
+  return (
+    <AppShell data={{ viewer, view, views, nav, permissions }}>{children}</AppShell>
+  );
 }

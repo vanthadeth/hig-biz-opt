@@ -52,7 +52,7 @@ export function TitleBar() {
     <header
       data-hidden={hidden}
       className="fixed inset-x-0 top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-md transition-transform duration-200 ease-out max-md:data-[hidden=true]:-translate-y-full md:left-18 lg:left-60"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      style={{ paddingTop: "env(safe-area-inset-top)", viewTransitionName: "shell-titlebar" }}
     >
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand md:hidden">

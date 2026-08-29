@@ -20,6 +20,21 @@
   --accent: #3ab54a;
   --accent-fg: #06180a;
   --danger: #d92d20;
+
+  /* Tinted surfaces for stat tiles, derived from the brand blue and green so
+     the set stays on-palette instead of importing new hues. */
+  --tint-1: #e8f1fb;
+  --tint-2: #e4f4f3;
+  --tint-3: #e9f6ea;
+  --tint-4: #eef1f5;
+  --tint-1-fg: #1462a4;
+  --tint-2-fg: #10756c;
+  --tint-3-fg: #2c8f39;
+  --tint-4-fg: #55606d;
+
+  --shadow-card: 0 1px 2px rgb(15 23 32 / 0.04), 0 4px 16px -4px rgb(15 23 32 / 0.06);
+  --shadow-pop: 0 4px 12px -2px rgb(15 23 32 / 0.10), 0 16px 32px -8px rgb(15 23 32 / 0.14);
+  --shadow-fab: 0 4px 12px -2px rgb(25 117 191 / 0.40), 0 8px 24px -6px rgb(25 117 191 / 0.30);
 }
 
 /* Dark values live in two places on purpose. `light-dark()` would say them once
@@ -41,6 +56,32 @@
     --accent: #4ecb5e;
     --accent-fg: #06180a;
     --danger: #ff6b60;
+
+  --tint-1: #10202e;
+  --tint-2: #0e2422;
+  --tint-3: #102619;
+  --tint-4: #161d26;
+  --tint-1-fg: #6cc4f2;
+  --tint-2-fg: #4fc9bd;
+  --tint-3-fg: #6ad97a;
+  --tint-4-fg: #9aa5b2;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.30), 0 4px 16px -4px rgb(0 0 0 / 0.40);
+  --shadow-pop: 0 4px 12px -2px rgb(0 0 0 / 0.50), 0 16px 32px -8px rgb(0 0 0 / 0.60);
+  --shadow-fab: 0 4px 12px -2px rgb(53 174 234 / 0.35), 0 8px 24px -6px rgb(53 174 234 / 0.25);
+
+    --tint-1: #10202e;
+    --tint-2: #0e2422;
+    --tint-3: #102619;
+    --tint-4: #161d26;
+    --tint-1-fg: #6cc4f2;
+    --tint-2-fg: #4fc9bd;
+    --tint-3-fg: #6ad97a;
+    --tint-4-fg: #9aa5b2;
+
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.30), 0 4px 16px -4px rgb(0 0 0 / 0.40);
+    --shadow-pop: 0 4px 12px -2px rgb(0 0 0 / 0.50), 0 16px 32px -8px rgb(0 0 0 / 0.60);
+    --shadow-fab: 0 4px 12px -2px rgb(53 174 234 / 0.35), 0 8px 24px -6px rgb(53 174 234 / 0.25);
   }
 }
 
@@ -73,6 +114,14 @@
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
+  --color-tint-1: var(--tint-1);
+  --color-tint-2: var(--tint-2);
+  --color-tint-3: var(--tint-3);
+  --color-tint-4: var(--tint-4);
+  --color-tint-1-fg: var(--tint-1-fg);
+  --color-tint-2-fg: var(--tint-2-fg);
+  --color-tint-3-fg: var(--tint-3-fg);
+  --color-tint-4-fg: var(--tint-4-fg);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
@@ -90,6 +139,15 @@ body {
      detached, and it is the main tell that this is a web page. */
   overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Horizontal chip rows scroll but should not show a bar doing it. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Touch targets respond immediately and never show a grey flash. */
@@ -121,6 +179,95 @@ button,
 }
 :root[data-theme="dark"] [data-logo="dark"] {
   display: block;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion
+ * ------------------------------------------------------------------------- */
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+@keyframes draw-in {
+  from { stroke-dashoffset: var(--dash-length); }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Lists arrive in sequence rather than all at once, which reads as one motion
+   instead of a flash. The delay is capped so a long list never feels slow. */
+.stagger > * {
+  animation: fade-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* Cards and rows acknowledge a press. On touch this is the whole feedback
+   budget, since there is no hover. */
+.pressable {
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 140ms, background-color 140ms;
+}
+.pressable:active {
+  transform: scale(0.985);
+}
+
+/* View transitions -------------------------------------------------------- */
+
+/* The overlay swallows clicks for the duration of the animation; letting them
+   through keeps the app responsive mid-transition. */
+::view-transition {
+  pointer-events: none;
+}
+
+/* The shell frames the content and must not move with it, or the whole
+   viewport appears to slide and the user loses their anchor. */
+::view-transition-group(shell-titlebar),
+::view-transition-group(shell-bottomnav),
+::view-transition-group(shell-sidenav) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(shell-titlebar),
+::view-transition-old(shell-bottomnav),
+::view-transition-old(shell-sidenav) {
+  display: none;
+}
+::view-transition-new(shell-titlebar),
+::view-transition-new(shell-bottomnav),
+::view-transition-new(shell-sidenav) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  .stagger > * {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

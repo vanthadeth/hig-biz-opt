@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requireViewer = vi.fn();
 const getMyViews = vi.fn();
 const getMyNav = vi.fn();
+const getMyPermissions = vi.fn();
 
-vi.mock("@/lib/access", () => ({ requireViewer, getMyViews, getMyNav }));
+vi.mock("@/lib/access", () => ({ requireViewer, getMyViews, getMyNav, getMyPermissions }));
 vi.mock("@/components/shell/AppShell", () => ({
   AppShell: ({ data }: { data: { view: { key: string } } }) => (
     <div data-testid="shell" data-view={data.view.key} />
@@ -50,6 +51,7 @@ beforeEach(() => {
   requireViewer.mockReset().mockResolvedValue(viewer);
   getMyViews.mockReset();
   getMyNav.mockReset().mockResolvedValue([]);
+  getMyPermissions.mockReset().mockResolvedValue([]);
 });
 
 describe("ViewLayout entitlement", () => {

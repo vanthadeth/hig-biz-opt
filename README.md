@@ -107,6 +107,61 @@ nothing in the code changes. Then:
 npm run icons   # regenerates the home-screen and tab icons
 ```
 
+## Interface
+
+### Component kit
+
+`src/components/ui/` holds the visual vocabulary, all built on the theme tokens
+so nothing hardcodes a colour:
+
+| Component | For |
+| --- | --- |
+| `Card` | The standard surface; pass `href` to make it a pressable link |
+| `StatTile` | A headline number on a tinted ground, with an optional sparkline |
+| `ModuleTile` | A module as a destination — the name is the content, not a number |
+| `Sparkline` | A trend shape with no axes or scale |
+| `Chip` | Category, status, priority |
+| `SegmentedTabs` | Filter row with an active pill |
+| `ProgressBar` / `Gauge` | Completion, flat or as a half-donut |
+| `Avatar` / `AvatarStack` | Initials or photo, with the remainder counted |
+| `TimelineItem` | A typed entry in a day list |
+| `DayStrip` | A week of days as tap targets |
+| `Sheet` | Bottom sheet on phones, centred dialog from `sm` up |
+| `SectionHeader`, `Skeleton` | Section titles, loading placeholders |
+
+The four tint tokens (`--tint-1` … `--tint-4`) are derived from the brand blue
+and green, so a grid of tiles stays varied without importing new hues.
+
+### Motion
+
+CSS handles micro-interaction: `.pressable` for the press response, `.stagger`
+for lists that arrive in sequence, and keyframes for sheets and menus. Route
+changes use React's `<ViewTransition>`, which the App Router supports with no
+configuration.
+
+`RouteTransition` crossfades rather than sliding, because the bottom bar
+switches between sibling modules — that is tab switching, and a directional
+slide would wrongly imply hierarchy. It keys on the pathname: it lives in the
+layout, and layouts persist, so without the key React would treat a navigation
+as an in-place update and never animate.
+
+The title bar, bottom bar and sidebar carry `viewTransitionName` and have their
+animation suppressed, so content moves under the chrome rather than the whole
+viewport appearing to slide. Everything is disabled under
+`prefers-reduced-motion`.
+
+### The centre button
+
+The raised **+** opens a sheet of what the signed-in person may actually create,
+resolved from their `add` permissions in the current view — so it can never
+offer an action the row-level policies would then refuse. Adding a module needs
+no change here; only an entry in `CREATE_LABELS` (`src/lib/quickActions.ts`) if
+you want wording other than "New {module}".
+
+The bottom bar holds four slots around that button. Beyond three modules the
+last slot becomes **More**, which opens a sheet rather than shrinking labels
+until they are unreadable.
+
 ## Pages start blank
 
 Every module page is deliberately empty:
@@ -152,7 +207,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 69 tests
+npm test          # Vitest, 94 tests
 npm run test:watch
 ```
 

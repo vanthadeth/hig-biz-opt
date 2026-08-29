@@ -1,13 +1,14 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { NavItem, Viewer, ViewSummary } from "@/lib/access";
+import type { NavItem, Permission, Viewer, ViewSummary } from "@/lib/access";
 
 export type ShellData = {
   viewer: Viewer;
   view: ViewSummary;
   views: ViewSummary[];
   nav: NavItem[];
+  permissions: Permission[];
 };
 
 const ShellContext = createContext<ShellData | null>(null);

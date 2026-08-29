@@ -27,7 +27,10 @@ export function SideNav() {
   ];
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-50 hidden w-18 flex-col border-r border-line bg-surface md:flex lg:w-60">
+    <aside
+      style={{ viewTransitionName: "shell-sidenav" }}
+      className="fixed inset-y-0 left-0 z-50 hidden w-18 flex-col border-r border-line bg-surface md:flex lg:w-60"
+    >
       <div className="flex h-14 items-center gap-3 border-b border-line px-4 lg:px-5">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-fg">
           <Icon name={view.icon} className="size-5" />

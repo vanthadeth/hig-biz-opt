@@ -17,6 +17,7 @@ const data: ShellData = {
     { module_key: "customer", name: "Customer", icon: "building", href: "customers", sort_order: 1 },
     { module_key: "sale_order", name: "Sales Order", icon: "cart", href: "sale-orders", sort_order: 2 },
   ],
+  permissions: [],
 };
 
 /** Renders usePageTitle's result for a path, inside the provider. */

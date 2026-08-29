@@ -1,7 +1,0 @@
-<!-- PLACEHOLDER wordmark, not the HIG logo mark. See logo-light.svg. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 32" width="112" height="32">
-  <text x="0" y="25" font-family="Helvetica, Arial, sans-serif" font-weight="700"
-        font-size="27" letter-spacing="0.5">
-    <tspan fill="#35aeea">HI</tspan><tspan fill="#4ecb5e">G</tspan>
-  </text>
-</svg>

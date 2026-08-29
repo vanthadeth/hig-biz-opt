@@ -97,70 +97,20 @@ That script restates what `applyTheme()` does because nothing is imported that
 early; the values it needs are interpolated from `src/lib/theme.ts` so the two
 cannot drift.
 
-### Swapping in the real logo
+### The logo
 
-`public/logo-light.svg` and `public/logo-dark.svg` are **placeholder wordmarks**,
-not the HIG mark. Replace both files — same paths, similar aspect ratio — and
-nothing in the code changes. Then:
+`public/logo-light.png` and `public/logo-dark.png` are the only two files the
+app reads. **Overwrite those two paths** and everything follows — the login
+screen, the view chooser, the title bar on every page. No code change, and any
+aspect ratio works: callers fix the height and the width follows.
 
 ```bash
-npm run icons   # regenerates the home-screen and tab icons
+npm run icons   # regenerates the home-screen and tab icons from logo-light.png
 ```
 
-## Interface
-
-### Component kit
-
-`src/components/ui/` holds the visual vocabulary, all built on the theme tokens
-so nothing hardcodes a colour:
-
-| Component | For |
-| --- | --- |
-| `Card` | The standard surface; pass `href` to make it a pressable link |
-| `StatTile` | A headline number on a tinted ground, with an optional sparkline |
-| `ModuleTile` | A module as a destination — the name is the content, not a number |
-| `Sparkline` | A trend shape with no axes or scale |
-| `Chip` | Category, status, priority |
-| `SegmentedTabs` | Filter row with an active pill |
-| `ProgressBar` / `Gauge` | Completion, flat or as a half-donut |
-| `Avatar` / `AvatarStack` | Initials or photo, with the remainder counted |
-| `TimelineItem` | A typed entry in a day list |
-| `DayStrip` | A week of days as tap targets |
-| `Sheet` | Bottom sheet on phones, centred dialog from `sm` up |
-| `SectionHeader`, `Skeleton` | Section titles, loading placeholders |
-
-The four tint tokens (`--tint-1` … `--tint-4`) are derived from the brand blue
-and green, so a grid of tiles stays varied without importing new hues.
-
-### Motion
-
-CSS handles micro-interaction: `.pressable` for the press response, `.stagger`
-for lists that arrive in sequence, and keyframes for sheets and menus. Route
-changes use React's `<ViewTransition>`, which the App Router supports with no
-configuration.
-
-`RouteTransition` crossfades rather than sliding, because the bottom bar
-switches between sibling modules — that is tab switching, and a directional
-slide would wrongly imply hierarchy. It keys on the pathname: it lives in the
-layout, and layouts persist, so without the key React would treat a navigation
-as an in-place update and never animate.
-
-The title bar, bottom bar and sidebar carry `viewTransitionName` and have their
-animation suppressed, so content moves under the chrome rather than the whole
-viewport appearing to slide. Everything is disabled under
-`prefers-reduced-motion`.
-
-### The centre button
-
-The raised **+** opens a sheet of what the signed-in person may actually create,
-resolved from their `add` permissions in the current view — so it can never
-offer an action the row-level policies would then refuse. Adding a module needs
-no change here; only an entry in `CREATE_LABELS` (`src/lib/quickActions.ts`) if
-you want wording other than "New {module}".
-
-The bottom bar holds four slots around that button. Beyond three modules the
-last slot becomes **More**, which opens a sheet rather than shrinking labels
-until they are unreadable.
+Until the real artwork lands, both files hold a placeholder "HIG" wordmark.
+It is deliberately a wordmark rather than an approximation of the mark, so it
+never reads as a bad copy of the real thing.
 
 ## Pages start blank
 

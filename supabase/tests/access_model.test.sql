@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 126 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 135 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -136,6 +136,7 @@ declare
   v_new uuid := '00000000-0000-4000-8000-0000000f00aa';  -- the login they are later given
   v_prn uuid;                                            -- a printer, for the settings policy
   v_dep uuid;                                            -- a department, for the same policy
+  v_vic uuid;                                            -- a record created only to be deleted
   v_hit int;                                             -- rows a statement actually touched
   v_rls text := 'skipped (cannot assume the authenticated role)';
 begin
@@ -384,6 +385,10 @@ begin
   perform pg_temp.notok('anon cannot read the directory', has_table_privilege('anon', 'public.user_directory', 'SELECT'));
   perform pg_temp.notok('anon cannot read modules',    has_table_privilege('anon', 'public.modules', 'SELECT'));
   perform pg_temp.notok('anon cannot call my_views',   has_function_privilege('anon', 'public.my_views()', 'EXECUTE'));
+  perform pg_temp.notok('anon cannot call can_delete_user',
+    has_function_privilege('anon', 'public.can_delete_user(uuid)', 'EXECUTE'));
+  perform pg_temp.ok('authenticated can call can_delete_user',
+    has_function_privilege('authenticated', 'public.can_delete_user(uuid)', 'EXECUTE'));
   perform pg_temp.ok('authenticated can read users',   has_table_privilege('authenticated', 'public.users', 'SELECT'));
   perform pg_temp.ok('authenticated can call my_views',has_function_privilege('authenticated', 'public.my_views()', 'EXECUTE'));
 
@@ -604,6 +609,40 @@ begin
     update public.departments set name = 'Hijacked' where id = v_dep;
     get diagnostics v_hit = row_count;
     perform pg_temp.eq('a refused department rename touches no rows', v_hit::text, '0');
+
+    ------------------------------------------------------------------------
+    -- Removing an employee record (0020)
+    --
+    -- can_delete_user answers the scoped question the policy will ask about
+    -- one particular person, which my_permissions cannot.
+    ------------------------------------------------------------------------
+    perform pg_temp.act_as(v_sa);
+    insert into public.users (full_name, email)
+      values ('HIGTest Victim', 'fx.vic@example.test') returning id into v_vic;
+    insert into public.user_permission_overrides (user_id, module_key, action, scope)
+      values (v_vic, 'customer', 'view', 'own');
+    insert into public.user_views (user_id, view_key, effect)
+      values (v_vic, 'sales', 'allow');
+    perform pg_temp.ok('a super admin may delete a record',
+      public.can_delete_user(v_vic));
+
+    perform pg_temp.act_as(v_rep);
+    perform pg_temp.notok('a sales rep may not', public.can_delete_user(v_vic));
+    delete from public.users where id = v_vic;
+    get diagnostics v_hit = row_count;
+    perform pg_temp.eq('and their delete touches no rows', v_hit::text, '0');
+    perform pg_temp.eq('leaving the record in place',
+      (select count(*)::text from public.users where id = v_vic), '1');
+
+    perform pg_temp.act_as(v_sa);
+    delete from public.users where id = v_vic;
+    get diagnostics v_hit = row_count;
+    perform pg_temp.eq('a permitted delete removes exactly one row', v_hit::text, '1');
+    -- What the Remove sheet warns about, actually happening.
+    perform pg_temp.eq('and takes the permission overrides with it',
+      (select count(*)::text from public.user_permission_overrides where user_id = v_vic), '0');
+    perform pg_temp.eq('and the view assignments',
+      (select count(*)::text from public.user_views where user_id = v_vic), '0');
 
     execute 'reset role';
     v_rls := 'ran';

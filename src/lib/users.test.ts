@@ -294,13 +294,13 @@ describe("profileGroups", () => {
     ]);
   });
 
-  it("reports the status in words", () => {
+  it("leaves status out, since the header chip and the status card both carry it", () => {
     const role = profileGroups(
       { ...record, status: "suspended" },
       lookups,
     ).find((g) => g.title === "Role")!;
 
-    expect(role.rows).toContainEqual({ label: "Status", value: "Suspended" });
+    expect(role.rows.map((r) => r.label)).toEqual(["Role"]);
   });
 
   it("survives a record with almost nothing filled in", () => {
@@ -319,7 +319,6 @@ describe("profileGroups", () => {
     expect(groups).toHaveLength(4);
     expect(groups.flatMap((g) => g.rows).filter((r) => r.value !== null)).toEqual([
       { label: "Full name", value: "Sokha Chan" },
-      { label: "Status", value: "Active" },
     ]);
   });
 });

@@ -309,12 +309,12 @@ export function profileGroups(
     });
   }
 
+  // Status is deliberately absent: the header chip always carries it, and the
+  // record screen adds a card for changing it. A third copy in a list of
+  // details is one more place to disagree with the other two.
   groups.push({
     title: "Role",
-    rows: [
-      { label: "Role", value: lookups.role },
-      { label: "Status", value: STATUS_LABELS[record.status] },
-    ],
+    rows: [{ label: "Role", value: lookups.role }],
   });
 
   return groups;

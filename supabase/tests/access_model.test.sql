@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 135 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 144 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -643,6 +643,49 @@ begin
       (select count(*)::text from public.user_permission_overrides where user_id = v_vic), '0');
     perform pg_temp.eq('and the view assignments',
       (select count(*)::text from public.user_views where user_id = v_vic), '0');
+
+    ------------------------------------------------------------------------
+    -- Editing your own record (0021)
+    --
+    -- The update policy admits `id = auth.uid()`, so before this guard every
+    -- employee could set their own role_id — or is_super_admin — over the API
+    -- and hand themselves the company. Row level security chooses rows, not
+    -- columns, so the split is enforced by a trigger.
+    ------------------------------------------------------------------------
+    perform pg_temp.act_as(v_rep);
+    update public.users
+       set nickname = 'Ratana', phone_secondary = '098 765 432', photo_path = 'x/new.jpg'
+     where id = v_rep;
+    perform pg_temp.eq('a nickname is yours to change',
+      (select nickname from public.users where id = v_rep), 'Ratana');
+    perform pg_temp.eq('so is a second number and a photo',
+      (select phone_secondary || '|' || photo_path from public.users where id = v_rep),
+      '098 765 432|x/new.jpg');
+
+    -- A no-op is not a change, so an idempotent save is not refused.
+    update public.users set full_name = 'Fixture Rep' where id = v_rep;
+
+    perform pg_temp.refused('you may not give yourself another role',
+      format('update public.users set role_id = (select id from public.roles where key = ''system_admin'')
+                where id = %L', v_rep));
+    perform pg_temp.refused('nor make yourself a super admin',
+      format('update public.users set is_super_admin = true where id = %L', v_rep));
+    perform pg_temp.refused('nor rename yourself',
+      format('update public.users set full_name = ''Someone Else'' where id = %L', v_rep));
+    perform pg_temp.refused('nor change your own bank account',
+      format('update public.users set bank_account_number = ''999'' where id = %L', v_rep));
+    perform pg_temp.refused('nor change your own employment status',
+      format('update public.users set status = ''discharged'', discharged_date = current_date
+                where id = %L', v_rep));
+    perform pg_temp.eq('and the record is exactly as it was',
+      (select full_name || '|' || is_super_admin::text from public.users where id = v_rep),
+      'Fixture Rep|false');
+
+    -- Holding the user module lifts the guard, on your own row as on anyone's.
+    perform pg_temp.act_as(v_sa);
+    update public.users set full_name = 'Fixture Admin Two' where id = v_sa;
+    perform pg_temp.eq('an administrator may still correct their own record',
+      (select full_name from public.users where id = v_sa), 'Fixture Admin Two');
 
     execute 'reset role';
     v_rls := 'ran';

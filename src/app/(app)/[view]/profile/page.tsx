@@ -73,7 +73,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         isSuperAdmin={viewer.is_super_admin}
         actions={
           <Link
-            href={`/${view}/users/${record.id}/edit`}
+            href={`/${view}/profile/edit`}
             className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
           >
             <Icon name="pencil" className="size-4" />

@@ -7,6 +7,8 @@ import {
   formatDate,
   matches,
   profileGroups,
+  statusChange,
+  statusProblem,
   telegramHref,
   type Department,
   type DirectoryEntry,
@@ -235,6 +237,10 @@ describe("profileGroups", () => {
     bank_account_number: "000 123 456",
     role_id: "r2",
     status: "active",
+    suspended_from: null,
+    suspended_to: null,
+    discharged_date: null,
+    status_note: null,
   };
   const lookups = { department: "Sales", role: "Sales Team" };
 
@@ -315,5 +321,88 @@ describe("profileGroups", () => {
       { label: "Full name", value: "Sokha Chan" },
       { label: "Status", value: "Active" },
     ]);
+  });
+});
+
+describe("statusChange", () => {
+  it("carries a range for a suspension and nothing else", () => {
+    expect(statusChange("suspended", { from: "2026-03-01", to: "2026-03-31" })).toEqual({
+      status: "suspended",
+      suspended_from: "2026-03-01",
+      suspended_to: "2026-03-31",
+      discharged_date: null,
+      status_note: null,
+    });
+  });
+
+  it("carries a single day for a discharge", () => {
+    expect(statusChange("discharged", { on: "2026-04-15" })).toEqual({
+      status: "discharged",
+      suspended_from: null,
+      suspended_to: null,
+      discharged_date: "2026-04-15",
+      status_note: null,
+    });
+  });
+
+  it("clears every date when someone is reinstated", () => {
+    // An active row that still remembers a suspension is a row that gets
+    // misread later.
+    expect(
+      statusChange("active", { from: "2026-03-01", to: "2026-03-31", on: "2026-04-15" }),
+    ).toEqual({
+      status: "active",
+      suspended_from: null,
+      suspended_to: null,
+      discharged_date: null,
+      status_note: null,
+    });
+  });
+
+  it("ignores dates that belong to the other status", () => {
+    const change = statusChange("suspended", { from: "2026-03-01", to: "2026-03-31", on: "2026-04-15" });
+    expect(change.discharged_date).toBeNull();
+  });
+
+  it("keeps a note, and treats a blank one as absent", () => {
+    expect(statusChange("discharged", { on: "2026-04-15", note: " Resigned " }).status_note)
+      .toBe("Resigned");
+    expect(statusChange("discharged", { on: "2026-04-15", note: "   " }).status_note)
+      .toBeNull();
+  });
+});
+
+describe("statusProblem", () => {
+  it("passes a complete suspension and a complete discharge", () => {
+    expect(statusProblem(statusChange("suspended", { from: "2026-03-01", to: "2026-03-31" }))).toBeNull();
+    expect(statusProblem(statusChange("discharged", { on: "2026-04-15" }))).toBeNull();
+  });
+
+  it("asks for both suspension dates", () => {
+    // The CHECK would say users_suspension_dates_ck, which tells nobody
+    // anything.
+    expect(statusProblem(statusChange("suspended", { from: "2026-03-01" })))
+      .toBe("A suspension needs both a start and an end date.");
+    expect(statusProblem(statusChange("suspended", { to: "2026-03-31" })))
+      .toBe("A suspension needs both a start and an end date.");
+  });
+
+  it("refuses a suspension that ends before it starts", () => {
+    expect(statusProblem(statusChange("suspended", { from: "2026-03-31", to: "2026-03-01" })))
+      .toBe("The suspension cannot end before it starts.");
+  });
+
+  it("allows a suspension of a single day", () => {
+    expect(statusProblem(statusChange("suspended", { from: "2026-03-01", to: "2026-03-01" })))
+      .toBeNull();
+  });
+
+  it("asks for a discharge date", () => {
+    expect(statusProblem(statusChange("discharged", {})))
+      .toBe("A discharge needs a date.");
+  });
+
+  it("asks nothing of a reinstatement", () => {
+    expect(statusProblem(statusChange("active", {}))).toBeNull();
   });
 });

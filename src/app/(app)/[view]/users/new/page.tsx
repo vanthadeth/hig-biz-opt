@@ -48,6 +48,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         positions={(positions.data ?? []).map((p) => p.name as string)}
         canEdit
         canSeeBank
+        canAddDepartment={can(mine, "role_permission", "edit")}
         viewKey={view}
       />
     </div>

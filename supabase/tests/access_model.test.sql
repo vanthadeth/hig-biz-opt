@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 116 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 126 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -135,6 +135,7 @@ declare
   v_nol uuid;                                            -- an employee with no login
   v_new uuid := '00000000-0000-4000-8000-0000000f00aa';  -- the login they are later given
   v_prn uuid;                                            -- a printer, for the settings policy
+  v_dep uuid;                                            -- a department, for the same policy
   v_hit int;                                             -- rows a statement actually touched
   v_rls text := 'skipped (cannot assume the authenticated role)';
 begin
@@ -424,6 +425,12 @@ begin
     format('insert into public.user_views (user_id, view_key, effect)
             values (%L, ''not_a_view'', ''allow'')', v_jr));
 
+  -- Two departments may not share a name.
+  if v_dep is not null then
+    perform pg_temp.rejects('two departments may not share a name',
+      'insert into public.departments (name) values (''HIGTest Marketing'')');
+  end if;
+
   -- Printers (0018). The address CHECK is deliberately loose — it catches the
   -- paste that dropped half the address, not every RFC violation.
   perform pg_temp.rejects('a printer address needs an @ and a dotted host',
@@ -545,6 +552,58 @@ begin
     -- promotion that quietly did nothing is worse than one that says why not.
     perform pg_temp.refused('promoting a default says so rather than failing quietly',
       format('select public.set_default_printer(%L)', v_prn));
+
+    ------------------------------------------------------------------------
+    -- Suspending and discharging (0019)
+    --
+    -- The stamp is the database's job, not the client's: who did it and when
+    -- should not depend on a form remembering to send them.
+    ------------------------------------------------------------------------
+    perform pg_temp.act_as(v_sa);
+    update public.users
+       set status = 'suspended', suspended_from = current_date,
+           suspended_to = current_date + 30, status_note = 'Pending review'
+     where id = v_wh;
+    perform pg_temp.eq('suspending records who did it',
+      (select status_changed_by::text from public.users where id = v_wh), v_sa::text);
+    perform pg_temp.ok('and stamps when',
+      (select status_changed_at is not null from public.users where id = v_wh));
+
+    -- Coming back to active leaves nothing behind to misread.
+    update public.users set status = 'active' where id = v_wh;
+    perform pg_temp.eq('reinstating clears the suspension dates',
+      (select coalesce(suspended_from::text, '') || coalesce(suspended_to::text, '')
+         from public.users where id = v_wh), '');
+
+    update public.users set status = 'discharged', discharged_date = current_date where id = v_wh;
+    update public.users set status = 'active' where id = v_wh;
+    perform pg_temp.eq('and the discharge date with it',
+      (select discharged_date::text from public.users where id = v_wh), null);
+
+    -- Editing anything else must leave the stamp alone.
+    update public.users set status_changed_by = null, status_changed_at = null where id = v_wh;
+    update public.users set nickname = 'Ratana' where id = v_wh;
+    perform pg_temp.eq('an ordinary edit does not restamp the status',
+      (select status_changed_by::text from public.users where id = v_wh), null);
+
+    ------------------------------------------------------------------------
+    -- Departments are organisation configuration, so they follow the same
+    -- permission as roles rather than the one for editing a person.
+    ------------------------------------------------------------------------
+    insert into public.departments (name, sort_order) values ('HIGTest Marketing', 90)
+      returning id into v_dep;
+    perform pg_temp.eq('role_permission.edit may create a department',
+      (select count(*)::text from public.departments where name = 'HIGTest Marketing'), '1');
+
+    perform pg_temp.act_as(v_rep);
+    perform pg_temp.eq('anyone signed in may read departments',
+      (select count(*)::text from public.departments where name = 'HIGTest Marketing'), '1');
+    perform pg_temp.refused('RLS: a sales rep may not create a department',
+      'insert into public.departments (name) values (''HIGTest Sneaky'')');
+
+    update public.departments set name = 'Hijacked' where id = v_dep;
+    get diagnostics v_hit = row_count;
+    perform pg_temp.eq('a refused department rename touches no rows', v_hit::text, '0');
 
     execute 'reset role';
     v_rls := 'ran';

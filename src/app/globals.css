@@ -20,6 +20,10 @@
   --accent: #3ab54a;
   --accent-fg: #06180a;
   --danger: #d92d20;
+  /* Same trap as --brand-fg: the dark-mode danger is a light coral, so white on
+     it is 2.79:1. Light mode takes white at 4.83:1, dark takes near-black at
+     6.77:1. Computed, not assumed. */
+  --danger-fg: #ffffff;
   /* A suspension is reversible, so it is a caution rather than a failure. The
      grey tint that stood in for this made Suspended and Discharged read the
      same on the staff list. 6.36:1 in light, 8.33:1 in dark. */
@@ -61,6 +65,7 @@
     --accent: #4ecb5e;
     --accent-fg: #06180a;
     --danger: #ff6b60;
+    --danger-fg: #06121c;
     --warn: #2c2113;
     --warn-fg: #e8b45c;
 
@@ -107,6 +112,7 @@
   --accent: #4ecb5e;
   --accent-fg: #06180a;
   --danger: #ff6b60;
+  --danger-fg: #06121c;
   --warn: #2c2113;
   --warn-fg: #e8b45c;
 }
@@ -123,6 +129,7 @@
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-danger: var(--danger);
+  --color-danger-fg: var(--danger-fg);
   --color-warn: var(--warn);
   --color-warn-fg: var(--warn-fg);
   --color-tint-1: var(--tint-1);

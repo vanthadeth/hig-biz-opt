@@ -38,13 +38,18 @@ export type UserRecord = {
   bank_account_number: string | null;
   role_id: string | null;
   status: UserStatus;
+  suspended_from: string | null;
+  suspended_to: string | null;
+  discharged_date: string | null;
+  status_note: string | null;
 };
 
 /** The columns the form reads and writes, as one select list. */
 export const USER_RECORD_COLUMNS =
   "id, full_name, nickname, gender, date_of_birth, photo_path, phone_primary, " +
   "phone_secondary, telegram_id, email, department_id, position, bank_name, " +
-  "bank_account_name, bank_account_number, role_id, status";
+  "bank_account_name, bank_account_number, role_id, status, suspended_from, " +
+  "suspended_to, discharged_date, status_note";
 
 export type Department = { id: string; name: string; sort_order: number };
 
@@ -75,6 +80,64 @@ export const STATUS_TONE: Record<UserStatus, "accent" | "warn" | "neutral"> = {
   suspended: "warn",
   discharged: "neutral",
 };
+
+/** What a status change writes. The trigger in 0019 stamps who and when. */
+export type StatusChange = {
+  status: UserStatus;
+  suspended_from: string | null;
+  suspended_to: string | null;
+  discharged_date: string | null;
+  status_note: string | null;
+};
+
+/**
+ * The columns a status change sets, given the dates it was asked for.
+ *
+ * The shape is dictated by the CHECK constraints: a suspension carries a range,
+ * a discharge carries a day, and neither may be half-filled. Building the row
+ * here rather than in the component means the rules live in one testable place
+ * and the form cannot compose a row the database will reject.
+ *
+ * Reinstating clears the dates in the trigger too — belt and braces, since an
+ * active row that still remembers a suspension is a row that will be misread.
+ */
+export function statusChange(
+  status: UserStatus,
+  dates: { from?: string; to?: string; on?: string; note?: string },
+): StatusChange {
+  const blank = (v: string | undefined) => (v?.trim() ? v.trim() : null);
+
+  return {
+    status,
+    suspended_from: status === "suspended" ? blank(dates.from) : null,
+    suspended_to: status === "suspended" ? blank(dates.to) : null,
+    discharged_date: status === "discharged" ? blank(dates.on) : null,
+    status_note: blank(dates.note),
+  };
+}
+
+/**
+ * Why a status change cannot be saved yet, or null when it can.
+ *
+ * Says it in words rather than letting the CHECK constraint answer with
+ * `users_suspension_dates_ck`, which tells nobody anything.
+ */
+export function statusProblem(change: StatusChange): string | null {
+  if (change.status === "suspended") {
+    if (!change.suspended_from || !change.suspended_to) {
+      return "A suspension needs both a start and an end date.";
+    }
+    if (change.suspended_to < change.suspended_from) {
+      return "The suspension cannot end before it starts.";
+    }
+  }
+
+  if (change.status === "discharged" && !change.discharged_date) {
+    return "A discharge needs a date.";
+  }
+
+  return null;
+}
 
 /** "Sokha Chan (Dara)", or just the name when there is no nickname. */
 export function displayName(person: {

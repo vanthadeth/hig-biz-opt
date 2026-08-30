@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Field, SelectField, SuggestField } from "@/components/ui/Field";
+import { NewDepartmentSheet } from "./NewDepartmentSheet";
 import { PhotoField } from "./PhotoField";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
@@ -102,11 +103,12 @@ function Section({
  */
 export function UserForm({
   record,
-  departments,
+  departments: initialDepartments,
   roles,
   positions,
   canEdit,
   canSeeBank,
+  canAddDepartment,
   viewKey,
 }: {
   record: UserRecord | null;
@@ -115,6 +117,7 @@ export function UserForm({
   positions: string[];
   canEdit: boolean;
   canSeeBank: boolean;
+  canAddDepartment: boolean;
   viewKey: string;
 }) {
   const router = useRouter();
@@ -123,6 +126,10 @@ export function UserForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Held locally so a department created here is selectable at once, without a
+  // round trip through the router that would discard the rest of the form.
+  const [departments, setDepartments] = useState(initialDepartments);
+  const [addingDepartment, setAddingDepartment] = useState(false);
 
   const creating = record === null;
   const nameMissing = draft.full_name.trim().length === 0;
@@ -307,13 +314,27 @@ export function UserForm({
       </Section>
 
       <Section title="Position">
-        <SelectField
-          label="Department"
-          value={draft.department_id}
-          onChange={set("department_id")}
-          options={departments.map((d) => ({ value: d.id, label: d.name }))}
-          disabled={!canEdit}
-        />
+        <div className="grid gap-1">
+          <SelectField
+            label="Department"
+            value={draft.department_id}
+            onChange={set("department_id")}
+            options={departments.map((d) => ({ value: d.id, label: d.name }))}
+            disabled={!canEdit}
+          />
+          {canEdit && canAddDepartment && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic("tap");
+                setAddingDepartment(true);
+              }}
+              className="justify-self-start text-xs font-medium text-brand hover:underline"
+            >
+              + New department
+            </button>
+          )}
+        </div>
         <SuggestField
           label="Position"
           value={draft.position}
@@ -369,6 +390,17 @@ export function UserForm({
           {error}
         </p>
       )}
+
+      <NewDepartmentSheet
+        open={addingDepartment}
+        onClose={() => setAddingDepartment(false)}
+        existing={departments}
+        nextSortOrder={departments.length + 1}
+        onCreated={(department) => {
+          setDepartments((list) => [...list, department]);
+          set("department_id")(department.id);
+        }}
+      />
 
       {canEdit && (
         // Sits above the bottom bar so Save stays reachable however far down the

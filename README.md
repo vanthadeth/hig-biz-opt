@@ -173,7 +173,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 337 tests
+npm test          # Vitest, 348 tests
 npm run test:watch
 ```
 
@@ -232,13 +232,13 @@ ERROR:  INVENTORY OK - 65 assertions passed (rls: ran)
 psql "$DATABASE_URL" -f supabase/tests/customers.test.sql
 ```
 
-42 assertions. This is the module where permission *scope* finally does real
+47 assertions. This is the module where permission *scope* finally does real
 work — sales holds add and edit at `own`, warehouse view at `sub` — so most of
 the suite is about who may see and change whose accounts, alongside the address
 chain, the one-primary rules and the directory view.
 
 ```
-ERROR:  CUSTOMERS OK - 42 assertions passed (rls: ran)
+ERROR:  CUSTOMERS OK - 47 assertions passed (rls: ran)
 ```
 
 ## Deploy

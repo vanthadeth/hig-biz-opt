@@ -3,19 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
-import { Field, SelectField } from "@/components/ui/Field";
+import { Field } from "@/components/ui/Field";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
   coordinateProblem,
-  CUSTOMER_STATUSES,
-  CUSTOMER_STATUS_LABELS,
   parseCoordinate,
   type Commune,
   type Customer,
   type CustomerContact,
-  type CustomerStatus,
   type District,
   type Province,
 } from "@/lib/customers";
@@ -31,8 +28,6 @@ import {
 type Draft = AddressDraft & {
   shop_name: string;
   business_type: string;
-  status: CustomerStatus;
-  status_note: string;
   credit_limit_usd: string;
   remarks: string;
 };
@@ -52,8 +47,6 @@ function draftFrom(customer: Customer | null): Draft {
     zipcode: customer?.zipcode ?? "",
     latitude: customer?.latitude === null || customer === null ? "" : String(customer.latitude),
     longitude: customer?.longitude === null || customer === null ? "" : String(customer.longitude),
-    status: customer?.status ?? "active",
-    status_note: customer?.status_note ?? "",
     credit_limit_usd:
       customer?.credit_limit_usd === null || customer === null
         ? ""
@@ -118,13 +111,12 @@ export function CustomerForm({
   };
 
   const nameMissing = draft.shop_name.trim() === "";
-  const banNeedsReason = draft.status === "banned" && draft.status_note.trim() === "";
   const badCoordinate = coordinateProblem(draft.latitude, draft.longitude) !== null;
   const badLimit =
     draft.credit_limit_usd.trim() !== "" &&
     !(Number(draft.credit_limit_usd) >= 0 && Number.isFinite(Number(draft.credit_limit_usd)));
   const badContact = contacts.some((c) => contactProblem(c) !== null);
-  const blocked = nameMissing || banNeedsReason || badCoordinate || badLimit || badContact;
+  const blocked = nameMissing || badCoordinate || badLimit || badContact;
 
   function toRow() {
     return {
@@ -143,8 +135,9 @@ export function CustomerForm({
       zipcode: blank(draft.zipcode),
       latitude: parseCoordinate(draft.latitude, 90) ?? null,
       longitude: parseCoordinate(draft.longitude, 180) ?? null,
-      status: draft.status,
-      status_note: blank(draft.status_note),
+      // No status here. A new shop is active by the column default, and an
+      // existing one keeps whatever the status card set — this form has no
+      // business changing it in a batch of corrections.
       credit_limit_usd:
         draft.credit_limit_usd.trim() === "" ? null : Number(draft.credit_limit_usd),
       remarks: blank(draft.remarks),
@@ -340,17 +333,12 @@ export function CustomerForm({
 
       <Card className="p-4">
         <SectionHeader title="Terms" />
+        <p className="mt-1 text-xs text-muted">
+          {creating
+            ? "A new customer starts active. Making one inactive or banning it is done from the record, where it asks first."
+            : "Status is changed from the record, where it asks first."}
+        </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <SelectField
-            label="Status"
-            value={draft.status}
-            onChange={(v) => set("status", v as CustomerStatus)}
-            options={CUSTOMER_STATUSES.map((s) => ({
-              value: s,
-              label: CUSTOMER_STATUS_LABELS[s],
-            }))}
-            placeholder="Active"
-          />
           <Field
             label="Credit limit (USD)"
             optional
@@ -360,21 +348,6 @@ export function CustomerForm({
             placeholder="500"
             error={badLimit ? "That is not an amount." : null}
           />
-          <div className="sm:col-span-2">
-            <Field
-              label={draft.status === "banned" ? "Why banned" : "Status note"}
-              optional={draft.status !== "banned"}
-              value={draft.status_note}
-              onChange={(v) => set("status_note", v)}
-              placeholder="Cheques returned twice"
-              hint={
-                draft.status === "banned"
-                  ? "Somebody will ask why in a year. The record has to answer."
-                  : undefined
-              }
-              error={banNeedsReason && draft.status_note !== "" ? "A reason is needed." : null}
-            />
-          </div>
           <div className="sm:col-span-2">
             <Field
               label="Remarks"
@@ -399,17 +372,15 @@ export function CustomerForm({
             ? "Saved."
             : nameMissing
               ? "A shop name is needed."
-              : banNeedsReason
-                ? "Say why it is banned."
-                : badCoordinate
-                  ? "Check the location."
-                  : badContact
-                    ? "Check the contacts."
-                    : badLimit
-                      ? "Check the credit limit."
-                      : creating
-                        ? "New customer"
-                        : "Editing"}
+              : badCoordinate
+                ? "Check the location."
+                : badContact
+                  ? "Check the contacts."
+                  : badLimit
+                    ? "Check the credit limit."
+                    : creating
+                      ? "New customer"
+                      : "Editing"}
         </span>
 
         {!creating && canDelete && (

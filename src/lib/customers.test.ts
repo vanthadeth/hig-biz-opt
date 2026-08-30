@@ -13,6 +13,10 @@ import {
   mapHref,
   matchesCustomer,
   overCreditLimit,
+  statusAction,
+  statusActions,
+  statusChange,
+  statusProblem,
   parseCoordinate,
   telegramHref,
   type DirectoryCustomer,
@@ -394,5 +398,81 @@ describe("overCreditLimit", () => {
 
   it("is false when there is no limit to be over", () => {
     expect(overCreditLimit(99999, null)).toBe(false);
+  });
+});
+
+describe("statusActions", () => {
+  it("never offers a move to the status the shop is already in", () => {
+    for (const current of ["active", "inactive", "banned"] as const) {
+      const targets = statusActions(current).map((a) => a.target);
+      expect(targets).not.toContain(current);
+      expect(targets).toHaveLength(2);
+    }
+  });
+
+  it("offers reactivating from both of the other two", () => {
+    expect(statusActions("banned").map((a) => a.target)).toContain("active");
+    expect(statusActions("inactive").map((a) => a.target)).toContain("active");
+  });
+
+  it("names each action with the word that goes on the button", () => {
+    expect(statusAction("banned").label).toBe("Ban");
+    expect(statusAction("inactive").label).toBe("Mark inactive");
+    expect(statusAction("active").label).toBe("Reactivate");
+  });
+
+  it("marks only banning as destructive", () => {
+    expect(statusAction("banned").danger).toBe(true);
+    expect(statusAction("inactive").danger).toBe(false);
+    expect(statusAction("active").danger).toBe(false);
+  });
+
+  it("says what each move does, naming the shop", () => {
+    expect(statusAction("banned").describe("Dara Mini Mart")).toContain("Dara Mini Mart");
+    expect(statusAction("inactive").describe("Dara Mini Mart")).toContain("history");
+  });
+});
+
+describe("statusProblem", () => {
+  it("demands a reason for a ban, as the CHECK constraint does", () => {
+    expect(statusProblem("banned", "")).toContain("why");
+    expect(statusProblem("banned", "   ")).toContain("why");
+    expect(statusProblem("banned", "Cheques returned twice")).toBeNull();
+  });
+
+  it("does not demand one for the other moves", () => {
+    expect(statusProblem("inactive", "")).toBeNull();
+    expect(statusProblem("active", "")).toBeNull();
+  });
+});
+
+describe("statusChange", () => {
+  it("writes the status and the reason", () => {
+    expect(statusChange("banned", "Cheques returned twice")).toEqual({
+      status: "banned",
+      status_note: "Cheques returned twice",
+    });
+  });
+
+  it("clears the note on coming back to active", () => {
+    // A stale "cheques returned twice" on a reinstated shop reads as though it
+    // were still true.
+    expect(statusChange("active", "Paid up")).toEqual({
+      status: "active",
+      status_note: null,
+    });
+  });
+
+  it("treats an empty note as no note rather than as an empty string", () => {
+    expect(statusChange("inactive", "   ")).toEqual({
+      status: "inactive",
+      status_note: null,
+    });
+  });
+
+  it("trims what it stores", () => {
+    expect(statusChange("banned", "  Cheques bounced  ").status_note).toBe(
+      "Cheques bounced",
+    );
   });
 });

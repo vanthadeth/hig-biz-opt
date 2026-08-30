@@ -22,6 +22,7 @@ import {
   type CustomerPicture,
 } from "@/lib/customers";
 import { formatDate } from "@/lib/users";
+import { CustomerStatusControls } from "../CustomerStatusControls";
 import { PictureManager } from "../PictureManager";
 import { Receivables } from "../Receivables";
 
@@ -115,6 +116,9 @@ export default async function Page({
               <p className="text-sm text-muted">{customer.business_type}</p>
             )}
             <div className="mt-2 flex flex-wrap gap-1.5">
+              {/* Repeated from the status card below, because a banned shop
+                  should be obvious from the top of the record rather than
+                  needing a scroll. */}
               <Chip tone={CUSTOMER_STATUS_TONE[customer.status]}>
                 {CUSTOMER_STATUS_LABELS[customer.status]}
               </Chip>
@@ -124,12 +128,6 @@ export default async function Page({
             </div>
           </div>
         </div>
-
-        {customer.status !== "active" && customer.status_note && (
-          <p className="mt-3 border-t border-line pt-3 text-sm text-muted">
-            {customer.status_note}
-          </p>
-        )}
 
         {canEdit && (
           <Link
@@ -222,6 +220,14 @@ export default async function Page({
       </Card>
 
       <PictureManager customerId={customer.id} pictures={pictures} canEdit={canEdit} />
+
+      <CustomerStatusControls
+        customerId={customer.id}
+        shopName={customer.shop_name}
+        status={customer.status}
+        statusNote={customer.status_note}
+        canEdit={canEdit}
+      />
 
       <Receivables
         creditLimit={customer.credit_limit_usd}

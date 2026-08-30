@@ -14,7 +14,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CUSTOMERS OK - 42 assertions passed (rls: ran)
+--     ERROR:  CUSTOMERS OK - 47 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -111,6 +111,7 @@ declare
   v_mine uuid;   -- a customer owned by the rep
   v_thrs uuid;   -- one owned by the unrelated rep
   v_house uuid;  -- one with no owner
+  v_house2 uuid; -- one used for the status-default assertions
   v_dist text;
   v_comm text;
   v_rls text := 'skipped (cannot assume the authenticated role)';
@@ -245,6 +246,37 @@ begin
     returning id into v_thrs;
   insert into public.customers (shop_name, owner_id) values ('CX House', null)
     returning id into v_house;
+
+  ----------------------------------------------------------------------------
+  -- Status is set by an action, not by the form
+  --
+  -- The customer form does not send `status` at all: a new shop takes the
+  -- column default, and an edit leaves whatever the status card set. These
+  -- assert both halves, because the failure mode is silent — a form that sent
+  -- a defaulted status would quietly reactivate a banned shop every time
+  -- somebody corrected its phone number.
+  ----------------------------------------------------------------------------
+  insert into public.customers (shop_name, business_type, credit_limit_usd)
+    values ('CX Default Status', 'Grocery', 500) returning id into v_house2;
+  perform pg_temp.eq('a new customer defaults to active',
+    (select status::text from public.customers where id = v_house2), 'active');
+  perform pg_temp.eq('and arrives with no status note',
+    (select coalesce(status_note, 'none') from public.customers where id = v_house2), 'none');
+
+  update public.customers set status = 'banned', status_note = 'Cheques returned twice'
+   where id = v_house2;
+  -- An ordinary correction, exactly as the form sends it.
+  update public.customers set business_type = 'Hardware', landmark = 'By the market'
+   where id = v_house2;
+  perform pg_temp.eq('editing a customer leaves its status alone',
+    (select status::text from public.customers where id = v_house2), 'banned');
+  perform pg_temp.eq('and keeps the reason it was banned',
+    (select status_note from public.customers where id = v_house2), 'Cheques returned twice');
+
+  update public.customers set status = 'active', status_note = null where id = v_house2;
+  perform pg_temp.eq('reactivating clears the reason, so nothing stale is left',
+    (select status::text || '/' || coalesce(status_note, 'none')
+       from public.customers where id = v_house2), 'active/none');
 
   ----------------------------------------------------------------------------
   -- Scope, which is the whole point of this module

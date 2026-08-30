@@ -32,6 +32,93 @@ export const CUSTOMER_STATUS_TONE: Record<CustomerStatus, ChipTone> = {
   banned: "danger",
 };
 
+/**
+ * Moving a shop between statuses.
+ *
+ * Status is deliberately not a field on the customer form. The rest of that
+ * form is corrections — a phone number typed wrong, a landmark that has moved —
+ * saved in a batch. Banning a shop is not a correction: it stops anybody selling
+ * to it, and somebody will ask in a year why it happened. So it is an action
+ * with its own confirmation, and it commits on its own.
+ *
+ * A new customer is always active. There is no case for creating one already
+ * banned, and offering the choice would only let somebody set it by accident.
+ */
+export type StatusAction = {
+  target: CustomerStatus;
+  /** The word on the button. */
+  label: string;
+  /** What it does, said plainly on the confirmation. */
+  describe: (shopName: string) => string;
+  /** Banning demands a reason; the CHECK constraint agrees. */
+  needsReason: boolean;
+  /** Destructive enough to warrant the danger colour. */
+  danger: boolean;
+  icon: string;
+};
+
+const STATUS_ACTIONS: Record<CustomerStatus, StatusAction> = {
+  active: {
+    target: "active",
+    label: "Reactivate",
+    describe: (shop) => `${shop} returns to active, and can be sold to again.`,
+    needsReason: false,
+    danger: false,
+    icon: "check",
+  },
+  inactive: {
+    target: "inactive",
+    label: "Mark inactive",
+    describe: (shop) =>
+      `${shop} stays on the books with its whole history, but stops appearing as somewhere to sell to.`,
+    needsReason: false,
+    danger: false,
+    icon: "calendar",
+  },
+  banned: {
+    target: "banned",
+    label: "Ban",
+    describe: (shop) =>
+      `${shop} is refused further business. The reason stays on the record, because somebody will ask why.`,
+    needsReason: true,
+    danger: true,
+    icon: "logout",
+  },
+};
+
+/** The moves available from where a shop is now — never a move to itself. */
+export function statusActions(current: CustomerStatus): StatusAction[] {
+  return CUSTOMER_STATUSES.filter((s) => s !== current).map((s) => STATUS_ACTIONS[s]);
+}
+
+export function statusAction(target: CustomerStatus): StatusAction {
+  return STATUS_ACTIONS[target];
+}
+
+/**
+ * The row a status change writes.
+ *
+ * The note always describes the status the shop is in *now*, so it is replaced
+ * on every move rather than accumulated. Coming back to active clears it: a
+ * stale "cheques returned twice" sitting on a shop that has been reinstated
+ * reads as though it were still true.
+ */
+export function statusChange(target: CustomerStatus, note: string) {
+  const trimmed = note.trim();
+  return {
+    status: target,
+    status_note: target === "active" || trimmed === "" ? null : trimmed,
+  };
+}
+
+/** What stops a status change going through, in the words the person needs. */
+export function statusProblem(target: CustomerStatus, note: string): string | null {
+  if (STATUS_ACTIONS[target].needsReason && note.trim() === "") {
+    return "Say why this shop is being banned. It stays on the record.";
+  }
+  return null;
+}
+
 export type Province = { code: string; name_en: string; name_km: string | null };
 export type District = Province & { province_code: string };
 export type Commune = Province & { district_code: string };

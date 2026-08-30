@@ -22,15 +22,19 @@ export function RecordView({
   groups,
   isSuperAdmin,
   actions,
-  children,
+  footer,
 }: {
   record: UserRecord;
   groups: InfoGroup[];
   isSuperAdmin: boolean;
   /** Buttons for the header card: Edit, and whatever else the page allows. */
   actions?: React.ReactNode;
-  /** Anything that belongs between the header and the detail, such as status. */
-  children?: React.ReactNode;
+  /**
+   * Anything that follows the detail, such as the employment status card. It
+   * sits last because it is an action, not a fact: someone opening a record
+   * has come to read it far more often than to suspend the person in it.
+   */
+  footer?: React.ReactNode;
 }) {
   return (
     <div className="space-y-5">
@@ -66,8 +70,6 @@ export function RecordView({
         {actions && <div className="mt-4 flex flex-wrap gap-2">{actions}</div>}
       </Card>
 
-      {children}
-
       {groups.map((group) => (
         <section key={group.title} className="space-y-2">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
@@ -101,6 +103,8 @@ export function RecordView({
           </Card>
         </section>
       ))}
+
+      {footer}
     </div>
   );
 }

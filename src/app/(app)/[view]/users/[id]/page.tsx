@@ -118,9 +118,10 @@ export default async function Page({
             )}
           </>
         }
-      >
-        <StatusControls record={person} canEdit={canEdit === true} isSelf={isSelf} />
-      </RecordView>
+        footer={
+          <StatusControls record={person} canEdit={canEdit === true} isSelf={isSelf} />
+        }
+      />
     </div>
   );
 }

@@ -12,11 +12,13 @@ import {
   ACTION_LABELS,
   buildMatrix,
   diffMatrix,
+  diffViews,
   setCell,
   type Matrix,
   type PermissionRow,
 } from "@/lib/roleMatrix";
 import { NewRoleSheet } from "./NewRoleSheet";
+import { RoleViews, type ViewOption } from "./RoleViews";
 import type { PermissionAction, StoredScope } from "@/lib/access";
 
 export type RoleSummary = { id: string; key: string; name: string; description: string | null };
@@ -27,6 +29,10 @@ type Props = {
   modules: ModuleSummary[];
   /** Every role's stored permissions, keyed by role id. */
   permissions: Record<string, PermissionRow[]>;
+  /** The workspaces a role may be given. */
+  views: ViewOption[];
+  /** Every role's assigned view keys, keyed by role id. */
+  roleViews: Record<string, string[]>;
   canEdit: boolean;
 };
 
@@ -38,7 +44,14 @@ type Props = {
  * never was. It fits a 390px phone because a cell is a single control rather
  * than four buttons; see ScopeCell for how it is kept that narrow.
  */
-export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
+export function RoleMatrix({
+  roles,
+  modules,
+  permissions,
+  views,
+  roleViews,
+  canEdit,
+}: Props) {
   const moduleKeys = useMemo(() => modules.map((m) => m.key), [modules]);
 
   // Seeded from the server, then appended to when a role is created, so a new
@@ -51,20 +64,40 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
     ),
   );
   const [draft, setDraft] = useState<Record<string, Matrix>>(saved);
+  const [savedViews, setSavedViews] = useState<Record<string, string[]>>(() =>
+    Object.fromEntries(roles.map((role) => [role.id, roleViews[role.id] ?? []])),
+  );
+  const [draftViews, setDraftViews] = useState<Record<string, string[]>>(savedViews);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   const role = roleList.find((r) => r.id === roleId);
   const current = draft[roleId];
+  const currentViews = useMemo(() => draftViews[roleId] ?? [], [draftViews, roleId]);
   const changes = useMemo(
     () => (current ? diffMatrix(saved[roleId], current) : []),
     [saved, roleId, current],
   );
+  const viewChanges = useMemo(
+    () => diffViews(savedViews[roleId] ?? [], currentViews),
+    [savedViews, roleId, currentViews],
+  );
+  const pending = changes.length + viewChanges.added.length + viewChanges.removed.length;
 
   function update(next: Matrix) {
     setDraft((d) => ({ ...d, [roleId]: next }));
     setError(null);
+  }
+
+  function updateViews(next: string[]) {
+    setDraftViews((d) => ({ ...d, [roleId]: next }));
+    setError(null);
+  }
+
+  function discard() {
+    update(saved[roleId]);
+    updateViews(savedViews[roleId] ?? []);
   }
 
   function addRole(created: RoleSummary) {
@@ -72,6 +105,8 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
     setRoleList((list) => [...list, created]);
     setSaved((s) => ({ ...s, [created.id]: empty }));
     setDraft((d) => ({ ...d, [created.id]: empty }));
+    setSavedViews((s) => ({ ...s, [created.id]: [] }));
+    setDraftViews((d) => ({ ...d, [created.id]: [] }));
     setRoleId(created.id);
   }
 
@@ -80,27 +115,58 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
     setError(null);
 
     const supabase = createClient();
-    const { error } = await supabase.from("role_permissions").upsert(
-      changes.map((cell) => ({
-        role_id: roleId,
-        module_key: cell.moduleKey,
-        action: cell.action,
-        scope: cell.scope,
-      })),
-      { onConflict: "role_id,module_key,action" },
-    );
 
-    if (error) {
-      // Row level security refuses the write when the permission is not held,
-      // so a failure here is meaningful rather than a glitch to retry.
+    try {
+      if (changes.length > 0) {
+        const { error } = await supabase.from("role_permissions").upsert(
+          changes.map((cell) => ({
+            role_id: roleId,
+            module_key: cell.moduleKey,
+            action: cell.action,
+            scope: cell.scope,
+          })),
+          { onConflict: "role_id,module_key,action" },
+        );
+        // Row level security refuses the write when the permission is not held,
+        // so a failure here is meaningful rather than a glitch to retry.
+        if (error) throw error;
+      }
+
+      if (viewChanges.removed.length > 0) {
+        // A delete the policy refuses matches no rows and raises nothing, so
+        // the rows actually removed are counted rather than assumed.
+        const { data, error } = await supabase
+          .from("role_views")
+          .delete()
+          .eq("role_id", roleId)
+          .in("view_key", viewChanges.removed)
+          .select("view_key");
+        if (error) throw error;
+        if ((data?.length ?? 0) < viewChanges.removed.length) {
+          throw new Error("Those views could not be withdrawn. Check your permission.");
+        }
+      }
+
+      if (viewChanges.added.length > 0) {
+        const { error } = await supabase.from("role_views").insert(
+          viewChanges.added.map((key) => ({
+            role_id: roleId,
+            view_key: key,
+            sort_order: views.findIndex((v) => v.key === key) + 1,
+          })),
+        );
+        if (error) throw error;
+      }
+    } catch (e) {
       haptic("error");
-      setError(error.message);
+      setError(e instanceof Error ? e.message : "Those changes could not be saved.");
       setBusy(false);
       return;
     }
 
     haptic("success");
     setSaved((s) => ({ ...s, [roleId]: current }));
+    setSavedViews((s) => ({ ...s, [roleId]: currentViews }));
     setBusy(false);
   }
 
@@ -172,6 +238,14 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
         </Card>
       )}
 
+      <RoleViews
+        views={views}
+        selected={currentViews}
+        roleName={role.name}
+        disabled={!canEdit}
+        onChange={updateViews}
+      />
+
       <Card className="p-2 sm:p-3">
         <table className="w-full table-fixed border-collapse">
           <thead>
@@ -227,18 +301,18 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
         </p>
       )}
 
-      {canEdit && changes.length > 0 && (
+      {canEdit && pending > 0 && (
         // Sits above the bottom bar so the count and the action stay reachable
         // however far down the list you have scrolled.
         <div className="sticky bottom-24 z-30 flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-[var(--shadow-pop)] md:bottom-4">
           <span className="flex-1 text-sm">
-            {changes.length} change{changes.length === 1 ? "" : "s"} to {role.name}
+            {pending} change{pending === 1 ? "" : "s"} to {role.name}
           </span>
           <button
             type="button"
             onClick={() => {
               haptic("tap");
-              update(saved[roleId]);
+              discard();
             }}
             disabled={busy}
             className="pressable min-h-10 rounded-xl border border-line px-3 text-sm font-medium text-muted disabled:opacity-60"

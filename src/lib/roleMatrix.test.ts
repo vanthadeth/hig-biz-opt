@@ -4,8 +4,10 @@ import {
   SCOPES,
   buildMatrix,
   diffMatrix,
+  diffViews,
   roleKeyFrom,
   setCell,
+  toggleView,
   type Matrix,
   type PermissionRow,
 } from "./roleMatrix";
@@ -149,5 +151,51 @@ describe("roleKeyFrom", () => {
     // being created with a key the unique index would reject anyway.
     expect(roleKeyFrom("!!!")).toBe("");
     expect(roleKeyFrom("   ")).toBe("");
+  });
+});
+
+describe("diffViews", () => {
+  it("reports nothing when the same views are held, whatever their order", () => {
+    // role_views is a set; the order rows came back in is not a change.
+    expect(diffViews(["admin", "sales"], ["sales", "admin"])).toEqual({
+      added: [],
+      removed: [],
+    });
+  });
+
+  it("separates the views to grant from the views to withdraw", () => {
+    expect(diffViews(["admin", "sales"], ["admin", "warehouse"])).toEqual({
+      added: ["warehouse"],
+      removed: ["sales"],
+    });
+  });
+
+  it("reports every view as added when a role had none", () => {
+    expect(diffViews([], ["sales", "admin"])).toEqual({
+      added: ["admin", "sales"],
+      removed: [],
+    });
+  });
+
+  it("reports every view as removed when the last one is unticked", () => {
+    // Allowed, and the card says what it costs: nobody holding the role can
+    // enter the app. The screen warns rather than the model refusing.
+    expect(diffViews(["admin"], [])).toEqual({ added: [], removed: ["admin"] });
+  });
+});
+
+describe("toggleView", () => {
+  it("adds a view that is not held", () => {
+    expect(toggleView(["admin"], "sales")).toEqual(["admin", "sales"]);
+  });
+
+  it("removes one that is", () => {
+    expect(toggleView(["admin", "sales"], "admin")).toEqual(["sales"]);
+  });
+
+  it("leaves the original alone", () => {
+    const before = ["admin"];
+    toggleView(before, "sales");
+    expect(before).toEqual(["admin"]);
   });
 });

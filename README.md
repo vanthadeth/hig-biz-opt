@@ -152,6 +152,15 @@ migration — add a new one.
 0011_revoke_anon.sql          the anonymous role gets nothing
 0012_revoke_public_execute    no function is callable just by being PUBLIC
 0013_advisor_fixes.sql        database-linter findings
+0014_permission_scope_deny    `deny` as a storable scope
+0015_deny_as_scope.sql        the matrix reads a stored deny
+0016_employees_without_logins an employee record without an auth login
+0017_can_edit_user.sql        the scoped "may I edit this person" question
+0018_printers.sql             e-print addresses, and the one default
+0019_user_status_changes.sql  suspension and discharge, stamped
+0020_can_delete_user.sql      the scoped "may I remove this person" question
+0021_self_edit_guard.sql      your own row: nickname, photo, second number only
+0022_inventory.sql            the catalogue — categories, brands, items, prices
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
@@ -161,7 +170,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 122 tests
+npm test          # Vitest, 273 tests
 npm run test:watch
 ```
 
@@ -181,7 +190,7 @@ they run:
 psql "$DATABASE_URL" -f supabase/tests/access_model.test.sql
 ```
 
-85 assertions over `app.effective_scope`, `app.can`, `app.is_subordinate`,
+144 assertions over `app.effective_scope`, `app.can`, `app.is_subordinate`,
 `app.my_views`, `app.my_nav`, `app.my_permissions`, the CHECK constraints, the
 grants, and row visibility under RLS. It builds its own fixtures — a two-level
 report-to chain, overrides in both directions, a suspended super admin — and
@@ -190,11 +199,29 @@ rolls the whole transaction back, so a run leaves nothing behind.
 **Success is reported as an error**, because the rollback is what forces it:
 
 ```
-ERROR:  ACCESS MODEL OK - 85 assertions passed (rls: ran)
+ERROR:  ACCESS MODEL OK - 144 assertions passed (rls: ran)
 ```
 
 Any other message names the assertion that broke. Re-run it after every
 migration.
+
+### Catalogue tests
+
+The inventory module has its own suite, in the same shape and for the same
+reason — it needs its own fixtures, and mixing them in would make both harder to
+read:
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/inventory.test.sql
+```
+
+60 assertions over the one-level category rule, the sibling-name indexes, the
+variant constraints, the `item_catalogue` view, and who may read, create, change
+and destroy the catalogue.
+
+```
+ERROR:  INVENTORY OK - 60 assertions passed (rls: ran)
+```
 
 ## Deploy
 

@@ -94,6 +94,31 @@ export function diffMatrix(before: Matrix, after: Matrix): Cell[] {
   return changed;
 }
 
+/** What changed in a role's view assignment, so a save writes only that. */
+export type ViewDiff = { added: string[]; removed: string[] };
+
+/**
+ * The views to grant and the views to withdraw.
+ *
+ * Order is not meaningful here — `role_views` is a set — so both sides are
+ * compared as sets and the result comes back sorted, which also makes the
+ * change count on screen stable between renders.
+ */
+export function diffViews(before: string[], after: string[]): ViewDiff {
+  const had = new Set(before);
+  const has = new Set(after);
+
+  return {
+    added: [...has].filter((key) => !had.has(key)).sort(),
+    removed: [...had].filter((key) => !has.has(key)).sort(),
+  };
+}
+
+/** A copy of the assignment with one view switched on or off. */
+export function toggleView(keys: string[], key: string): string[] {
+  return keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key];
+}
+
 /** A copy with one cell replaced. */
 export function setCell(
   matrix: Matrix,

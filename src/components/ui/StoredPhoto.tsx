@@ -11,11 +11,16 @@ import { initials } from "@/lib/users";
  * policies decide whether the photo appears — the same rule that governs the
  * record it belongs to. Initials show while the URL is in flight, so the space
  * never collapses and then jumps.
+ *
+ * The shape comes from `className`, rounding included. A default `rounded-2xl`
+ * baked into the base string would collide with a caller asking for
+ * `rounded-full`, and which one won would depend on the order Tailwind emitted
+ * the two rules rather than the order they were written.
  */
 export function StoredPhoto({
   name,
   path,
-  className = "size-20 text-2xl",
+  className = "size-20 rounded-2xl text-2xl",
 }: {
   name: string;
   path: string | null;
@@ -45,14 +50,14 @@ export function StoredPhoto({
       <img
         src={url}
         alt={name}
-        className={`shrink-0 rounded-2xl object-cover ${className}`}
+        className={`shrink-0 object-cover ${className}`}
       />
     );
   }
 
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-2xl bg-brand font-semibold text-brand-fg ${className}`}
+      className={`flex shrink-0 items-center justify-center bg-brand font-semibold text-brand-fg ${className}`}
     >
       {initials(name)}
     </span>

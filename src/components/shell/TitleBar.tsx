@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { StoredPhoto } from "@/components/ui/StoredPhoto";
 import { Notifications } from "./Notifications";
 import { createClient } from "@/lib/supabase/client";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
@@ -42,13 +43,6 @@ export function TitleBar() {
     router.refresh();
   }
 
-  const initials = viewer.full_name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("");
-
   return (
     <header
       data-hidden={hidden}
@@ -72,9 +66,11 @@ export function TitleBar() {
             aria-label="Account menu"
             className="flex size-11 items-center justify-center rounded-full text-muted transition-colors hover:text-fg"
           >
-            <span className="flex size-8 items-center justify-center rounded-full bg-brand text-xs font-semibold text-brand-fg">
-              {initials || "?"}
-            </span>
+            <StoredPhoto
+              name={viewer.full_name}
+              path={viewer.photo_path}
+              className="size-8 rounded-full text-xs"
+            />
           </button>
 
           {menuOpen && (

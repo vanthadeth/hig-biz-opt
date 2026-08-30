@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 144 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 147 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
@@ -392,11 +392,39 @@ begin
   perform pg_temp.ok('authenticated can read users',   has_table_privilege('authenticated', 'public.users', 'SELECT'));
   perform pg_temp.ok('authenticated can call my_views',has_function_privilege('authenticated', 'public.my_views()', 'EXECUTE'));
 
-  -- Trigger functions are not API surface (0013).
+  -- Trigger functions are not API surface (0013, 0023).
   perform pg_temp.notok('handle_new_auth_user is not callable',
     has_function_privilege('authenticated', 'public.handle_new_auth_user()', 'EXECUTE'));
   perform pg_temp.notok('harvest_position is not callable',
     has_function_privilege('authenticated', 'public.harvest_position()', 'EXECUTE'));
+
+  -- Stated as a property rather than a list, because the way this broke was a
+  -- new trigger function inheriting a grant nobody wrote: 0012 revoked EXECUTE
+  -- from PUBLIC, but the project's default privileges hand it to `authenticated`
+  -- and `service_role` by name, which a revoke from PUBLIC does not touch. A
+  -- per-function assertion would only ever cover the ones already known about.
+  perform pg_temp.eq('no trigger function is reachable as an RPC',
+    (select count(*)::text
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.prorettype = 'trigger'::regtype
+        and (has_function_privilege('authenticated', p.oid, 'EXECUTE')
+          or has_function_privilege('anon', p.oid, 'EXECUTE'))),
+    '0');
+
+  perform pg_temp.eq('every function in public pins its search_path',
+    (select count(*)::text
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proconfig is null),
+    '0');
+
+  -- The six the frontend calls, and nothing else.
+  perform pg_temp.eq('exactly the frontend RPCs are callable',
+    (select string_agg(p.proname, ',' order by p.proname)
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
+    'can_delete_user,can_edit_user,my_nav,my_permissions,my_views,set_default_printer');
 
   ----------------------------------------------------------------------------
   -- Every table carries row level security

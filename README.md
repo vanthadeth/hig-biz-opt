@@ -161,6 +161,7 @@ migration — add a new one.
 0020_can_delete_user.sql      the scoped "may I remove this person" question
 0021_self_edit_guard.sql      your own row: nickname, photo, second number only
 0022_inventory.sql            the catalogue — categories, brands, items, prices
+0023_lock_down_trigger_fns    trigger functions are not RPCs (see the file)
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
@@ -190,7 +191,7 @@ they run:
 psql "$DATABASE_URL" -f supabase/tests/access_model.test.sql
 ```
 
-144 assertions over `app.effective_scope`, `app.can`, `app.is_subordinate`,
+147 assertions over `app.effective_scope`, `app.can`, `app.is_subordinate`,
 `app.my_views`, `app.my_nav`, `app.my_permissions`, the CHECK constraints, the
 grants, and row visibility under RLS. It builds its own fixtures — a two-level
 report-to chain, overrides in both directions, a suspended super admin — and
@@ -199,7 +200,7 @@ rolls the whole transaction back, so a run leaves nothing behind.
 **Success is reported as an error**, because the rollback is what forces it:
 
 ```
-ERROR:  ACCESS MODEL OK - 144 assertions passed (rls: ran)
+ERROR:  ACCESS MODEL OK - 147 assertions passed (rls: ran)
 ```
 
 Any other message names the assertion that broke. Re-run it after every

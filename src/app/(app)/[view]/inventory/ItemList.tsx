@@ -99,11 +99,15 @@ export function ItemList({
 
       {groups.map((group) => (
         <section key={group.key} className="space-y-2">
-          <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted">
-            {group.name}
-            <span className="ml-1.5 font-normal normal-case tracking-normal">
-              {group.items.length}
+          {/* The Khmer name sits outside the uppercased, letter-spaced span:
+              Khmer has no case for `uppercase` to change, and letter-spacing
+              a script that joins its marks to the base character damages it. */}
+          <h2 className="flex flex-wrap items-baseline gap-x-1.5 px-1 text-xs text-muted">
+            <span className="font-semibold uppercase tracking-wide">
+              {group.nameEn}
             </span>
+            {group.nameKm && <span className="min-w-0 truncate">{group.nameKm}</span>}
+            <span>{group.items.length}</span>
           </h2>
 
           <Card className="divide-y divide-line p-0">
@@ -147,9 +151,11 @@ export function ItemList({
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     {!item.active && <Chip tone="warn">Inactive</Chip>}
                     {item.brand_name && <Chip tone="brand">{item.brand_name}</Chip>}
-                    {path && path !== group.name && (
+                    {/* Only worth saying when it adds something the heading
+                        did not: the sub-category this item is filed under. */}
+                    {path && path !== group.nameEn && (
                       <span className="max-w-28 truncate text-[11px] text-muted">
-                        {item.category_name}
+                        {item.category_name_en}
                       </span>
                     )}
                   </span>

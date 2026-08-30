@@ -162,6 +162,7 @@ migration — add a new one.
 0021_self_edit_guard.sql      your own row: nickname, photo, second number only
 0022_inventory.sql            the catalogue — categories, brands, items, prices
 0023_lock_down_trigger_fns    trigger functions are not RPCs (see the file)
+0024_category_bilingual_name  a category is named in English and Khmer
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
@@ -216,12 +217,12 @@ read:
 psql "$DATABASE_URL" -f supabase/tests/inventory.test.sql
 ```
 
-60 assertions over the one-level category rule, the sibling-name indexes, the
+65 assertions over the one-level category rule, the sibling-name indexes, the
 variant constraints, the `item_catalogue` view, and who may read, create, change
 and destroy the catalogue.
 
 ```
-ERROR:  INVENTORY OK - 60 assertions passed (rls: ran)
+ERROR:  INVENTORY OK - 65 assertions passed (rls: ran)
 ```
 
 ## Deploy

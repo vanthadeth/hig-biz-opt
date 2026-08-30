@@ -3,6 +3,7 @@ import {
   bothPrices,
   categoryOptions,
   categoryPath,
+  categoryLabel,
   categoryTree,
   countItems,
   formatKhr,
@@ -25,9 +26,11 @@ const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   name_km: null,
   active: true,
   category_id: null,
-  category_name: null,
+  category_name_en: null,
+  category_name_km: null,
   category_parent_id: null,
-  category_parent_name: null,
+  category_parent_name_en: null,
+  category_parent_name_km: null,
   brand_id: null,
   brand_name: null,
   variant_count: 1,
@@ -39,8 +42,9 @@ const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   ...over,
 });
 
-const category = (over: Partial<Category> & { id: string; name: string }): Category => ({
+const category = (over: Partial<Category> & { id: string; name_en: string }): Category => ({
   parent_id: null,
+  name_km: null,
   description: null,
   photo_path: null,
   active: true,
@@ -146,18 +150,38 @@ describe("variantLabel", () => {
 describe("categoryPath", () => {
   it("reads parent then child", () => {
     expect(
-      categoryPath({ category_name: "Drinks", category_parent_name: "Grocery" }),
+      categoryPath({ category_name_en: "Drinks", category_parent_name_en: "Grocery" }),
     ).toBe("Grocery / Drinks");
   });
 
   it("is just the category when it is top level", () => {
-    expect(categoryPath({ category_name: "Grocery", category_parent_name: null })).toBe(
+    expect(categoryPath({ category_name_en: "Grocery", category_parent_name_en: null })).toBe(
       "Grocery",
     );
   });
 
   it("is null when an item has no category", () => {
-    expect(categoryPath({ category_name: null, category_parent_name: null })).toBeNull();
+    expect(categoryPath({ category_name_en: null, category_parent_name_en: null })).toBeNull();
+  });
+
+  it("stays English, because it is a breadcrumb on a chip", () => {
+    // Both names at both levels is four words in a space that holds two. The
+    // Khmer name is shown where the category is the subject, not here.
+    expect(
+      categoryPath({ category_name_en: "Drinks", category_parent_name_en: "Grocery" }),
+    ).not.toContain("—");
+  });
+});
+
+describe("categoryLabel", () => {
+  it("shows both names when a category has both", () => {
+    expect(categoryLabel({ name_en: "Grocery", name_km: "គ្រឿងទេស" })).toBe(
+      "Grocery — គ្រឿងទេស",
+    );
+  });
+
+  it("shows the English name alone when there is no Khmer one", () => {
+    expect(categoryLabel({ name_en: "Grocery", name_km: null })).toBe("Grocery");
   });
 });
 
@@ -177,8 +201,10 @@ describe("matchesItem", () => {
     name_km: "ទឹកសុទ្ធ",
     code: "HIG-001",
     brand_name: "Angkor",
-    category_name: "Drinks",
-    category_parent_name: "Grocery",
+    category_name_en: "Drinks",
+    category_name_km: "ភេសជ្ជៈ",
+    category_parent_name_en: "Grocery",
+    category_parent_name_km: "គ្រឿងទេស",
   });
 
   it("matches every item on an empty query", () => {
@@ -202,6 +228,13 @@ describe("matchesItem", () => {
     expect(matchesItem(water, "grocery")).toBe(true);
   });
 
+  it("matches a category by its Khmer name too", () => {
+    // Somebody who files stock in Khmer searches in Khmer. Finding an item by
+    // its own name but not by its category's would be half a translation.
+    expect(matchesItem(water, "ភេសជ្ជៈ")).toBe(true);
+    expect(matchesItem(water, "គ្រឿងទេស")).toBe(true);
+  });
+
   it("does not match something absent", () => {
     expect(matchesItem(water, "cement")).toBe(false);
   });
@@ -218,43 +251,75 @@ describe("groupByCategory", () => {
       id: "a",
       name_en: "Water",
       category_id: "drinks",
-      category_name: "Drinks",
+      category_name_en: "Drinks",
       category_parent_id: "grocery",
-      category_parent_name: "Grocery",
+      category_parent_name_en: "Grocery",
     }),
     entry({
       id: "b",
       name_en: "Rice",
       category_id: "grocery",
-      category_name: "Grocery",
+      category_name_en: "Grocery",
     }),
-    entry({ id: "c", name_en: "Hammer", category_id: "tools", category_name: "Tools" }),
+    entry({ id: "c", name_en: "Hammer", category_id: "tools", category_name_en: "Tools" }),
     entry({ id: "d", name_en: "Odds and ends" }),
   ];
 
   it("folds a sub-category into its parent's heading", () => {
     // Two levels of heading on a phone leaves no room for the items under them.
     const groups = groupByCategory(rows);
-    const grocery = groups.find((g) => g.name === "Grocery");
+    const grocery = groups.find((g) => g.nameEn === "Grocery");
     expect(grocery?.items.map((i) => i.id)).toEqual(["b", "a"]);
   });
 
   it("sorts items within a group by name", () => {
     const groups = groupByCategory(rows);
-    expect(groups.find((g) => g.name === "Grocery")?.items.map((i) => i.name_en)).toEqual(
+    expect(groups.find((g) => g.nameEn === "Grocery")?.items.map((i) => i.name_en)).toEqual(
       ["Rice", "Water"],
     );
   });
 
   it("puts what has no category last, whatever its name", () => {
     const groups = groupByCategory(rows);
-    expect(groups.at(-1)?.name).toBe("No category");
+    expect(groups.at(-1)?.nameEn).toBe("No category");
+  });
+
+  it("takes the Khmer heading from the level that supplied the English one", () => {
+    // Otherwise a heading could read as the parent in one language and the
+    // child in the other, which is worse than showing no Khmer at all.
+    const groups = groupByCategory([
+      entry({
+        id: "a",
+        category_id: "drinks",
+        category_name_en: "Drinks",
+        category_name_km: "ភេសជ្ជៈ",
+        category_parent_id: "grocery",
+        category_parent_name_en: "Grocery",
+        category_parent_name_km: "គ្រឿងទេស",
+      }),
+    ]);
+    expect(groups[0].nameEn).toBe("Grocery");
+    expect(groups[0].nameKm).toBe("គ្រឿងទេស");
+  });
+
+  it("heads a top-level group with its own Khmer name", () => {
+    const groups = groupByCategory([
+      entry({ id: "b", category_id: "tools", category_name_en: "Tools", category_name_km: "ឧបករណ៍" }),
+    ]);
+    expect(groups[0].nameEn).toBe("Tools");
+    expect(groups[0].nameKm).toBe("ឧបករណ៍");
+  });
+
+  it("has no Khmer heading for what has no category", () => {
+    const groups = groupByCategory([entry({ id: "c" })]);
+    expect(groups[0].nameEn).toBe("No category");
+    expect(groups[0].nameKm).toBeNull();
   });
 
   it("filters across the groups rather than flattening them", () => {
     const groups = groupByCategory(rows, "water");
     expect(groups).toHaveLength(1);
-    expect(groups[0].name).toBe("Grocery");
+    expect(groups[0].nameEn).toBe("Grocery");
     expect(countItems(groups)).toBe(1);
   });
 
@@ -266,10 +331,10 @@ describe("groupByCategory", () => {
 
 describe("categoryOptions", () => {
   const categories = [
-    category({ id: "tools", name: "Tools", sort_order: 2 }),
-    category({ id: "grocery", name: "Grocery", sort_order: 1 }),
-    category({ id: "drinks", name: "Drinks", parent_id: "grocery" }),
-    category({ id: "snacks", name: "Snacks", parent_id: "grocery" }),
+    category({ id: "tools", name_en: "Tools", sort_order: 2 }),
+    category({ id: "grocery", name_en: "Grocery", sort_order: 1 }),
+    category({ id: "drinks", name_en: "Drinks", parent_id: "grocery" }),
+    category({ id: "snacks", name_en: "Snacks", parent_id: "grocery" }),
   ];
 
   it("lists a parent then its children, in sort order", () => {
@@ -279,6 +344,13 @@ describe("categoryOptions", () => {
       "snacks",
       "tools",
     ]);
+  });
+
+  it("offers both names, so somebody can find a category in either language", () => {
+    const options = categoryOptions([
+      category({ id: "grocery", name_en: "Grocery", name_km: "គ្រឿងទេស" }),
+    ]);
+    expect(options[0].label).toBe("Grocery — គ្រឿងទេស");
   });
 
   it("indents the children so the nesting is visible in a select", () => {
@@ -293,7 +365,7 @@ describe("categoryOptions", () => {
 
   it("still offers a sub-category whose parent is not in the list", () => {
     // Otherwise every item filed under it would be unreachable from the form.
-    const options = categoryOptions([category({ id: "orphan", name: "Orphan", parent_id: "gone" })]);
+    const options = categoryOptions([category({ id: "orphan", name_en: "Orphan", parent_id: "gone" })]);
     expect(options).toEqual([{ value: "orphan", label: "Orphan" }]);
   });
 });
@@ -301,15 +373,15 @@ describe("categoryOptions", () => {
 describe("categoryTree", () => {
   it("hangs children off their parent", () => {
     const tree = categoryTree([
-      category({ id: "grocery", name: "Grocery" }),
-      category({ id: "drinks", name: "Drinks", parent_id: "grocery" }),
+      category({ id: "grocery", name_en: "Grocery" }),
+      category({ id: "drinks", name_en: "Drinks", parent_id: "grocery" }),
     ]);
     expect(tree).toHaveLength(1);
     expect(tree[0].children.map((c) => c.id)).toEqual(["drinks"]);
   });
 
   it("shows a parent with no children as itself", () => {
-    const tree = categoryTree([category({ id: "tools", name: "Tools" })]);
+    const tree = categoryTree([category({ id: "tools", name_en: "Tools" })]);
     expect(tree[0].children).toEqual([]);
   });
 });

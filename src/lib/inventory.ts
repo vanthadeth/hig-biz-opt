@@ -18,7 +18,8 @@
 export type Category = {
   id: string;
   parent_id: string | null;
-  name: string;
+  name_en: string;
+  name_km: string | null;
   description: string | null;
   photo_path: string | null;
   active: boolean;
@@ -65,9 +66,11 @@ export type CatalogueEntry = {
   name_km: string | null;
   active: boolean;
   category_id: string | null;
-  category_name: string | null;
+  category_name_en: string | null;
+  category_name_km: string | null;
   category_parent_id: string | null;
-  category_parent_name: string | null;
+  category_parent_name_en: string | null;
+  category_parent_name_km: string | null;
   brand_id: string | null;
   brand_name: string | null;
   variant_count: number | null;
@@ -85,7 +88,7 @@ export const VARIANT_COLUMNS =
   "id, item_id, attribute_name, attribute_value, price_usd, price_khr, photo_path, active, sort_order";
 
 export const CATEGORY_COLUMNS =
-  "id, parent_id, name, description, photo_path, active, sort_order";
+  "id, parent_id, name_en, name_km, description, photo_path, active, sort_order";
 
 export const BRAND_COLUMNS =
   "id, name, description, logo_path, active, sort_order";
@@ -94,7 +97,7 @@ export const BRAND_COLUMNS =
 // system to work out the row shape, and a joined expression widens to `string`,
 // which it can only read back as an error type.
 export const CATALOGUE_COLUMNS =
-  "id, code, name_en, name_km, active, category_id, category_name, category_parent_id, category_parent_name, brand_id, brand_name, variant_count, min_price_usd, max_price_usd, min_price_khr, max_price_khr, photo_path";
+  "id, code, name_en, name_km, active, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, variant_count, min_price_usd, max_price_usd, min_price_khr, max_price_khr, photo_path";
 
 /** Where item pictures go in the inventory bucket. */
 export const INVENTORY_BUCKET = "inventory";
@@ -162,20 +165,48 @@ export function variantLabel(variant: {
   return `${variant.attribute_name}: ${variant.attribute_value}`;
 }
 
-/** "Grocery / Drinks", or just the one it has, or null. */
-export function categoryPath(entry: {
-  category_name: string | null;
-  category_parent_name: string | null;
-}): string | null {
-  if (!entry.category_name) return null;
-  return entry.category_parent_name
-    ? `${entry.category_parent_name} / ${entry.category_name}`
-    : entry.category_name;
+/**
+ * Both names, when there are two.
+ *
+ * The one rendering of a bilingual name in the app, so an item and its category
+ * read the same way rather than each screen inventing a separator.
+ */
+export function bilingual(
+  en: string | null | undefined,
+  km: string | null | undefined,
+): string {
+  if (!en) return km ?? "";
+  return km ? `${en} — ${km}` : en;
 }
 
-/** Both names, when there are two. */
 export function itemTitle(item: { name_en: string; name_km: string | null }): string {
-  return item.name_km ? `${item.name_en} — ${item.name_km}` : item.name_en;
+  return bilingual(item.name_en, item.name_km);
+}
+
+export function categoryLabel(category: {
+  name_en: string;
+  name_km: string | null;
+}): string {
+  return bilingual(category.name_en, category.name_km);
+}
+
+/**
+ * "Grocery / Drinks", or just the one it has, or null.
+ *
+ * English only, and deliberately: this is the compact breadcrumb on a chip,
+ * where it locates an item rather than naming it. Both names at both levels
+ * would be four words on a chip that has room for two. The Khmer name is shown
+ * where the category is the subject — the manager list, the picker, the group
+ * heading — rather than here.
+ */
+export function categoryPath(entry: {
+  category_name_en: string | null;
+  category_parent_name_en: string | null;
+}): string | null {
+  if (!entry.category_name_en) return null;
+  return entry.category_parent_name_en
+    ? `${entry.category_parent_name_en} / ${entry.category_name_en}`
+    : entry.category_name_en;
 }
 
 const fold = (value: string) => value.toLowerCase().trim();
@@ -196,12 +227,24 @@ export function matchesItem(entry: CatalogueEntry, query: string): boolean {
     entry.name_km,
     entry.code,
     entry.brand_name,
-    entry.category_name,
-    entry.category_parent_name,
+    entry.category_name_en,
+    entry.category_name_km,
+    entry.category_parent_name_en,
+    entry.category_parent_name_km,
   ].some((field) => field !== null && field !== undefined && fold(field).includes(needle));
 }
 
-export type CatalogueGroup = { key: string; name: string; items: CatalogueEntry[] };
+/**
+ * The two names are kept apart rather than joined here, because the heading
+ * renders them differently: the English half is uppercased and letter-spaced,
+ * and neither of those should be done to Khmer script.
+ */
+export type CatalogueGroup = {
+  key: string;
+  nameEn: string;
+  nameKm: string | null;
+  items: CatalogueEntry[];
+};
 
 /**
  * The catalogue under its category headings, top-level first.
@@ -220,12 +263,19 @@ export function groupByCategory(
   for (const entry of matched) {
     // A sub-category's items belong under its parent's heading.
     const key = entry.category_parent_id ?? entry.category_id ?? "";
-    const name =
-      entry.category_parent_name ?? entry.category_name ?? "No category";
+    const nameEn =
+      entry.category_parent_name_en ?? entry.category_name_en ?? "No category";
+    // Whichever level supplied the English name supplies the Khmer one, so the
+    // heading never reads as a parent in one language and a child in the other.
+    const nameKm = entry.category_parent_name_en
+      ? entry.category_parent_name_km
+      : entry.category_name_en
+        ? entry.category_name_km
+        : null;
 
     const group = groups.get(key);
     if (group) group.items.push(entry);
-    else groups.set(key, { key: key || "uncategorised", name, items: [entry] });
+    else groups.set(key, { key: key || "uncategorised", nameEn, nameKm, items: [entry] });
   }
 
   return [...groups.values()]
@@ -237,13 +287,17 @@ export function groupByCategory(
       // Whatever has no category goes last, however it sorts by name.
       if (a.key === "uncategorised") return 1;
       if (b.key === "uncategorised") return -1;
-      return a.name.localeCompare(b.name);
+      return a.nameEn.localeCompare(b.nameEn);
     });
 }
 
 export function countItems(groups: CatalogueGroup[]): number {
   return groups.reduce((total, group) => total + group.items.length, 0);
 }
+
+/** Sort order first, then the English name — the one every category has. */
+const byOrder = (a: Category, b: Category) =>
+  a.sort_order - b.sort_order || a.name_en.localeCompare(b.name_en);
 
 /**
  * Categories as a select list, sub-categories indented under their parent.
@@ -255,19 +309,20 @@ export function countItems(groups: CatalogueGroup[]): number {
 export function categoryOptions(
   categories: Category[],
 ): { value: string; label: string }[] {
-  const parents = categories
-    .filter((c) => c.parent_id === null)
-    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  const parents = categories.filter((c) => c.parent_id === null).sort(byOrder);
 
   const options: { value: string; label: string }[] = [];
 
+  // Both names on the option, because this is the control where somebody is
+  // looking for a category rather than reading one they already know.
   for (const parent of parents) {
-    options.push({ value: parent.id, label: parent.name });
-    const children = categories
-      .filter((c) => c.parent_id === parent.id)
-      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+    options.push({ value: parent.id, label: categoryLabel(parent) });
+    const children = categories.filter((c) => c.parent_id === parent.id).sort(byOrder);
     for (const child of children) {
-      options.push({ value: child.id, label: `${OPTION_INDENT}${child.name}` });
+      options.push({
+        value: child.id,
+        label: `${OPTION_INDENT}${categoryLabel(child)}`,
+      });
     }
   }
 
@@ -275,7 +330,7 @@ export function categoryOptions(
   // vanish, taking every item filed under it out of reach of the form.
   const placed = new Set(options.map((o) => o.value));
   for (const orphan of categories.filter((c) => !placed.has(c.id))) {
-    options.push({ value: orphan.id, label: orphan.name });
+    options.push({ value: orphan.id, label: categoryLabel(orphan) });
   }
 
   return options;
@@ -293,9 +348,6 @@ export type CategoryTree = { parent: Category; children: Category[] }[];
 
 /** The category list as it is managed: parents, each with its own children. */
 export function categoryTree(categories: Category[]): CategoryTree {
-  const byOrder = (a: Category, b: Category) =>
-    a.sort_order - b.sort_order || a.name.localeCompare(b.name);
-
   return categories
     .filter((c) => c.parent_id === null)
     .sort(byOrder)

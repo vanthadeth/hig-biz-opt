@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  INVENTORY OK - 60 assertions passed (rls: ran)
+--     ERROR:  INVENTORY OK - 65 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -145,16 +145,16 @@ begin
   ----------------------------------------------------------------------------
   -- Categories go exactly one level deep
   ----------------------------------------------------------------------------
-  insert into public.item_categories (name) values ('IX Grocery') returning id into v_top;
-  insert into public.item_categories (name) values ('IX Hardware') returning id into v_alt;
-  insert into public.item_categories (parent_id, name) values (v_top, 'IX Drinks')
+  insert into public.item_categories (name_en) values ('IX Grocery') returning id into v_top;
+  insert into public.item_categories (name_en) values ('IX Hardware') returning id into v_alt;
+  insert into public.item_categories (parent_id, name_en) values (v_top, 'IX Drinks')
     returning id into v_sub;
 
   perform pg_temp.eq('a sub-category knows its parent',
     (select parent_id::text from public.item_categories where id = v_sub), v_top::text);
 
   perform pg_temp.rejects('a sub-category may not have children of its own',
-    format('insert into public.item_categories (parent_id, name) values (%L, ''IX Water'')', v_sub));
+    format('insert into public.item_categories (parent_id, name_en) values (%L, ''IX Water'')', v_sub));
   perform pg_temp.rejects('a category with children may not be moved under another',
     format('update public.item_categories set parent_id = %L where id = %L', v_alt, v_top));
   perform pg_temp.rejects('a category may not be its own parent',
@@ -167,16 +167,32 @@ begin
   update public.item_categories set parent_id = v_top where id = v_sub;
 
   perform pg_temp.rejects('two top categories may not share a name',
-    'insert into public.item_categories (name) values (''ix grocery'')');
+    'insert into public.item_categories (name_en) values (''ix grocery'')');
   perform pg_temp.rejects('two siblings may not share a name',
-    format('insert into public.item_categories (parent_id, name) values (%L, ''IX DRINKS'')', v_top));
+    format('insert into public.item_categories (parent_id, name_en) values (%L, ''IX DRINKS'')', v_top));
   -- The same name under a different parent is ordinary.
-  insert into public.item_categories (parent_id, name) values (v_alt, 'IX Drinks');
+  insert into public.item_categories (parent_id, name_en) values (v_alt, 'IX Drinks');
   perform pg_temp.eq('the same name may sit under two different parents',
-    (select count(*)::text from public.item_categories where lower(name) = 'ix drinks'), '2');
+    (select count(*)::text from public.item_categories where lower(name_en) = 'ix drinks'), '2');
 
-  perform pg_temp.rejects('a category needs a name',
-    'insert into public.item_categories (name) values (''   '')');
+  perform pg_temp.rejects('a category needs an English name',
+    'insert into public.item_categories (name_en) values (''   '')');
+  perform pg_temp.rejects('a blank Khmer name is not a Khmer name',
+    'insert into public.item_categories (name_en, name_km) values (''IX Blank KM'', ''   '')');
+
+  -- Bilingual, exactly as an item is: English required, Khmer optional.
+  update public.item_categories set name_km = 'ភេសជ្ជៈ' where id = v_sub;
+  perform pg_temp.eq('a category keeps its Khmer name',
+    (select name_km from public.item_categories where id = v_sub), 'ភេសជ្ជៈ');
+  perform pg_temp.eq('and a category without one is not required to have it',
+    (select coalesce(name_km, 'none') from public.item_categories where id = v_alt), 'none');
+
+  -- Uniqueness keys on the English name, so the Khmer one may repeat: two
+  -- different English categories can share a Khmer word without either being
+  -- a data-entry slip.
+  insert into public.item_categories (name_en, name_km) values ('IX Beverages', 'ភេសជ្ជៈ');
+  perform pg_temp.eq('the same Khmer name may sit on two categories',
+    (select count(*)::text from public.item_categories where name_km = 'ភេសជ្ជៈ'), '2');
 
   ----------------------------------------------------------------------------
   -- Brands
@@ -263,8 +279,10 @@ begin
     (select min_price_khr::text || '-' || max_price_khr::text
        from public.item_catalogue where id = v_itm), '2000-5000');
   perform pg_temp.eq('it names the category and its parent',
-    (select category_parent_name || ' / ' || category_name
+    (select category_parent_name_en || ' / ' || category_name_en
        from public.item_catalogue where id = v_itm), 'IX Grocery / IX Drinks');
+  perform pg_temp.eq('and carries the category''s Khmer name through',
+    (select category_name_km from public.item_catalogue where id = v_itm), 'ភេសជ្ជៈ');
   perform pg_temp.eq('it names the brand',
     (select brand_name from public.item_catalogue where id = v_itm), 'IX Angkor');
   perform pg_temp.eq('the first picture stands for the item',
@@ -324,9 +342,9 @@ begin
     perform pg_temp.eq('and may reprice one',
       (select price_usd::text from public.item_variants
         where item_id = v_itm and attribute_value = '500 ml'), '0.55');
-    insert into public.item_categories (name) values ('IX Accountant Category');
+    insert into public.item_categories (name_en) values ('IX Accountant Category');
     perform pg_temp.eq('and may add a category',
-      (select count(*)::text from public.item_categories where name = 'IX Accountant Category'), '1');
+      (select count(*)::text from public.item_categories where name_en = 'IX Accountant Category'), '1');
 
     -- A refused delete matches no rows and raises nothing, so the count is what
     -- proves it was refused.
@@ -350,7 +368,7 @@ begin
 
     -- The depth guard runs as definer, so it still bites under a policy.
     perform pg_temp.rejects('the one-level rule holds under RLS too',
-      format('insert into public.item_categories (parent_id, name) values (%L, ''IX Too Deep'')', v_sub));
+      format('insert into public.item_categories (parent_id, name_en) values (%L, ''IX Too Deep'')', v_sub));
 
     execute 'reset role';
     v_rls := 'ran';

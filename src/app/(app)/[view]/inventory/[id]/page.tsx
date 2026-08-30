@@ -62,7 +62,7 @@ export default async function Page({
     item.category_id
       ? supabase
           .from("item_categories")
-          .select("name, parent_id")
+          .select("name_en, name_km, parent_id")
           .eq("id", item.category_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -74,15 +74,18 @@ export default async function Page({
   const parent = category.data?.parent_id
     ? await supabase
         .from("item_categories")
-        .select("name")
+        .select("name_en")
         .eq("id", category.data.parent_id as string)
         .maybeSingle()
     : { data: null };
 
   const path = categoryPath({
-    category_name: (category.data?.name as string) ?? null,
-    category_parent_name: (parent.data?.name as string) ?? null,
+    category_name_en: (category.data?.name_en as string) ?? null,
+    category_parent_name_en: (parent.data?.name_en as string) ?? null,
   });
+  // The breadcrumb chip stays English so it fits; the category's own Khmer
+  // name goes on its own chip beside it, where there is room for it.
+  const categoryKm = (category.data?.name_km as string) ?? null;
 
   const priced = variants.filter((v) => v.active);
   const summary = bothPrices({
@@ -121,6 +124,7 @@ export default async function Page({
               {!item.active && <Chip tone="warn">Inactive</Chip>}
               {brand.data?.name && <Chip tone="brand">{brand.data.name as string}</Chip>}
               {path && <Chip>{path}</Chip>}
+              {categoryKm && <Chip>{categoryKm}</Chip>}
               {item.code && <Chip>{item.code}</Chip>}
             </div>
           </div>

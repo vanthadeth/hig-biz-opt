@@ -10,6 +10,7 @@ import { StoredPhoto } from "@/components/ui/StoredPhoto";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
+  categoryLabel,
   categoryTree,
   CATEGORY_COLUMNS,
   INVENTORY_BUCKET,
@@ -20,7 +21,8 @@ import { ImageField, uploadInventoryImage } from "../ImageField";
 type Draft = {
   id: string | null;
   parent_id: string;
-  name: string;
+  name_en: string;
+  name_km: string;
   description: string;
   photo_path: string | null;
   active: boolean;
@@ -30,7 +32,8 @@ function draftFrom(category: Category | null, parentId: string): Draft {
   return {
     id: category?.id ?? null,
     parent_id: category?.parent_id ?? parentId,
-    name: category?.name ?? "",
+    name_en: category?.name_en ?? "",
+    name_km: category?.name_km ?? "",
     description: category?.description ?? "",
     photo_path: category?.photo_path ?? null,
     active: category?.active ?? true,
@@ -81,14 +84,15 @@ export function CategoryManager({
     setError(null);
   }
 
-  const trimmed = draft?.name.trim() ?? "";
+  const trimmed = draft?.name_en.trim() ?? "";
   // The two partial unique indexes are what actually hold; catching it here
-  // just saves a round trip to be told so.
+  // just saves a round trip to be told so. They key on the English name — the
+  // one every category is guaranteed to have — so this does too.
   const duplicate = categories.some(
     (c) =>
       c.id !== draft?.id &&
       (c.parent_id ?? "") === (draft?.parent_id ?? "") &&
-      c.name.toLowerCase() === trimmed.toLowerCase(),
+      c.name_en.toLowerCase() === trimmed.toLowerCase(),
   );
   const valid = trimmed !== "" && !duplicate;
 
@@ -102,7 +106,8 @@ export function CategoryManager({
     try {
       const row = {
         parent_id: draft.parent_id === "" ? null : draft.parent_id,
-        name: trimmed,
+        name_en: trimmed,
+        name_km: draft.name_km.trim() === "" ? null : draft.name_km.trim(),
         description: draft.description.trim() === "" ? null : draft.description.trim(),
         active: draft.active,
       };
@@ -251,13 +256,21 @@ export function CategoryManager({
         {draft && (
           <div className="space-y-4 px-3 pb-4 pt-1">
             <Field
-              label="Name"
-              value={draft.name}
-              onChange={(v) => setDraft({ ...draft, name: v })}
+              label="Name (English)"
+              value={draft.name_en}
+              onChange={(v) => setDraft({ ...draft, name_en: v })}
               placeholder="Grocery"
               error={
                 duplicate ? `A category called “${trimmed}” already sits here.` : null
               }
+            />
+
+            <Field
+              label="Name (Khmer)"
+              optional
+              value={draft.name_km}
+              onChange={(v) => setDraft({ ...draft, name_km: v })}
+              placeholder="គ្រឿងទេស"
             />
 
             <SelectField
@@ -267,7 +280,7 @@ export function CategoryManager({
               onChange={(v) => setDraft({ ...draft, parent_id: v })}
               options={parents
                 .filter((p) => p.id !== draft.id)
-                .map((p) => ({ value: p.id, label: p.name }))}
+                .map((p) => ({ value: p.id, label: categoryLabel(p) }))}
               placeholder="Nothing — it is top level"
               hint="Categories go one level deep, so a sub-category cannot have children of its own."
             />
@@ -282,7 +295,7 @@ export function CategoryManager({
 
             <ImageField
               label="Picture"
-              alt={draft.name || "Category"}
+              alt={draft.name_en || "Category"}
               path={draft.photo_path}
               file={file}
               onChange={setFile}
@@ -354,14 +367,17 @@ function Row({
   const body = (
     <>
       <StoredPhoto
-        name={category.name}
+        name={category.name_en}
         path={category.photo_path}
         bucket={INVENTORY_BUCKET}
         fallback={<Icon name="grid" className="size-4" />}
         className="size-10 rounded-lg"
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{category.name}</span>
+        <span className="block truncate text-sm font-medium">{category.name_en}</span>
+        {category.name_km && (
+          <span className="block truncate text-xs text-muted">{category.name_km}</span>
+        )}
         {category.description && (
           <span className="block truncate text-xs text-muted">
             {category.description}

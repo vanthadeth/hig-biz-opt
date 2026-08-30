@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
-import { ScopeSlider } from "@/components/ui/ScopeSlider";
-import { SCOPE_CHIP } from "@/components/ui/scopeTone";
+import { ScopePicker } from "@/components/ui/ScopePicker";
 import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
@@ -14,7 +13,6 @@ import {
   buildMatrix,
   diffMatrix,
   setCell,
-  SCOPE_LABELS,
   type Matrix,
   type PermissionRow,
 } from "@/lib/roleMatrix";
@@ -56,9 +54,6 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  // One module open at a time: the sliders need the width, and a page of 32 of
-  // them is harder to read than the grid it replaced.
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const role = roleList.find((r) => r.id === roleId);
   const current = draft[roleId];
@@ -150,9 +145,8 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        What a role may do in each module, and over whose records. Open a module
-        to set its four permissions; the further right a slider sits, the more
-        records that permission reaches.
+        What a role may do in each module, and over whose records. Tap a cell to
+        choose: green reaches every record, blue only some, an empty cell none.
       </p>
 
       {/* Stacked on a phone: side by side, the button eats the width the tabs
@@ -179,110 +173,52 @@ export function RoleMatrix({ roles, modules, permissions, canEdit }: Props) {
       )}
 
       <Card className="p-2 sm:p-3">
-        {/* The four values stay in columns so a role still reads as a grid.
-            On a phone they sit under the module name, because four chips and a
-            name on one 390px line leaves the name as an initial. From `sm` up
-            there is room for one line, and the header follows suit. */}
-        <div className="px-2 pb-2 text-xs font-medium text-muted">
-          <div className="hidden sm:flex sm:items-center sm:gap-1">
-            <span className="flex-1">Module</span>
-            {ACTIONS.map((action: PermissionAction) => (
-              <span key={action} className="w-20 text-center">
-                {ACTION_LABELS[action]}
-              </span>
-            ))}
-            <span className="w-4 shrink-0" aria-hidden="true" />
-          </div>
-          <div className="grid grid-cols-4 gap-1 sm:hidden">
-            {ACTIONS.map((action: PermissionAction) => (
-              <span key={action} className="text-center">
-                {ACTION_LABELS[action]}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <ul>
-          {modules.map((module) => {
-            const open = expanded === module.key;
-            return (
-              <li key={module.key} className="border-t border-line/70">
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  aria-controls={`scopes-${module.key}`}
-                  onClick={() => {
-                    haptic("tap");
-                    setExpanded(open ? null : module.key);
-                  }}
-                  className="flex w-full flex-col gap-1.5 rounded-lg px-2 py-2 text-left hover:bg-subtle sm:flex-row sm:items-center sm:gap-1"
+        <table className="w-full table-fixed border-collapse">
+          <thead>
+            <tr>
+              <th className="px-1 pb-2 text-left text-xs font-medium text-muted">
+                Module
+              </th>
+              {ACTIONS.map((action: PermissionAction) => (
+                <th
+                  key={action}
+                  scope="col"
+                  className="w-14 px-0.5 pb-2 text-center text-xs font-medium text-muted sm:w-20"
                 >
-                  <span className="flex min-w-0 items-center gap-2 sm:flex-1">
+                  {ACTION_LABELS[action]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {modules.map((module) => (
+              <tr key={module.key} className="border-t border-line/70">
+                <th
+                  scope="row"
+                  title={module.name}
+                  className="py-1.5 pr-2 text-left align-middle"
+                >
+                  <span className="flex items-center gap-2 px-1 py-1 text-sm font-medium">
                     <Icon name={module.icon} className="size-4 shrink-0 text-muted" />
-                    <span className="min-w-0 truncate text-sm font-medium" title={module.name}>
-                      {module.name}
-                    </span>
-                    <Icon
-                      name="chevron"
-                      className={`ml-auto size-4 shrink-0 text-muted transition-transform sm:hidden ${
-                        open ? "rotate-90" : ""
-                      }`}
+                    <span className="min-w-0 truncate">{module.name}</span>
+                  </span>
+                </th>
+                {ACTIONS.map((action: PermissionAction) => (
+                  <td key={action} className="px-0.5 py-1.5">
+                    <ScopePicker
+                      label={`${module.name} — ${ACTION_LABELS[action]}`}
+                      value={current[module.key][action]}
+                      disabled={!canEdit}
+                      onChange={(scope: StoredScope) =>
+                        update(setCell(current, module.key, action, scope))
+                      }
                     />
-                  </span>
-
-                  <span className="grid grid-cols-4 gap-1 sm:flex sm:gap-1">
-                    {ACTIONS.map((action: PermissionAction) => (
-                      <span
-                        key={action}
-                        className={`rounded-lg border py-1 text-center text-xs font-medium sm:w-20 ${
-                          SCOPE_CHIP[current[module.key][action]]
-                        }`}
-                      >
-                        {SCOPE_LABELS[current[module.key][action]]}
-                      </span>
-                    ))}
-                  </span>
-
-                  <Icon
-                    name="chevron"
-                    className={`hidden size-4 shrink-0 text-muted transition-transform sm:block ${
-                      open ? "rotate-90" : ""
-                    }`}
-                  />
-                </button>
-
-                {open && (
-                  <div
-                    id={`scopes-${module.key}`}
-                    // Capped: four stops spread across a 1400px screen is a
-                    // slider you have to travel, not one you can read.
-                    className="max-w-xl space-y-2 px-2 pb-3 pt-1"
-                    style={{ animation: "fade-up 200ms ease-out both" }}
-                  >
-                    {ACTIONS.map((action: PermissionAction) => (
-                      <div
-                        key={action}
-                        className="grid grid-cols-[4.5rem_1fr] items-center gap-2"
-                      >
-                        <span className="text-xs text-muted">
-                          {ACTION_LABELS[action]}
-                        </span>
-                        <ScopeSlider
-                          label={`${module.name} — ${ACTION_LABELS[action]}`}
-                          value={current[module.key][action]}
-                          disabled={!canEdit}
-                          onChange={(scope: StoredScope) =>
-                            update(setCell(current, module.key, action, scope))
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </Card>
 
       {error && (

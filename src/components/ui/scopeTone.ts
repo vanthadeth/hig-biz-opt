@@ -6,29 +6,14 @@ import type { StoredScope } from "@/lib/access";
  * than a colour, which also keeps the grants as the thing that catches the eye
  * in a grid that is mostly denials.
  *
- * Fill and text are separate maps because the slider needs them apart: the
- * thumb takes the fill, and the label under it takes the text colour.
+ * One map, used by both the cell and the swatch in its menu, so the two can
+ * never disagree about what a scope looks like.
  *
  * Every pair is computed against what actually sits behind it, not eyeballed.
  * The lowest is 4.84:1, white on the light-mode blue. The near miss worth
- * remembering: --muted on --subtle is 4.49:1, which is why neither a grey fill
- * nor a --subtle track is used here.
+ * remembering: --muted on --subtle is 4.49:1, which is why Deny has no grey
+ * fill — on the card it sits on, muted text clears at 5.05:1.
  */
-export const SCOPE_FILL: Record<StoredScope, string> = {
-  deny: "bg-surface",
-  own: "bg-brand/15",
-  sub: "bg-brand",
-  any: "bg-accent",
-};
-
-export const SCOPE_TEXT: Record<StoredScope, string> = {
-  deny: "text-fg",
-  own: "text-fg",
-  sub: "text-brand-fg",
-  any: "text-accent-fg",
-};
-
-/** The same scale as a read-only chip, for the collapsed rows of the matrix. */
 export const SCOPE_CHIP: Record<StoredScope, string> = {
   deny: "border-line bg-transparent text-muted",
   own: "border-transparent bg-brand/15 text-fg",

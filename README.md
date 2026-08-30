@@ -163,6 +163,7 @@ migration — add a new one.
 0022_inventory.sql            the catalogue — categories, brands, items, prices
 0023_lock_down_trigger_fns    trigger functions are not RPCs (see the file)
 0024_category_bilingual_name  a category is named in English and Khmer
+0025_customers.sql            shops, their contacts, pictures and address
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
@@ -172,7 +173,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 273 tests
+npm test          # Vitest, 337 tests
 npm run test:watch
 ```
 
@@ -223,6 +224,21 @@ and destroy the catalogue.
 
 ```
 ERROR:  INVENTORY OK - 65 assertions passed (rls: ran)
+```
+
+### Customer tests
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/customers.test.sql
+```
+
+42 assertions. This is the module where permission *scope* finally does real
+work — sales holds add and edit at `own`, warehouse view at `sub` — so most of
+the suite is about who may see and change whose accounts, alongside the address
+chain, the one-primary rules and the directory view.
+
+```
+ERROR:  CUSTOMERS OK - 42 assertions passed (rls: ran)
 ```
 
 ## Deploy

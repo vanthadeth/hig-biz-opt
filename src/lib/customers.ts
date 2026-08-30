@@ -1,0 +1,369 @@
+import type { ChipTone } from "@/components/ui/Chip";
+
+/**
+ * The shops HIG sells to, as the screens see them.
+ *
+ * Two things are worth stating once here rather than in every component:
+ *
+ *   * A customer has an *owner* — the rep whose account it is — and that is
+ *     what the permission scopes key on. Sales holds add and edit at 'own', so
+ *     the owner is not decoration: it decides who may change the record.
+ *
+ *   * The address is held twice over. `*_code` carries the official Cambodian
+ *     administrative code when one was picked from the reference tables, and
+ *     `*_text` carries what somebody typed when it was not. That is what lets an
+ *     address be entered in a district nobody has imported yet without inventing
+ *     a code for it.
+ */
+
+export type CustomerStatus = "active" | "inactive" | "banned";
+
+export const CUSTOMER_STATUSES: CustomerStatus[] = ["active", "inactive", "banned"];
+
+export const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  banned: "Banned",
+};
+
+export const CUSTOMER_STATUS_TONE: Record<CustomerStatus, ChipTone> = {
+  active: "accent",
+  inactive: "neutral",
+  banned: "danger",
+};
+
+export type Province = { code: string; name_en: string; name_km: string | null };
+export type District = Province & { province_code: string };
+export type Commune = Province & { district_code: string };
+
+export type Customer = {
+  id: string;
+  shop_name: string;
+  business_type: string | null;
+  owner_id: string | null;
+  street_address: string | null;
+  province_code: string | null;
+  district_code: string | null;
+  commune_code: string | null;
+  province_text: string | null;
+  district_text: string | null;
+  commune_text: string | null;
+  landmark: string | null;
+  zipcode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  status: CustomerStatus;
+  status_note: string | null;
+  credit_limit_usd: number | null;
+  remarks: string | null;
+  last_visit_date: string | null;
+  last_purchase_date: string | null;
+};
+
+export type CustomerContact = {
+  id: string;
+  customer_id: string;
+  name: string;
+  position: string | null;
+  phone: string | null;
+  telegram_id: string | null;
+  is_primary: boolean;
+  sort_order: number;
+};
+
+export type CustomerPicture = {
+  id: string;
+  customer_id: string;
+  photo_path: string;
+  description: string | null;
+  is_primary: boolean;
+  sort_order: number;
+};
+
+/** One row of public.customer_directory. */
+export type DirectoryCustomer = {
+  id: string;
+  shop_name: string;
+  business_type: string | null;
+  status: CustomerStatus;
+  owner_id: string | null;
+  owner_name: string | null;
+  street_address: string | null;
+  landmark: string | null;
+  zipcode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  credit_limit_usd: number | null;
+  last_visit_date: string | null;
+  last_purchase_date: string | null;
+  province_name: string | null;
+  district_name: string | null;
+  commune_name: string | null;
+  province_code: string | null;
+  district_code: string | null;
+  commune_code: string | null;
+  primary_contact_name: string | null;
+  primary_contact_phone: string | null;
+  primary_photo_path: string | null;
+  contact_count: number | null;
+};
+
+export const CUSTOMER_COLUMNS =
+  "id, shop_name, business_type, owner_id, street_address, province_code, district_code, commune_code, province_text, district_text, commune_text, landmark, zipcode, latitude, longitude, status, status_note, credit_limit_usd, remarks, last_visit_date, last_purchase_date";
+
+export const DIRECTORY_COLUMNS =
+  "id, shop_name, business_type, status, owner_id, owner_name, street_address, landmark, zipcode, latitude, longitude, credit_limit_usd, last_visit_date, last_purchase_date, province_name, district_name, commune_name, province_code, district_code, commune_code, primary_contact_name, primary_contact_phone, primary_photo_path, contact_count";
+
+export const CONTACT_COLUMNS =
+  "id, customer_id, name, position, phone, telegram_id, is_primary, sort_order";
+
+export const PICTURE_COLUMNS =
+  "id, customer_id, photo_path, description, is_primary, sort_order";
+
+export const CUSTOMERS_BUCKET = "customers";
+
+/**
+ * The address on one line, largest unit last.
+ *
+ * Cambodian addresses are read street-first, so that is the order here, and
+ * whichever parts are missing simply do not appear rather than leaving commas
+ * with nothing between them.
+ */
+export function addressLine(customer: {
+  street_address: string | null;
+  commune_name: string | null;
+  district_name: string | null;
+  province_name: string | null;
+}): string | null {
+  const parts = [
+    customer.street_address,
+    customer.commune_name,
+    customer.district_name,
+    customer.province_name,
+  ].filter((p): p is string => p !== null && p.trim() !== "");
+
+  return parts.length ? parts.join(", ") : null;
+}
+
+/** A map link, when the shop has actually been pinned. */
+export function mapHref(customer: {
+  latitude: number | null;
+  longitude: number | null;
+}): string | null {
+  if (customer.latitude === null || customer.longitude === null) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${customer.latitude},${customer.longitude}`;
+}
+
+export function telegramHref(handle: string | null): string | null {
+  if (!handle) return null;
+  return `https://t.me/${handle.replace(/^@/, "")}`;
+}
+
+const fold = (value: string) => value.toLowerCase().trim();
+
+/** Does this shop answer the search? */
+export function matchesCustomer(customer: DirectoryCustomer, query: string): boolean {
+  const needle = fold(query);
+  if (needle === "") return true;
+
+  return [
+    customer.shop_name,
+    customer.business_type,
+    customer.primary_contact_name,
+    customer.primary_contact_phone,
+    customer.owner_name,
+    customer.street_address,
+    customer.landmark,
+    customer.commune_name,
+    customer.district_name,
+    customer.province_name,
+  ].some((field) => field != null && fold(field).includes(needle));
+}
+
+export type CustomerGroup = { key: string; name: string; customers: DirectoryCustomer[] };
+
+/**
+ * Shops under their province.
+ *
+ * A rep works a territory, so province is the heading that matches how the list
+ * is actually used — the same reasoning that groups the staff list by
+ * department rather than alphabetically.
+ */
+export function groupByProvince(
+  customers: DirectoryCustomer[],
+  query = "",
+): CustomerGroup[] {
+  const matched = customers.filter((c) => matchesCustomer(c, query));
+  const groups = new Map<string, CustomerGroup>();
+
+  for (const customer of matched) {
+    const key = customer.province_code ?? customer.province_name ?? "";
+    const name = customer.province_name ?? "No province set";
+    const group = groups.get(key);
+    if (group) group.customers.push(customer);
+    else groups.set(key, { key: key || "unplaced", name, customers: [customer] });
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      customers: [...group.customers].sort((a, b) =>
+        a.shop_name.localeCompare(b.shop_name),
+      ),
+    }))
+    .sort((a, b) => {
+      if (a.key === "unplaced") return 1;
+      if (b.key === "unplaced") return -1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+export function countCustomers(groups: CustomerGroup[]): number {
+  return groups.reduce((total, group) => total + group.customers.length, 0);
+}
+
+/** Districts belonging to the chosen province, and communes to the district. */
+export function districtsIn(districts: District[], provinceCode: string): District[] {
+  return districts
+    .filter((d) => d.province_code === provinceCode)
+    .sort((a, b) => a.name_en.localeCompare(b.name_en));
+}
+
+export function communesIn(communes: Commune[], districtCode: string): Commune[] {
+  return communes
+    .filter((c) => c.district_code === districtCode)
+    .sort((a, b) => a.name_en.localeCompare(b.name_en));
+}
+
+/**
+ * A coordinate typed into a box, or null for an empty one.
+ *
+ * `undefined` means "that is not a coordinate", so a form can tell a blank from
+ * a mistake and say which. Unlike a price, a coordinate may be negative.
+ */
+export function parseCoordinate(
+  input: string,
+  limit: 90 | 180,
+): number | null | undefined {
+  const trimmed = input.trim();
+  if (trimmed === "") return null;
+  if (!/^-?\d*\.?\d*$/.test(trimmed) || !/\d/.test(trimmed)) return undefined;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || Math.abs(value) > limit) return undefined;
+  return value;
+}
+
+/**
+ * What is wrong with a pair of coordinate boxes.
+ *
+ * Half a coordinate locates nothing — it reads on a map as a point in the Gulf
+ * of Guinea — so the database refuses one, and the form says so before the save.
+ */
+export function coordinateProblem(
+  latitude: string,
+  longitude: string,
+): string | null {
+  const lat = parseCoordinate(latitude, 90);
+  const lng = parseCoordinate(longitude, 180);
+
+  if (lat === undefined) return "That is not a latitude. It runs from -90 to 90.";
+  if (lng === undefined) return "That is not a longitude. It runs from -180 to 180.";
+  if ((lat === null) !== (lng === null)) {
+    return "A location needs both numbers, or neither.";
+  }
+  return null;
+}
+
+// Receivables ------------------------------------------------------------------
+
+/** How an unpaid invoice is aged, in days overdue. */
+export const AGEING_BUCKETS = [
+  { key: "current", label: "Current", from: -Infinity, to: 0 },
+  { key: "d1_30", label: "1–30 days", from: 1, to: 30 },
+  { key: "d31_60", label: "31–60 days", from: 31, to: 60 },
+  { key: "d61_90", label: "61–90 days", from: 61, to: 90 },
+  { key: "d90_plus", label: "Over 90 days", from: 91, to: Infinity },
+] as const;
+
+export type AgeingKey = (typeof AGEING_BUCKETS)[number]["key"];
+
+/** An unpaid amount and the day it fell due. */
+export type OpenInvoice = { due_date: string; outstanding_usd: number };
+
+export type Ageing = {
+  buckets: { key: AgeingKey; label: string; amount: number }[];
+  total: number;
+  overdue: number;
+};
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Whole days between two dates, ignoring the time of day. */
+export function daysBetween(from: string, to: string): number {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  return Math.round((b - a) / DAY);
+}
+
+/**
+ * The receivables ageing for one customer.
+ *
+ * Written and tested now, ahead of the invoicing module that will feed it,
+ * because the bucket boundaries are a business rule rather than a rendering
+ * detail — "31–60 days" has to mean the same thing on the customer record as it
+ * will on a statement, and deciding that twice is how the two come to disagree.
+ *
+ * `asOf` is passed in rather than read from the clock, so a statement rendered
+ * on the server and the same figure rendered in a browser in another timezone
+ * cannot land in different buckets.
+ */
+export function ageReceivables(invoices: OpenInvoice[], asOf: string): Ageing {
+  const amounts = new Map<AgeingKey, number>(
+    AGEING_BUCKETS.map((b) => [b.key, 0]),
+  );
+
+  for (const invoice of invoices) {
+    const overdueDays = daysBetween(invoice.due_date, asOf);
+    const bucket =
+      AGEING_BUCKETS.find((b) => overdueDays >= b.from && overdueDays <= b.to) ??
+      AGEING_BUCKETS[0];
+    amounts.set(bucket.key, (amounts.get(bucket.key) ?? 0) + invoice.outstanding_usd);
+  }
+
+  const buckets = AGEING_BUCKETS.map((b) => ({
+    key: b.key,
+    label: b.label,
+    amount: round2(amounts.get(b.key) ?? 0),
+  }));
+
+  const total = round2(buckets.reduce((sum, b) => sum + b.amount, 0));
+  const overdue = round2(
+    buckets.filter((b) => b.key !== "current").reduce((sum, b) => sum + b.amount, 0),
+  );
+
+  return { buckets, total, overdue };
+}
+
+/** Money is added in cents, not in floats that drift. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * How much of the credit limit is used, as a fraction.
+ *
+ * Null when no limit is set, which is not the same as a limit of zero: one
+ * means nobody has decided, the other means cash only.
+ */
+export function creditUsage(
+  balance: number,
+  limit: number | null,
+): number | null {
+  if (limit === null) return null;
+  if (limit === 0) return balance > 0 ? 1 : 0;
+  return Math.max(0, Math.min(balance / limit, 1));
+}
+
+export function overCreditLimit(balance: number, limit: number | null): boolean {
+  return limit !== null && balance > limit;
+}

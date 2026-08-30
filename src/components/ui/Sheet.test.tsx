@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Sheet } from "./Sheet";
 
@@ -57,6 +58,43 @@ describe("Sheet", () => {
 
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("moves focus into the dialog when it opens", () => {
+    open();
+    expect(screen.getByRole("dialog")).toHaveFocus();
+  });
+
+  it("leaves focus alone once somebody is typing in it", () => {
+    // The regression this guards, reported from the new-brand and new-category
+    // sheets: every caller builds its `onClose` inline, so the prop is a fresh
+    // function on each render. With `onClose` in the effect's dependency array,
+    // a keystroke re-ran the effect and focus jumped from the box to the panel,
+    // which meant one character per tap and the rest thrown away.
+    function Host() {
+      const [name, setName] = useState("");
+      return (
+        // Inline, exactly as CategoryManager and BrandManager pass it.
+        <Sheet open onClose={() => {}} title="New brand">
+          <input
+            aria-label="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Sheet>
+      );
+    }
+
+    render(<Host />);
+    const input = screen.getByLabelText("Name");
+    input.focus();
+
+    for (const value of ["A", "An", "Ang", "Angk"]) {
+      fireEvent.change(input, { target: { value } });
+      expect(input).toHaveFocus();
+    }
+
+    expect(input).toHaveValue("Angk");
   });
 
   it("stops the page scrolling underneath, and restores it on close", () => {

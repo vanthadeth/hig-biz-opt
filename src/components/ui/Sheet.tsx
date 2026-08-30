@@ -27,11 +27,23 @@ export function Sheet({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // Every caller builds its `onClose` inline, so the prop is a new function on
+  // each render. Held in a ref, the effect below can read the current one while
+  // depending on nothing but `open` — which is what makes it run once per
+  // opening rather than once per render. That distinction is the whole bug it
+  // used to have: a sheet with a text box in it re-rendered on every keystroke,
+  // the effect re-ran, and `panelRef.focus()` took the caret out of the box
+  // after a single character.
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeRef.current();
     };
     document.addEventListener("keydown", onKey);
 
@@ -46,7 +58,7 @@ export function Sheet({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previous;
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 

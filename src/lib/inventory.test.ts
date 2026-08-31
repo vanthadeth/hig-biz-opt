@@ -29,7 +29,6 @@ import {
 
 const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   id: "i1",
-  code: null,
   name_en: "Drinking Water",
   name_km: null,
   active: true,
@@ -47,6 +46,7 @@ const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   min_price_khr: null,
   max_price_khr: null,
   photo_path: null,
+  codes: null,
   ...over,
 });
 
@@ -143,15 +143,30 @@ describe("bothPrices", () => {
 });
 
 describe("variantLabel", () => {
-  it("names the attribute and its value", () => {
-    expect(variantLabel({ attribute_name: "Size", attribute_value: "500 ml" })).toBe(
+  it("names the property and its value", () => {
+    expect(variantLabel({ property_name: "Size", property_value: "500 ml" })).toBe(
       "Size: 500 ml",
     );
   });
 
-  it("calls the unattributed row what it is", () => {
+  it("falls back to the code, which also identifies one thing on a shelf", () => {
+    expect(
+      variantLabel({ property_name: null, property_value: null, code: "HIG-001" }),
+    ).toBe("HIG-001");
+  });
+
+  it("prefers the property over the code when both are there", () => {
+    expect(
+      variantLabel({ property_name: "Size", property_value: "1.5 L", code: "HIG-002" }),
+    ).toBe("Size: 1.5 L");
+  });
+
+  it("calls the bare row what it is", () => {
     // Not an empty cell: this row is the item itself, and it carries the price.
-    expect(variantLabel({ attribute_name: null, attribute_value: null })).toBe("Standard");
+    expect(variantLabel({ property_name: null, property_value: null })).toBe("Standard");
+    expect(
+      variantLabel({ property_name: null, property_value: null, code: "  " }),
+    ).toBe("Standard");
   });
 });
 
@@ -207,7 +222,7 @@ describe("matchesItem", () => {
   const water = entry({
     name_en: "Drinking Water",
     name_km: "ទឹកសុទ្ធ",
-    code: "HIG-001",
+    codes: "HIG-001 8850123456789",
     brand_name: "Angkor",
     category_name_en: "Drinks",
     category_name_km: "ភេសជ្ជៈ",
@@ -229,8 +244,9 @@ describe("matchesItem", () => {
     expect(matchesItem(water, "ទឹក")).toBe(true);
   });
 
-  it("matches the code, the brand and either category level", () => {
+  it("matches a variant's code or barcode, the brand and either category level", () => {
     expect(matchesItem(water, "hig-001")).toBe(true);
+    expect(matchesItem(water, "8850123456789")).toBe(true);
     expect(matchesItem(water, "angkor")).toBe(true);
     expect(matchesItem(water, "drinks")).toBe(true);
     expect(matchesItem(water, "grocery")).toBe(true);

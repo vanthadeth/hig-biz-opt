@@ -4,11 +4,13 @@
  * Two things here are worth stating once rather than rediscovering in every
  * component:
  *
- *   * Price lives on the variant, never on the item. An item with nothing to
- *     vary still has exactly one variant, with no attribute on it. So a list
- *     showing "the price" is really showing a range that happens to have one
- *     end, which is why `priceRange` takes a min and a max even when they are
- *     the same number.
+ *   * The variant is the sellable unit. It carries the code, the barcode, the
+ *     price and the picture, because what somebody picks up, scans and sells is
+ *     one variant — a 500 ml bottle, not "drinking water in general". An item
+ *     with nothing to vary still has exactly one variant, with no property on
+ *     it. So a list showing "the price" is really showing a range that happens
+ *     to have one end, which is why `priceRange` takes a min and a max even
+ *     when they are the same number.
  *
  *   * Both currencies are stored, not converted. Riel is whole — the smallest
  *     note in circulation is 100៛ — so it is formatted without decimals, while
@@ -37,7 +39,6 @@ export type Brand = {
 
 export type Item = {
   id: string;
-  code: string | null;
   name_en: string;
   name_km: string | null;
   description: string | null;
@@ -49,8 +50,10 @@ export type Item = {
 export type Variant = {
   id: string;
   item_id: string;
-  attribute_name: string | null;
-  attribute_value: string | null;
+  code: string | null;
+  barcode: string | null;
+  property_name: string | null;
+  property_value: string | null;
   price_usd: number | null;
   price_khr: number | null;
   photo_path: string | null;
@@ -61,7 +64,6 @@ export type Variant = {
 /** One row of public.item_catalogue: an item with its names and price range. */
 export type CatalogueEntry = {
   id: string;
-  code: string | null;
   name_en: string;
   name_km: string | null;
   active: boolean;
@@ -79,13 +81,15 @@ export type CatalogueEntry = {
   min_price_khr: number | null;
   max_price_khr: number | null;
   photo_path: string | null;
+  /** Every code and barcode on the item, joined — what search looks through. */
+  codes: string | null;
 };
 
 export const ITEM_COLUMNS =
-  "id, code, name_en, name_km, description, category_id, brand_id, active";
+  "id, name_en, name_km, description, category_id, brand_id, active";
 
 export const VARIANT_COLUMNS =
-  "id, item_id, attribute_name, attribute_value, price_usd, price_khr, photo_path, active, sort_order";
+  "id, item_id, code, barcode, property_name, property_value, price_usd, price_khr, photo_path, active, sort_order";
 
 export const CATEGORY_COLUMNS =
   "id, parent_id, name_en, name_km, description, photo_path, active, sort_order";
@@ -97,7 +101,7 @@ export const BRAND_COLUMNS =
 // system to work out the row shape, and a joined expression widens to `string`,
 // which it can only read back as an error type.
 export const CATALOGUE_COLUMNS =
-  "id, code, name_en, name_km, active, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, variant_count, min_price_usd, max_price_usd, min_price_khr, max_price_khr, photo_path";
+  "id, name_en, name_km, active, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, variant_count, min_price_usd, max_price_usd, min_price_khr, max_price_khr, photo_path, codes";
 
 /** Where item pictures go in the inventory bucket. */
 export const INVENTORY_BUCKET = "inventory";
@@ -154,15 +158,20 @@ export function bothPrices(entry: {
 /**
  * What to call a variant on screen.
  *
- * The unattributed row is the item itself rather than a variation of it, so it
- * gets a name that says so instead of an empty cell.
+ * The property is what tells one variant from its siblings, so it leads. A
+ * variant with no property but a code is still identifiable — that is what the
+ * code is for — so the code stands in rather than an empty cell. Failing both,
+ * the row is the item itself rather than a variation of it, and says so.
  */
 export function variantLabel(variant: {
-  attribute_name: string | null;
-  attribute_value: string | null;
+  property_name: string | null;
+  property_value: string | null;
+  code?: string | null;
 }): string {
-  if (!variant.attribute_name || !variant.attribute_value) return "Standard";
-  return `${variant.attribute_name}: ${variant.attribute_value}`;
+  if (variant.property_name && variant.property_value) {
+    return `${variant.property_name}: ${variant.property_value}`;
+  }
+  return variant.code?.trim() || "Standard";
 }
 
 /**
@@ -225,7 +234,9 @@ export function matchesItem(entry: CatalogueEntry, query: string): boolean {
   return [
     entry.name_en,
     entry.name_km,
-    entry.code,
+    // Every variant's code and barcode, so scanning or typing one finds the
+    // item it belongs to.
+    entry.codes,
     entry.brand_name,
     entry.category_name_en,
     entry.category_name_km,

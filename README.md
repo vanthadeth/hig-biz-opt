@@ -164,6 +164,8 @@ migration — add a new one.
 0023_lock_down_trigger_fns    trigger functions are not RPCs (see the file)
 0024_category_bilingual_name  a category is named in English and Khmer
 0025_customers.sql            shops, their contacts, pictures and address
+0026_variant_code_and_barcode the variant becomes the sellable unit
+0027_order_catalogue_codes    a stable order for the collected codes
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
@@ -173,7 +175,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 364 tests
+npm test          # Vitest, 378 tests
 npm run test:watch
 ```
 
@@ -218,12 +220,12 @@ read:
 psql "$DATABASE_URL" -f supabase/tests/inventory.test.sql
 ```
 
-65 assertions over the one-level category rule, the sibling-name indexes, the
+71 assertions over the one-level category rule, the sibling-name indexes, the
 variant constraints, the `item_catalogue` view, and who may read, create, change
 and destroy the catalogue.
 
 ```
-ERROR:  INVENTORY OK - 65 assertions passed (rls: ran)
+ERROR:  INVENTORY OK - 71 assertions passed (rls: ran)
 ```
 
 ### Customer tests

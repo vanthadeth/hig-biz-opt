@@ -125,7 +125,6 @@ export default async function Page({
               {brand.data?.name && <Chip tone="brand">{brand.data.name as string}</Chip>}
               {path && <Chip>{path}</Chip>}
               {categoryKm && <Chip>{categoryKm}</Chip>}
-              {item.code && <Chip>{item.code}</Chip>}
             </div>
           </div>
         </div>
@@ -149,13 +148,13 @@ export default async function Page({
 
       <Card className="p-4">
         <SectionHeader
-          title="Prices"
-          caption={`${variants.length} option${variants.length === 1 ? "" : "s"}`}
+          title="Variants"
+          caption={`${variants.length} ${variants.length === 1 ? "variant" : "variants"}`}
         />
 
         {variants.length === 0 ? (
           <p className="mt-3 text-sm text-muted">
-            No price has been entered for this item yet.
+            No variant has been entered for this item yet.
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-line">
@@ -172,6 +171,14 @@ export default async function Page({
                   <span className="block truncate text-sm font-medium">
                     {variantLabel(variant)}
                   </span>
+                  {/* The code names the thing on the shelf and the barcode is
+                      what a scanner reads, so both belong on the row rather
+                      than only inside the edit form. */}
+                  {(variant.code || variant.barcode) && (
+                    <span className="block truncate text-xs text-muted">
+                      {[variant.code, variant.barcode].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
                   {!variant.active && (
                     <span className="text-xs text-muted">Not for sale</span>
                   )}

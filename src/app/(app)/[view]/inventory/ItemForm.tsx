@@ -18,6 +18,7 @@ import {
 } from "@/lib/inventory";
 import { uploadInventoryImage } from "./ImageField";
 import {
+  duplicateCodes,
   emptyVariant,
   VariantRows,
   variantProblem,
@@ -27,7 +28,6 @@ import {
 type Draft = {
   name_en: string;
   name_km: string;
-  code: string;
   description: string;
   category_id: string;
   brand_id: string;
@@ -38,7 +38,6 @@ function draftFrom(item: Item | null): Draft {
   return {
     name_en: item?.name_en ?? "",
     name_km: item?.name_km ?? "",
-    code: item?.code ?? "",
     description: item?.description ?? "",
     category_id: item?.category_id ?? "",
     brand_id: item?.brand_id ?? "",
@@ -51,8 +50,10 @@ function variantsFrom(rows: Variant[]): VariantDraft[] {
   return rows.map((row) => ({
     key: row.id,
     id: row.id,
-    attribute_name: row.attribute_name ?? "",
-    attribute_value: row.attribute_value ?? "",
+    code: row.code ?? "",
+    barcode: row.barcode ?? "",
+    property_name: row.property_name ?? "",
+    property_value: row.property_value ?? "",
     // Straight to a string, not through a formatter: this is the number to
     // edit, not the number to read, and "$0.50" is not something to type into.
     price_usd: row.price_usd === null ? "" : String(row.price_usd),
@@ -103,13 +104,15 @@ export function ItemForm({
 
   const nameMissing = draft.name_en.trim() === "";
   const badVariant = variants.some((v) => variantProblem(v) !== null);
-  const blocked = nameMissing || badVariant;
+  // A code repeated across two rows would be refused by the unique index at the
+  // end of a long form. Catching it here says so while it is still being typed.
+  const clashingCodes = duplicateCodes(variants).size > 0;
+  const blocked = nameMissing || badVariant || clashingCodes;
 
   function toRow() {
     return {
       name_en: draft.name_en.trim(),
       name_km: blank(draft.name_km),
-      code: blank(draft.code),
       description: blank(draft.description),
       category_id: blank(draft.category_id),
       brand_id: blank(draft.brand_id),
@@ -137,8 +140,10 @@ export function ItemForm({
 
       const row = {
         item_id: itemId,
-        attribute_name: blank(variant.attribute_name),
-        attribute_value: blank(variant.attribute_value),
+        code: blank(variant.code),
+        barcode: blank(variant.barcode),
+        property_name: blank(variant.property_name),
+        property_value: blank(variant.property_value),
         price_usd: parsePrice(variant.price_usd) ?? null,
         price_khr: parsePrice(variant.price_khr) ?? null,
         photo_path: photoPath,
@@ -254,14 +259,6 @@ export function ItemForm({
             placeholder="ទឹកសុទ្ធ"
           />
           <Field
-            label="Item code"
-            optional
-            value={draft.code}
-            onChange={(v) => set("code", v)}
-            placeholder="HIG-001"
-            hint="Your own reference. It must be unique when it is set."
-          />
-          <Field
             label="Description"
             optional
             value={draft.description}
@@ -315,10 +312,11 @@ export function ItemForm({
       </Card>
 
       <Card className="p-4">
-        <SectionHeader title="Prices and options" />
+        <SectionHeader title="Variants" />
         <p className="mt-1 text-xs text-muted">
-          One row per version of the item, each with its own price and picture.
-          Leave the attribute boxes empty for an item that has a single price.
+          One row per version of the item — each with its own code, barcode,
+          price and picture. Leave the property boxes empty for an item that
+          comes in only one form.
         </p>
         <div className="mt-3">
           <VariantRows
@@ -346,7 +344,9 @@ export function ItemForm({
             : nameMissing
               ? "An English name is needed."
               : badVariant
-                ? "Check the prices below."
+                ? "Check the variants below."
+                : clashingCodes
+                  ? "A code is used twice."
                 : creating
                   ? "New item"
                   : "Editing"}

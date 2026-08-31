@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
@@ -9,8 +9,78 @@ import { Sheet } from "@/components/ui/Sheet";
 import { StoredPhoto } from "@/components/ui/StoredPhoto";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
-import { BRAND_COLUMNS, INVENTORY_BUCKET, type Brand } from "@/lib/inventory";
+import {
+  BRAND_COLUMNS,
+  filterBrands,
+  INVENTORY_BUCKET,
+  type ActiveFilter,
+  type Brand,
+} from "@/lib/inventory";
 import { ImageField, uploadInventoryImage } from "../ImageField";
+import { ListToolbar, statusChip } from "../ListToolbar";
+
+type ViewMode = "tile" | "list";
+
+const VIEW_KEY = "hig.brands.view";
+
+/**
+ * Tile or list, remembered per browser.
+ *
+ * `useSyncExternalStore` rather than state seeded in an effect. localStorage is
+ * exactly what it is for: the server has no way to know what a browser stored,
+ * so it renders the default, and React reconciles to the stored value without
+ * the first paint disagreeing with the markup that came down the wire. Setting
+ * it from an effect would do the same job while tripping the rule that says not
+ * to, and would miss the other half — two tabs stay in step, because the
+ * browser's own `storage` event is one of the things subscribed to.
+ *
+ * Tile is the default, and what anybody who never touches the switch gets.
+ */
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+// Where the choice lives when the browser will not store it. Without this, a
+// browser with site data blocked would swallow the write, re-read "tile", and
+// the switch would appear broken rather than merely forgetful.
+let fallbackMode: ViewMode = "tile";
+
+/** Returns a primitive, so its identity is stable between reads. */
+function readMode(): ViewMode {
+  try {
+    const stored = window.localStorage.getItem(VIEW_KEY);
+    if (stored === "list" || stored === "tile") return stored;
+  } catch {
+    // Fall through to what this session remembers.
+  }
+  return fallbackMode;
+}
+
+function useViewMode(): [ViewMode, (mode: ViewMode) => void] {
+  const mode = useSyncExternalStore(subscribe, readMode, () => "tile" as ViewMode);
+
+  return [
+    mode,
+    (next: ViewMode) => {
+      fallbackMode = next;
+      try {
+        window.localStorage.setItem(VIEW_KEY, next);
+      } catch {
+        // Not remembering it across reloads is a smaller failure than not
+        // switching at all, and the fallback above keeps this session working.
+      }
+      // `storage` does not fire in the tab that wrote it.
+      for (const listener of listeners) listener();
+    },
+  ];
+}
 
 type Draft = {
   id: string | null;
@@ -51,6 +121,15 @@ export function BrandManager({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ActiveFilter>("all");
+  const [mode, setMode] = useViewMode();
+
+  const shownBrands = useMemo(
+    () => filterBrands(brands, query, filter),
+    [brands, query, filter],
+  );
+  const searching = query.trim() !== "";
 
   function open(brand: Brand | null) {
     haptic("tap");
@@ -185,50 +264,146 @@ export function BrandManager({
         </button>
       )}
 
-      {brands.length === 0 ? (
-        <p className="text-sm text-muted">No brands yet.</p>
-      ) : (
-        <Card className="divide-y divide-line p-0">
-          {brands.map((brand) => {
-            const body = (
-              <>
-                <StoredPhoto
-                  name={brand.name}
-                  path={brand.logo_path}
-                  bucket={INVENTORY_BUCKET}
-                  fallback={<Icon name="bolt" className="size-4" />}
-                  className="size-10 rounded-lg"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{brand.name}</span>
+      <ListToolbar
+        query={query}
+        onQuery={setQuery}
+        filter={filter}
+        onFilter={setFilter}
+        placeholder="Brand name or description"
+        label="Search brands"
+        extra={
+          <div
+            role="radiogroup"
+            aria-label="View as"
+            className="flex shrink-0 rounded-xl border border-line p-0.5"
+          >
+            {([
+              { value: "tile", label: "Tiles", icon: "grid" },
+              { value: "list", label: "List", icon: "menu" },
+            ] as const).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={mode === option.value}
+                aria-label={option.label}
+                onClick={() => {
+                  haptic("tap");
+                  setMode(option.value);
+                }}
+                className="pressable flex size-10 items-center justify-center rounded-lg text-muted aria-checked:bg-brand aria-checked:text-brand-fg"
+              >
+                <Icon name={option.icon} className="size-4" />
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      <p className="text-xs text-muted" role="status">
+        {shownBrands.length === 0
+          ? searching
+            ? `Nothing matches “${query.trim()}”.`
+            : filter === "all"
+              ? "No brands yet."
+              : `No ${filter} brands.`
+          : `${shownBrands.length} brand${shownBrands.length === 1 ? "" : "s"}${
+              searching ? " matching" : ""
+            }`}
+      </p>
+
+      {shownBrands.length > 0 &&
+        (mode === "tile" ? (
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {shownBrands.map((brand) => {
+              const status = statusChip(brand.active);
+              const inner = (
+                <>
+                  <StoredPhoto
+                    name={brand.name}
+                    path={brand.logo_path}
+                    bucket={INVENTORY_BUCKET}
+                    fallback={<Icon name="bolt" className="size-6" />}
+                    className="h-20 w-full rounded-lg"
+                  />
+                  <span className="mt-2 block truncate text-sm font-medium">
+                    {brand.name}
+                  </span>
                   {brand.description && (
                     <span className="block truncate text-xs text-muted">
                       {brand.description}
                     </span>
                   )}
-                </span>
-                {!brand.active && <Chip tone="warn">Inactive</Chip>}
-              </>
-            );
+                  {/* Pushed to the bottom so the chips line up across a row
+                      whether or not a brand carries a description. */}
+                  <span className="mt-auto block pt-1.5">
+                    <Chip tone={status.tone}>{status.label}</Chip>
+                  </span>
+                </>
+              );
 
-            return canEdit ? (
-              <button
-                key={brand.id}
-                type="button"
-                onClick={() => open(brand)}
-                className="flex min-h-14 w-full items-center gap-3 px-3 text-left transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-subtle"
-              >
-                {body}
-                <Icon name="pencil" className="size-4 shrink-0 text-muted" />
-              </button>
-            ) : (
-              <div key={brand.id} className="flex min-h-14 items-center gap-3 px-3">
-                {body}
-              </div>
-            );
-          })}
-        </Card>
-      )}
+              return (
+                <li key={brand.id}>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => open(brand)}
+                      className="pressable flex h-full w-full flex-col rounded-2xl border border-line bg-surface p-2 text-left transition-colors hover:border-brand/30"
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <div className="flex h-full flex-col rounded-2xl border border-line bg-surface p-2">
+                      {inner}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <Card className="divide-y divide-line p-0">
+            {shownBrands.map((brand) => {
+              const status = statusChip(brand.active);
+              const body = (
+                <>
+                  <StoredPhoto
+                    name={brand.name}
+                    path={brand.logo_path}
+                    bucket={INVENTORY_BUCKET}
+                    fallback={<Icon name="bolt" className="size-4" />}
+                    className="size-10 rounded-lg"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{brand.name}</span>
+                    {brand.description && (
+                      <span className="block truncate text-xs text-muted">
+                        {brand.description}
+                      </span>
+                    )}
+                  </span>
+                  <Chip tone={status.tone}>{status.label}</Chip>
+                </>
+              );
+
+              return canEdit ? (
+                <button
+                  key={brand.id}
+                  type="button"
+                  onClick={() => open(brand)}
+                  className="flex min-h-14 w-full items-center gap-3 px-3 text-left transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-subtle"
+                >
+                  {body}
+                  <Icon name="pencil" className="size-4 shrink-0 text-muted" />
+                </button>
+              ) : (
+                <div key={brand.id} className="flex min-h-14 items-center gap-3 px-3">
+                  {body}
+                </div>
+              );
+            })}
+          </Card>
+        ))}
 
       <Sheet
         open={draft !== null}

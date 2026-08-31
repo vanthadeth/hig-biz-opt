@@ -11,12 +11,15 @@ import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
   categoryLabel,
-  categoryTree,
+  countCategories,
+  filterCategoryTree,
   CATEGORY_COLUMNS,
   INVENTORY_BUCKET,
+  type ActiveFilter,
   type Category,
 } from "@/lib/inventory";
 import { ImageField, uploadInventoryImage } from "../ImageField";
+import { ListToolbar, statusChip } from "../ListToolbar";
 
 type Draft = {
   id: string | null;
@@ -64,8 +67,20 @@ export function CategoryManager({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ActiveFilter>("all");
+  // Parents are open until somebody closes one. Collapsing is for getting a
+  // long list under control, not for hiding what you just arrived to see.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const tree = useMemo(() => categoryTree(categories), [categories]);
+  const branches = useMemo(
+    () => filterCategoryTree(categories, query, filter),
+    [categories, query, filter],
+  );
+  const shown = countCategories(branches);
+  const searching = query.trim() !== "";
+  const allCollapsed =
+    branches.length > 0 && branches.every((b) => collapsed.has(b.parent.id));
   const parents = useMemo(
     () => categories.filter((c) => c.parent_id === null),
     [categories],
@@ -212,41 +227,98 @@ export function CategoryManager({
         </button>
       )}
 
-      {tree.length === 0 && (
-        <p className="text-sm text-muted">No categories yet.</p>
-      )}
-
-      {tree.map(({ parent, children }) => (
-        <Card key={parent.id} className="p-0">
-          <Row
-            category={parent}
-            canEdit={canEdit}
-            onEdit={() => open(parent)}
-            className="rounded-t-2xl"
-          />
-
-          {children.map((child) => (
-            <Row
-              key={child.id}
-              category={child}
-              canEdit={canEdit}
-              onEdit={() => open(child)}
-              className="border-t border-line pl-10"
-            />
-          ))}
-
-          {canEdit && (
+      <ListToolbar
+        query={query}
+        onQuery={setQuery}
+        filter={filter}
+        onFilter={setFilter}
+        placeholder="Category name or description"
+        label="Search categories"
+        extra={
+          branches.length > 0 && (
             <button
               type="button"
-              onClick={() => open(null, parent.id)}
-              className="pressable flex min-h-11 w-full items-center gap-1.5 rounded-b-2xl border-t border-line px-3 pl-10 text-left text-sm font-medium text-brand"
+              onClick={() => {
+                haptic("tap");
+                setCollapsed(
+                  allCollapsed ? new Set() : new Set(branches.map((b) => b.parent.id)),
+                );
+              }}
+              className="pressable flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-line px-3 text-sm font-medium text-muted hover:text-fg"
             >
-              <Icon name="plus" className="size-4" />
-              Add sub-category
+              <Icon
+                name="chevron"
+                className={`size-4 transition-transform ${allCollapsed ? "" : "-rotate-90"}`}
+              />
+              <span className="max-sm:sr-only">
+                {allCollapsed ? "Expand all" : "Collapse all"}
+              </span>
             </button>
-          )}
-        </Card>
-      ))}
+          )
+        }
+      />
+
+      <p className="text-xs text-muted" role="status">
+        {shown === 0
+          ? searching
+            ? `Nothing matches “${query.trim()}”.`
+            : filter === "all"
+              ? "No categories yet."
+              : `No ${filter} categories.`
+          : `${shown} categor${shown === 1 ? "y" : "ies"}${searching ? " matching" : ""}`}
+      </p>
+
+      {branches.map(({ parent, children }) => {
+        const isCollapsed = collapsed.has(parent.id);
+        return (
+          <Card key={parent.id} className="p-0">
+            <Row
+              category={parent}
+              canEdit={canEdit}
+              onEdit={() => open(parent)}
+              className="rounded-t-2xl"
+              // Only a parent that has something under it is worth collapsing.
+              collapsible={children.length > 0 || canEdit}
+              collapsed={isCollapsed}
+              childCount={children.length}
+              onToggle={() => {
+                haptic("tap");
+                setCollapsed((set) => {
+                  const next = new Set(set);
+                  if (next.has(parent.id)) next.delete(parent.id);
+                  else next.add(parent.id);
+                  return next;
+                });
+              }}
+            />
+
+            {!isCollapsed && (
+              <>
+                {children.map((child) => (
+                  <Row
+                    key={child.id}
+                    category={child}
+                    canEdit={canEdit}
+                    onEdit={() => open(child)}
+                    className="border-t border-line pl-10"
+                  />
+                ))}
+
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => open(null, parent.id)}
+                    className="pressable flex min-h-11 w-full items-center gap-1.5 rounded-b-2xl border-t border-line px-3 pl-10 text-left text-sm font-medium text-brand"
+                  >
+                    <Icon name="plus" className="size-4" />
+                    Add sub-category
+                  </button>
+                )}
+              </>
+            )}
+          </Card>
+        );
+      })}
 
       <Sheet
         open={draft !== null}
@@ -358,12 +430,21 @@ function Row({
   canEdit,
   onEdit,
   className = "",
+  collapsible = false,
+  collapsed = false,
+  childCount = 0,
+  onToggle,
 }: {
   category: Category;
   canEdit: boolean;
   onEdit: () => void;
   className?: string;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  childCount?: number;
+  onToggle?: () => void;
 }) {
+  const status = statusChip(category.active);
   const body = (
     <>
       <StoredPhoto
@@ -384,24 +465,48 @@ function Row({
           </span>
         )}
       </span>
-      {!category.active && <Chip tone="warn">Inactive</Chip>}
+      <Chip tone={status.tone}>{status.label}</Chip>
     </>
   );
 
-  if (!canEdit) {
-    return (
-      <div className={`flex min-h-14 items-center gap-3 px-3 ${className}`}>{body}</div>
-    );
-  }
-
-  return (
+  // The disclosure sits outside the edit button rather than inside it: nesting
+  // a button in a button is invalid, and tapping "collapse" must not also open
+  // the edit sheet.
+  const toggle = collapsible && onToggle && (
     <button
       type="button"
-      onClick={onEdit}
-      className={`flex min-h-14 w-full items-center gap-3 px-3 text-left transition-colors hover:bg-subtle ${className}`}
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-label={`${collapsed ? "Expand" : "Collapse"} ${category.name_en}`}
+      className="pressable flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-fg"
     >
-      {body}
-      <Icon name="pencil" className="size-4 shrink-0 text-muted" />
+      <Icon
+        name="chevron"
+        className={`size-4 transition-transform ${collapsed ? "" : "rotate-90"}`}
+      />
     </button>
+  );
+
+  return (
+    <div className={`flex min-h-14 items-center gap-1 pr-3 ${className}`}>
+      {toggle ?? <span className="w-1" aria-hidden />}
+
+      {canEdit ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex min-h-14 flex-1 items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-subtle"
+        >
+          {body}
+          <Icon name="pencil" className="size-4 shrink-0 text-muted" />
+        </button>
+      ) : (
+        <div className="flex min-h-14 flex-1 items-center gap-3 px-2">{body}</div>
+      )}
+
+      {collapsed && childCount > 0 && (
+        <span className="shrink-0 text-xs text-muted">{childCount}</span>
+      )}
+    </div>
   );
 }

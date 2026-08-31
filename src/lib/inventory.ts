@@ -344,6 +344,107 @@ export function categoryOptions(
  */
 export const OPTION_INDENT = "\u00a0\u00a0\u00a0";
 
+// Searching and filtering the reference lists ----------------------------------
+
+/**
+ * Whether a list is showing everything, or only what is in use.
+ *
+ * A catalogue accumulates categories and brands that were right once and are
+ * not any more. Deactivating rather than deleting is what keeps the items filed
+ * under them readable, so the lists need a way to put that history aside.
+ */
+export type ActiveFilter = "all" | "active" | "inactive";
+
+export const ACTIVE_FILTERS: { value: ActiveFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
+
+export function matchesActive(active: boolean, filter: ActiveFilter): boolean {
+  if (filter === "all") return true;
+  return filter === "active" ? active : !active;
+}
+
+/** Does this category answer the search, in either language? */
+export function matchesCategory(category: Category, query: string): boolean {
+  const needle = fold(query);
+  if (needle === "") return true;
+  return [category.name_en, category.name_km, category.description].some(
+    (field) => field != null && fold(field).includes(needle),
+  );
+}
+
+export function matchesBrand(brand: Brand, query: string): boolean {
+  const needle = fold(query);
+  if (needle === "") return true;
+  return [brand.name, brand.description].some(
+    (field) => field != null && fold(field).includes(needle),
+  );
+}
+
+export function filterBrands(
+  brands: Brand[],
+  query: string,
+  filter: ActiveFilter,
+): Brand[] {
+  return brands.filter((b) => matchesBrand(b, query) && matchesActive(b.active, filter));
+}
+
+/** A parent, its surviving children, and whether the parent itself matched. */
+export type CategoryBranch = {
+  parent: Category;
+  children: Category[];
+  /** True when the parent answered the search on its own merits. */
+  parentMatched: boolean;
+};
+
+/**
+ * The category tree, searched and filtered.
+ *
+ * Two rules make this readable rather than surprising:
+ *
+ *   * A parent that matches keeps all its children, so searching "Grocery"
+ *     shows what is under Grocery rather than Grocery alone.
+ *   * A parent that does not match survives if any of its children do, because
+ *     a sub-category shown without its parent has lost the thing that says
+ *     where it sits.
+ *
+ * The status filter applies to each row on its own: an inactive parent can
+ * still carry active children, and hiding those with it would make items look
+ * uncategorised when they are not.
+ */
+export function filterCategoryTree(
+  categories: Category[],
+  query: string,
+  filter: ActiveFilter,
+): CategoryBranch[] {
+  const branches: CategoryBranch[] = [];
+
+  for (const { parent, children } of categoryTree(categories)) {
+    const parentMatched = matchesCategory(parent, query);
+    const keptChildren = children.filter(
+      (c) => matchesActive(c.active, filter) && (parentMatched || matchesCategory(c, query)),
+    );
+
+    const parentKept = parentMatched && matchesActive(parent.active, filter);
+    // Kept as context for a child that matched, even when the parent itself is
+    // filtered out — otherwise the child appears to belong nowhere.
+    if (parentKept || keptChildren.length > 0) {
+      branches.push({ parent, children: keptChildren, parentMatched });
+    }
+  }
+
+  return branches;
+}
+
+export function countCategories(branches: CategoryBranch[]): number {
+  return branches.reduce(
+    (total, branch) => total + branch.children.length + (branch.parentMatched ? 1 : 0),
+    0,
+  );
+}
+
 export type CategoryTree = { parent: Category; children: Category[] }[];
 
 /** The category list as it is managed: parents, each with its own children. */

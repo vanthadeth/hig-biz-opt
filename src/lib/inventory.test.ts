@@ -3,7 +3,14 @@ import {
   bothPrices,
   categoryOptions,
   categoryPath,
+  ACTIVE_FILTERS,
   categoryLabel,
+  countCategories,
+  filterBrands,
+  filterCategoryTree,
+  matchesActive,
+  matchesBrand,
+  matchesCategory,
   categoryTree,
   countItems,
   formatKhr,
@@ -16,6 +23,7 @@ import {
   priceRange,
   variantLabel,
   type CatalogueEntry,
+  type Brand,
   type Category,
 } from "./inventory";
 
@@ -411,5 +419,145 @@ describe("parsePrice", () => {
 
   it("accepts zero, which is a price", () => {
     expect(parsePrice("0")).toBe(0);
+  });
+});
+
+const brand = (over: Partial<Brand> & { id: string; name: string }): Brand => ({
+  description: null,
+  logo_path: null,
+  active: true,
+  sort_order: 0,
+  ...over,
+});
+
+describe("matchesActive", () => {
+  it("lets everything through on All", () => {
+    expect(matchesActive(true, "all")).toBe(true);
+    expect(matchesActive(false, "all")).toBe(true);
+  });
+
+  it("splits the two apart otherwise", () => {
+    expect(matchesActive(true, "active")).toBe(true);
+    expect(matchesActive(false, "active")).toBe(false);
+    expect(matchesActive(false, "inactive")).toBe(true);
+    expect(matchesActive(true, "inactive")).toBe(false);
+  });
+
+  it("offers exactly the three choices, All first", () => {
+    expect(ACTIVE_FILTERS.map((f) => f.value)).toEqual(["all", "active", "inactive"]);
+  });
+});
+
+describe("matchesCategory", () => {
+  const drinks = category({
+    id: "d",
+    name_en: "Drinks",
+    name_km: "ភេសជ្ជៈ",
+    description: "Bottled and canned",
+  });
+
+  it("matches everything on an empty query", () => {
+    expect(matchesCategory(drinks, "")).toBe(true);
+    expect(matchesCategory(drinks, "  ")).toBe(true);
+  });
+
+  it("matches either language and the description", () => {
+    expect(matchesCategory(drinks, "DRINK")).toBe(true);
+    expect(matchesCategory(drinks, "ភេសជ្ជៈ")).toBe(true);
+    expect(matchesCategory(drinks, "canned")).toBe(true);
+  });
+
+  it("does not match something absent", () => {
+    expect(matchesCategory(drinks, "hammer")).toBe(false);
+  });
+});
+
+describe("matchesBrand / filterBrands", () => {
+  const brands = [
+    brand({ id: "a", name: "Angkor", description: "Brewed in Sihanoukville" }),
+    brand({ id: "b", name: "Hanuman", active: false }),
+  ];
+
+  it("matches the name and the description", () => {
+    expect(matchesBrand(brands[0], "angkor")).toBe(true);
+    expect(matchesBrand(brands[0], "sihanoukville")).toBe(true);
+    expect(matchesBrand(brands[0], "cement")).toBe(false);
+  });
+
+  it("filters by search and status together", () => {
+    expect(filterBrands(brands, "", "all").map((b) => b.id)).toEqual(["a", "b"]);
+    expect(filterBrands(brands, "", "active").map((b) => b.id)).toEqual(["a"]);
+    expect(filterBrands(brands, "", "inactive").map((b) => b.id)).toEqual(["b"]);
+    expect(filterBrands(brands, "hanuman", "active")).toEqual([]);
+  });
+});
+
+describe("filterCategoryTree", () => {
+  const tree = [
+    category({ id: "grocery", name_en: "Grocery", sort_order: 1 }),
+    category({ id: "drinks", name_en: "Drinks", parent_id: "grocery" }),
+    category({ id: "snacks", name_en: "Snacks", parent_id: "grocery", active: false }),
+    category({ id: "tools", name_en: "Tools", sort_order: 2 }),
+    category({ id: "old", name_en: "Discontinued", sort_order: 3, active: false }),
+  ];
+
+  it("returns the whole tree when nothing is asked of it", () => {
+    const branches = filterCategoryTree(tree, "", "all");
+    expect(branches.map((b) => b.parent.id)).toEqual(["grocery", "tools", "old"]);
+    expect(branches[0].children.map((c) => c.id)).toEqual(["drinks", "snacks"]);
+  });
+
+  it("keeps every child of a parent that matched", () => {
+    // Searching "Grocery" should show what is under Grocery, not Grocery alone.
+    const branches = filterCategoryTree(tree, "grocery", "all");
+    expect(branches).toHaveLength(1);
+    expect(branches[0].children.map((c) => c.id)).toEqual(["drinks", "snacks"]);
+    expect(branches[0].parentMatched).toBe(true);
+  });
+
+  it("keeps a parent as context when only a child matched", () => {
+    // A sub-category shown without its parent has lost what says where it sits.
+    const branches = filterCategoryTree(tree, "drinks", "all");
+    expect(branches).toHaveLength(1);
+    expect(branches[0].parent.id).toBe("grocery");
+    expect(branches[0].parentMatched).toBe(false);
+    expect(branches[0].children.map((c) => c.id)).toEqual(["drinks"]);
+  });
+
+  it("filters each row on its own status", () => {
+    const branches = filterCategoryTree(tree, "", "active");
+    expect(branches.map((b) => b.parent.id)).toEqual(["grocery", "tools"]);
+    expect(branches[0].children.map((c) => c.id)).toEqual(["drinks"]);
+  });
+
+  it("keeps an inactive parent that still has active children", () => {
+    // Hiding those children with it would make their items look uncategorised
+    // when they are not.
+    const withInactiveParent = [
+      category({ id: "p", name_en: "Winding Down", active: false }),
+      category({ id: "c", name_en: "Still Selling", parent_id: "p" }),
+    ];
+    const branches = filterCategoryTree(withInactiveParent, "", "active");
+    expect(branches).toHaveLength(1);
+    expect(branches[0].parentMatched).toBe(true);
+    expect(branches[0].children.map((c) => c.id)).toEqual(["c"]);
+  });
+
+  it("shows only what is retired on Inactive", () => {
+    const branches = filterCategoryTree(tree, "", "inactive");
+    expect(branches.map((b) => b.parent.id)).toEqual(["grocery", "old"]);
+    expect(branches[0].children.map((c) => c.id)).toEqual(["snacks"]);
+  });
+
+  it("comes back empty when nothing matches", () => {
+    expect(filterCategoryTree(tree, "cement", "all")).toEqual([]);
+  });
+
+  it("counts the rows a person can actually see", () => {
+    // The parent only counts when it matched in its own right; when it is there
+    // as context for a child, counting it would overstate the result.
+    expect(countCategories(filterCategoryTree(tree, "", "all"))).toBe(5);
+    expect(countCategories(filterCategoryTree(tree, "drinks", "all"))).toBe(1);
+    expect(countCategories([])).toBe(0);
   });
 });

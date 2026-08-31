@@ -173,7 +173,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 348 tests
+npm test          # Vitest, 364 tests
 npm run test:watch
 ```
 

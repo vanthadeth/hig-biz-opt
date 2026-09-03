@@ -1,10 +1,16 @@
 "use client";
 
+import { useState } from "react";
+import { Icon } from "@/components/Icon";
 import { Field, SelectField } from "@/components/ui/Field";
+import { haptic } from "@/lib/haptics";
 import {
   communesIn,
   coordinateProblem,
   districtsIn,
+  formatAccuracy,
+  formatCoordinate,
+  locationProblem,
   type Commune,
   type District,
   type Province,
@@ -52,6 +58,47 @@ export function AddressFields({
   onChange: (next: AddressDraft) => void;
 }) {
   const set = (changes: Partial<AddressDraft>) => onChange({ ...draft, ...changes });
+
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [accuracy, setAccuracy] = useState<string | null>(null);
+
+  /**
+   * The rep is standing in the shop. That is the one moment the coordinates are
+   * free and certain, and typing six decimal places off a maps app afterwards is
+   * how they end up on the wrong side of the road.
+   */
+  function useMyLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationError(locationProblem());
+      return;
+    }
+
+    haptic("tap");
+    setLocating(true);
+    setLocationError(null);
+    setAccuracy(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocating(false);
+        setAccuracy(formatAccuracy(position.coords.accuracy));
+        haptic("success");
+        set({
+          latitude: formatCoordinate(position.coords.latitude),
+          longitude: formatCoordinate(position.coords.longitude),
+        });
+      },
+      (error) => {
+        setLocating(false);
+        haptic("error");
+        setLocationError(locationProblem(error.code));
+      },
+      // A phone indoors takes its time, and the cached fix from an hour ago is
+      // the wrong shop. Wait for a real one.
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  }
 
   const districtChoices = draft.province_code
     ? districtsIn(districts, draft.province_code)
@@ -175,6 +222,29 @@ export function AddressFields({
         placeholder="104.928200"
         disabled={disabled}
       />
+
+      <div className="sm:col-span-2">
+        <button
+          type="button"
+          onClick={useMyLocation}
+          disabled={disabled || locating}
+          className="pressable flex min-h-10 items-center gap-1.5 rounded-xl border border-dashed border-brand/50 px-3 text-sm font-medium text-brand disabled:opacity-60"
+        >
+          <Icon name="bolt" className="size-4" />
+          {locating ? "Finding you…" : "Use my location"}
+        </button>
+        <p className="mt-1 text-xs text-muted">
+          {accuracy
+            ? `Taken from this device, accurate to about ${accuracy}. Check it is the shop and not the road.`
+            : "Stand at the shop and tap this. Your browser will ask permission first."}
+        </p>
+      </div>
+
+      {locationError && (
+        <p role="alert" className="text-xs text-danger sm:col-span-2">
+          {locationError}
+        </p>
+      )}
 
       {problem && (
         <p role="alert" className="text-xs text-danger sm:col-span-2">

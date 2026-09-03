@@ -42,7 +42,6 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         provinces={(provinces.data ?? []) as Province[]}
         districts={(districts.data ?? []) as District[]}
         communes={(communes.data ?? []) as Commune[]}
-        canDelete={false}
         viewKey={view}
       />
     </div>

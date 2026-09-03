@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
+import { Sheet } from "@/components/ui/Sheet";
 import { StoredPhoto } from "@/components/ui/StoredPhoto";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
@@ -40,6 +41,7 @@ export function PictureManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
 
   async function add(file: File | null) {
     if (!file) return;
@@ -121,7 +123,17 @@ export function PictureManager({
     }
   }
 
-  async function remove(picture: CustomerPicture) {
+  /**
+   * Retired, not deleted — 0031 took the delete away from this module.
+   *
+   * The file in storage stays with it. A picture that can be brought back needs
+   * its object, and deleting the one thing that cannot be recreated would make
+   * "soft delete" a word rather than a fact.
+   *
+   * `is_primary` is cleared alongside, or a retired picture would hold the slot
+   * the partial unique index only allows one of.
+   */
+  async function retire(picture: CustomerPicture) {
     setBusy(true);
     setError(null);
     const supabase = createClient();
@@ -129,7 +141,7 @@ export function PictureManager({
     try {
       const { data, error } = await supabase
         .from("customer_pictures")
-        .delete()
+        .update({ active: false, is_primary: false })
         .eq("id", picture.id)
         .select("id");
       if (error) throw error;
@@ -137,12 +149,23 @@ export function PictureManager({
         throw new Error("That picture could not be removed. You may not have permission.");
       }
 
-      // The object goes too. A row removed but a file left behind is storage
-      // nobody can reach and nobody is counting.
-      await supabase.storage.from(CUSTOMERS_BUCKET).remove([picture.photo_path]);
-
       haptic("success");
-      setPictures((list) => list.filter((p) => p.id !== picture.id));
+      setPending(null);
+      setPictures((list) => {
+        const left = list.filter((p) => p.id !== picture.id);
+        // The shop keeps a main picture as long as it has any picture at all.
+        if (picture.is_primary && left.length > 0 && !left.some((p) => p.is_primary)) {
+          return left.map((p, i) => (i === 0 ? { ...p, is_primary: true } : p));
+        }
+        return left;
+      });
+
+      // Promoting the stand-in on screen only would leave the list showing a
+      // main picture the database does not agree about.
+      if (picture.is_primary) {
+        const next = pictures.find((p) => p.id !== picture.id);
+        if (next) await supabase.from("customer_pictures").update({ is_primary: true }).eq("id", next.id);
+      }
     } catch (e) {
       haptic("error");
       setError(e instanceof Error ? e.message : "The picture could not be removed.");
@@ -150,6 +173,8 @@ export function PictureManager({
       setBusy(false);
     }
   }
+
+  const asked = pictures.find((p) => p.id === pending) ?? null;
 
   return (
     <Card className="p-4">
@@ -196,7 +221,10 @@ export function PictureManager({
                 {canEdit && (
                   <button
                     type="button"
-                    onClick={() => remove(picture)}
+                    onClick={() => {
+                      haptic("tap");
+                      setPending(picture.id);
+                    }}
                     disabled={busy}
                     aria-label={`Remove ${picture.description ?? "picture"}`}
                     className="pressable ml-auto flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted hover:text-danger disabled:opacity-60"
@@ -240,6 +268,42 @@ export function PictureManager({
           {error}
         </p>
       )}
+
+      <Sheet
+        open={asked !== null}
+        onClose={() => setPending(null)}
+        title="Remove picture"
+      >
+        {asked && (
+          <div className="space-y-4 px-3 pb-4 pt-1">
+            <p className="text-sm text-muted">
+              {asked.description
+                ? `"${asked.description}" comes off this shop's pictures.`
+                : "This picture comes off this shop's pictures."}{" "}
+              The record and the file are kept rather than deleted.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPending(null)}
+                disabled={busy}
+                className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium text-muted disabled:opacity-60"
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                onClick={() => retire(asked)}
+                disabled={busy}
+                className="pressable min-h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-danger-fg disabled:opacity-60"
+              >
+                {busy ? "Removing…" : "Remove"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
     </Card>
   );
 }

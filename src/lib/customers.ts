@@ -147,6 +147,13 @@ export type Customer = {
   last_purchase_date: string | null;
 };
 
+/**
+ * `active` is how a contact leaves, since 0031 removed the delete outright.
+ *
+ * A shop's people change, and the record that somebody used to answer that
+ * phone is worth as much as the record of who answers it now — on a book of
+ * accounts, more. Retiring keeps it and takes them off the screens.
+ */
 export type CustomerContact = {
   id: string;
   customer_id: string;
@@ -156,6 +163,7 @@ export type CustomerContact = {
   telegram_id: string | null;
   is_primary: boolean;
   sort_order: number;
+  active: boolean;
 };
 
 export type CustomerPicture = {
@@ -165,6 +173,7 @@ export type CustomerPicture = {
   description: string | null;
   is_primary: boolean;
   sort_order: number;
+  active: boolean;
 };
 
 /** One row of public.customer_directory. */
@@ -202,10 +211,10 @@ export const DIRECTORY_COLUMNS =
   "id, shop_name, business_type, status, owner_id, owner_name, street_address, landmark, zipcode, latitude, longitude, credit_limit_usd, last_visit_date, last_purchase_date, province_name, district_name, commune_name, province_code, district_code, commune_code, primary_contact_name, primary_contact_phone, primary_photo_path, contact_count";
 
 export const CONTACT_COLUMNS =
-  "id, customer_id, name, position, phone, telegram_id, is_primary, sort_order";
+  "id, customer_id, name, position, phone, telegram_id, is_primary, sort_order, active";
 
 export const PICTURE_COLUMNS =
-  "id, customer_id, photo_path, description, is_primary, sort_order";
+  "id, customer_id, photo_path, description, is_primary, sort_order, active";
 
 export const CUSTOMERS_BUCKET = "customers";
 
@@ -359,6 +368,47 @@ export function coordinateProblem(
     return "A location needs both numbers, or neither.";
   }
   return null;
+}
+
+// Reading the location off the phone --------------------------------------------
+
+/**
+ * Six decimal places, which is about a tenth of a metre.
+ *
+ * Fewer would throw away accuracy the phone actually has; more is writing down
+ * noise. The column is numeric, so this is the form the box shows rather than
+ * the precision the database keeps.
+ */
+export const COORDINATE_PLACES = 6;
+
+export function formatCoordinate(value: number): string {
+  return value.toFixed(COORDINATE_PLACES);
+}
+
+/** "±12 m" — how much to trust the reading, in the unit the phone reports. */
+export function formatAccuracy(metres: number | null | undefined): string | null {
+  if (metres === null || metres === undefined || !Number.isFinite(metres)) return null;
+  return `±${Math.round(metres)} m`;
+}
+
+/**
+ * Why the browser would not give a position, in words a rep can act on.
+ *
+ * The codes are the ones in GeolocationPositionError: 1 refused, 2 no fix,
+ * 3 timed out. Anything else, including the API not being there at all, gets
+ * the general answer.
+ */
+export const GEOLOCATION_MESSAGES: Record<number, string> = {
+  1: "Location permission was refused. Allow it for this site in your browser, then try again.",
+  2: "Your device could not get a fix. Step outside or nearer a window and try again.",
+  3: "That took too long. Try again once the signal is better.",
+};
+
+export function locationProblem(code?: number): string {
+  return (
+    (code === undefined ? undefined : GEOLOCATION_MESSAGES[code]) ??
+    "This device cannot report its location. Type the numbers instead."
+  );
 }
 
 // Receivables ------------------------------------------------------------------

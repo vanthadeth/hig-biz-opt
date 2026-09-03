@@ -5,6 +5,9 @@ import {
   AGEING_BUCKETS,
   communesIn,
   coordinateProblem,
+  formatAccuracy,
+  formatCoordinate,
+  locationProblem,
   countCustomers,
   creditUsage,
   daysBetween,
@@ -474,5 +477,60 @@ describe("statusChange", () => {
     expect(statusChange("banned", "  Cheques bounced  ").status_note).toBe(
       "Cheques bounced",
     );
+  });
+});
+
+describe("formatCoordinate", () => {
+  it("writes six decimal places, which is about a tenth of a metre", () => {
+    // Fewer throws away accuracy the phone has; more writes down noise.
+    expect(formatCoordinate(11.5564)).toBe("11.556400");
+    expect(formatCoordinate(104.92821234567)).toBe("104.928212");
+  });
+
+  it("keeps a southern or western reading negative", () => {
+    expect(formatCoordinate(-11.5564)).toBe("-11.556400");
+  });
+
+  it("produces something the form's own validation accepts", () => {
+    // The button writes into the same boxes a person types into, so what it
+    // writes has to pass the check that guards them.
+    expect(
+      coordinateProblem(formatCoordinate(11.5564), formatCoordinate(104.9282)),
+    ).toBeNull();
+  });
+});
+
+describe("formatAccuracy", () => {
+  it("rounds to whole metres, because half a metre of claimed precision is a lie", () => {
+    expect(formatAccuracy(12.4)).toBe("±12 m");
+    expect(formatAccuracy(0.6)).toBe("±1 m");
+  });
+
+  it("says nothing when the device did not report it", () => {
+    expect(formatAccuracy(null)).toBeNull();
+    expect(formatAccuracy(undefined)).toBeNull();
+    expect(formatAccuracy(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe("locationProblem", () => {
+  it("tells a refused permission apart from a device that cannot manage it", () => {
+    // Different problems, different things to do about them: one is a browser
+    // setting, the other means type the numbers.
+    expect(locationProblem(1)).toContain("permission");
+    expect(locationProblem(2)).toContain("fix");
+    expect(locationProblem(3)).toContain("too long");
+  });
+
+  it("has a general answer for no code at all", () => {
+    expect(locationProblem()).toContain("Type the numbers");
+    expect(locationProblem(99)).toContain("Type the numbers");
+  });
+
+  it("never comes back empty, whatever it is handed", () => {
+    // This string is the only thing the rep sees when the button fails.
+    for (const code of [undefined, 0, 1, 2, 3, 4, -1]) {
+      expect(locationProblem(code).length).toBeGreaterThan(10);
+    }
   });
 });

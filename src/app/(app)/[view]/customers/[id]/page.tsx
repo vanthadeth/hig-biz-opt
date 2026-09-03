@@ -48,16 +48,21 @@ export default async function Page({
 
   const [record, contactsResult, picturesResult, directory, mine] = await Promise.all([
     supabase.from("customers").select(CUSTOMER_COLUMNS).eq("id", id).maybeSingle(),
+    // Retired contacts and pictures stay in the table and off the screen.
+    // 0031 replaced deleting them with this, so the record of who used to
+    // answer a shop's phone survives without cluttering who answers it now.
     supabase
       .from("customer_contacts")
       .select(CONTACT_COLUMNS)
       .eq("customer_id", id)
+      .eq("active", true)
       .order("is_primary", { ascending: false })
       .order("sort_order"),
     supabase
       .from("customer_pictures")
       .select(PICTURE_COLUMNS)
       .eq("customer_id", id)
+      .eq("active", true)
       .order("is_primary", { ascending: false })
       .order("sort_order"),
     supabase
@@ -80,7 +85,6 @@ export default async function Page({
   // the policy's business, and a refused write says so with an empty result —
   // so the button is a courtesy and the policy is the rule.
   const canEdit = can(mine, "customer", "edit");
-  const canDelete = can(mine, "customer", "delete");
 
   const where = addressLine({
     street_address: customer.street_address,
@@ -158,9 +162,13 @@ export default async function Page({
                       <span className="truncate text-sm font-medium">{contact.name}</span>
                       {contact.is_primary && <Chip tone="brand">Ring first</Chip>}
                     </span>
-                    {contact.position && (
+                    {/* The number itself, not only the button that dials it.
+                        A rep reads it out over the radio, copies it into a
+                        message, or checks it against the one on the door — none
+                        of which a tel: link does. */}
+                    {(contact.position || contact.phone) && (
                       <span className="block truncate text-xs text-muted">
-                        {contact.position}
+                        {[contact.position, contact.phone].filter(Boolean).join(" · ")}
                       </span>
                     )}
                   </span>
@@ -242,12 +250,11 @@ export default async function Page({
         </Card>
       )}
 
-      {canDelete && (
-        <p className="px-1 text-xs text-muted">
-          Removing a customer takes its contacts and pictures with it. Setting the
-          status to Inactive keeps the history.
-        </p>
-      )}
+      <p className="px-1 text-xs text-muted">
+        Nothing here is deleted. A shop leaves the book by its status, and a
+        contact or a picture by being removed from it — the record is kept
+        either way.
+      </p>
     </div>
   );
 }

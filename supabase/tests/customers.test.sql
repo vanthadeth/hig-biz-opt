@@ -14,7 +14,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CUSTOMERS OK - 47 assertions passed (rls: ran)
+--     ERROR:  CUSTOMERS OK - 57 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -233,6 +233,53 @@ begin
   perform pg_temp.eq('and names the rep whose account it is',
     (select owner_name from public.customer_directory where id = v_mine), 'Cx Rep');
 
+  ----------------------------------------------------------------------------
+  -- Retiring, which is the only way anything leaves
+  --
+  -- 0031 took the delete away from this module. A contact is retired instead:
+  -- the row stays, so who used to answer that phone is still answerable, and
+  -- the screens stop offering them.
+  ----------------------------------------------------------------------------
+  update public.customer_contacts
+     set active = false, is_primary = false
+   where customer_id = v_mine and name = 'Sok Dara';
+
+  perform pg_temp.eq('a retired contact is still on the record',
+    (select count(*)::text from public.customer_contacts
+      where customer_id = v_mine and name = 'Sok Dara'), '1');
+  perform pg_temp.eq('but leaves the count of people at the shop',
+    (select contact_count::text from public.customer_directory where id = v_mine), '1');
+  perform pg_temp.eq('and the next one becomes who you ring',
+    (select primary_contact_name from public.customer_directory where id = v_mine),
+    'Chan Thida');
+
+  -- The partial unique index counts only active rows. Without that, the person
+  -- who left would hold the slot against the person who replaced them.
+  update public.customer_contacts set is_primary = true
+   where customer_id = v_mine and name = 'Chan Thida';
+  perform pg_temp.eq('a retired primary does not block their replacement',
+    (select name from public.customer_contacts
+      where customer_id = v_mine and is_primary and active), 'Chan Thida');
+  perform pg_temp.rejects('though two live primaries are still refused',
+    format('insert into public.customer_contacts (customer_id, name, is_primary)
+              values (%L, ''CX Second Primary'', true)', v_mine));
+
+  update public.customer_pictures
+     set active = false, is_primary = false
+   where customer_id = v_mine and description = 'Shopfront';
+  perform pg_temp.eq('a retired picture leaves the list too',
+    (select primary_photo_path from public.customer_directory where id = v_mine),
+    v_mine || '/inside.jpg');
+  perform pg_temp.eq('while its row stays put',
+    (select count(*)::text from public.customer_pictures
+      where customer_id = v_mine and description = 'Shopfront'), '1');
+
+  -- Put the shop back as the rest of the suite expects to find it.
+  update public.customer_contacts set active = true
+   where customer_id = v_mine and name = 'Sok Dara';
+  update public.customer_pictures set active = true
+   where customer_id = v_mine and description = 'Shopfront';
+
   -- Typed text stands in when no code was picked, which is what keeps an address
   -- enterable before the district and commune import has happened.
   insert into public.customers (shop_name, owner_id, province_text, district_text)
@@ -307,9 +354,10 @@ begin
     perform pg_temp.eq('creating one without naming an owner makes it theirs',
       (select owner_id::text from public.customers where shop_name = 'CX Rep Made'), v_rep::text);
 
-    delete from public.customers where id = v_mine;
-    perform pg_temp.eq('sales holds no delete at all',
-      (select count(*)::text from public.customers where id = v_mine), '1');
+    -- Refused rather than matching nothing: 0031 revoked the privilege, so the
+    -- statement never reaches a policy to be filtered by.
+    perform pg_temp.refused('sales may not delete a shop',
+      format('delete from public.customers where id = %L', v_mine));
 
     -- A contact follows the customer it hangs off, through app.customer_owner.
     insert into public.customer_contacts (customer_id, name) values (v_mine, 'CX Added By Rep');
@@ -342,14 +390,27 @@ begin
     perform pg_temp.eq('but may not change one',
       (select coalesce(remarks, 'untouched') from public.customers where id = v_mine), 'untouched');
 
+    -- Not even the administrator, and that is the point of 0031: a customer
+    -- leaves the book by its status, and a contact or picture by being retired.
+    -- Nothing in this module destroys a row.
     perform pg_temp.act_as(v_sa);
-    delete from public.customers where id = v_mine;
-    perform pg_temp.eq('an administrator may remove one',
-      (select count(*)::text from public.customers where id = v_mine), '0');
-    perform pg_temp.eq('and its contacts and pictures go with it',
-      (select (select count(*) from public.customer_contacts where customer_id = v_mine)
-            + (select count(*) from public.customer_pictures where customer_id = v_mine))::text,
-      '0');
+    perform pg_temp.refused('nor may an administrator',
+      format('delete from public.customers where id = %L', v_mine));
+    perform pg_temp.refused('nor delete a contact',
+      format('delete from public.customer_contacts where customer_id = %L', v_mine));
+    perform pg_temp.refused('nor a picture',
+      format('delete from public.customer_pictures where customer_id = %L', v_mine));
+    perform pg_temp.eq('the shop and its people are all still there',
+      (select (select count(*) from public.customers where id = v_mine)
+            + (select count(*) from public.customer_contacts where customer_id = v_mine))::text,
+      '4');
+
+    -- Retiring is what the form does instead, and it goes through the policy.
+    update public.customer_contacts set active = false
+     where customer_id = v_mine and name = 'Chan Thida';
+    perform pg_temp.eq('but retiring a contact goes through',
+      (select active::text from public.customer_contacts
+        where customer_id = v_mine and name = 'Chan Thida'), 'false');
 
     -- The geography guard is definer, so it still bites under a policy.
     perform pg_temp.rejects('the address chain still holds under RLS',

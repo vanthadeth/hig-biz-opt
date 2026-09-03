@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Field } from "@/components/ui/Field";
+import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
 
 /**
@@ -81,11 +83,24 @@ export function ContactRows({
     onChange(contacts.map((c) => ({ ...c, is_primary: c.key === key })));
   }
 
-  function remove(key: string) {
+  const [pending, setPending] = useState<string | null>(null);
+  const asked = contacts.find((c) => c.key === pending) ?? null;
+
+  /**
+   * A row nobody has typed into goes without ceremony — there is nothing to
+   * lose and nothing to confirm. Anything else asks first.
+   */
+  function askRemove(contact: ContactDraft) {
     haptic("tap");
+    if (contact.id === null && contactIsEmpty(contact)) remove(contact.key);
+    else setPending(contact.key);
+  }
+
+  function remove(key: string) {
     const next = contacts.filter((c) => c.key !== key);
     // Removing the primary would leave a shop nobody knows who to ring at.
     if (next.length > 0 && !next.some((c) => c.is_primary)) next[0].is_primary = true;
+    setPending(null);
     onChange(next);
   }
 
@@ -110,7 +125,7 @@ export function ContactRows({
               {!disabled && contacts.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => remove(contact.key)}
+                  onClick={() => askRemove(contact)}
                   aria-label={`Remove contact ${index + 1}`}
                   className="pressable flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted hover:text-danger"
                 >
@@ -178,6 +193,45 @@ export function ContactRows({
           Add another contact
         </button>
       )}
+
+      <Sheet open={asked !== null} onClose={() => setPending(null)} title="Remove contact">
+        {asked && (
+          <div className="space-y-4 px-3 pb-4 pt-1">
+            <p className="text-sm text-muted">
+              {asked.id === null ? (
+                <>
+                  {asked.name.trim() || "This contact"} has not been saved yet.
+                  Removing it discards what you have typed.
+                </>
+              ) : (
+                <>
+                  {asked.name.trim() || "This contact"} comes off this
+                  shop&rsquo;s list when you save. The record is kept rather than
+                  deleted, so who used to answer that phone is still answerable
+                  later.
+                </>
+              )}
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPending(null)}
+                className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium text-muted"
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(asked.key)}
+                className="pressable min-h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-danger-fg"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
     </div>
   );
 }

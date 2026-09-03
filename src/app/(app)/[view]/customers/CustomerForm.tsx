@@ -85,7 +85,6 @@ export function CustomerForm({
   provinces,
   districts,
   communes,
-  canDelete,
   viewKey,
 }: {
   customer: Customer | null;
@@ -93,7 +92,6 @@ export function CustomerForm({
   provinces: Province[];
   districts: District[];
   communes: Commune[];
-  canDelete: boolean;
   viewKey: string;
 }) {
   const router = useRouter();
@@ -151,11 +149,23 @@ export function CustomerForm({
     // customer, and leaving it alone must not create a nameless person.
     const filled = contacts.filter((c) => !contactIsEmpty(c));
 
+    // Retired, not deleted. 0031 took the delete away from this module
+    // entirely: who used to answer a shop's phone is worth keeping, and it is
+    // also the one change an audit entry could never be followed back to.
+    // `is_primary` is cleared with it, or the retired row would hold a slot the
+    // partial unique index only allows one of.
     const keptIds = new Set(filled.map((c) => c.id).filter(Boolean) as string[]);
     const dropped = saved.filter((row) => !keptIds.has(row.id)).map((row) => row.id);
     if (dropped.length > 0) {
-      const { error } = await supabase.from("customer_contacts").delete().in("id", dropped);
+      const { data, error } = await supabase
+        .from("customer_contacts")
+        .update({ active: false, is_primary: false })
+        .in("id", dropped)
+        .select("id");
       if (error) throw error;
+      if (data?.length !== dropped.length) {
+        throw new Error("Those contacts could not be removed. You may not have permission.");
+      }
     }
 
     // The partial unique index means an old primary and a new one cannot both
@@ -247,30 +257,6 @@ export function CustomerForm({
       haptic("error");
       setError(e instanceof Error ? e.message : "The customer could not be saved.");
     } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    if (creating) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { data, error } = await createClient()
-        .from("customers")
-        .delete()
-        .eq("id", customer.id)
-        .select("id");
-      if (error) throw error;
-      if (!data?.length) {
-        throw new Error("That customer could not be removed. You may not have permission.");
-      }
-      haptic("success");
-      router.replace(`/${viewKey}/customers`);
-      router.refresh();
-    } catch (e) {
-      haptic("error");
-      setError(e instanceof Error ? e.message : "The customer could not be removed.");
       setBusy(false);
     }
   }
@@ -382,17 +368,6 @@ export function CustomerForm({
                       ? "New customer"
                       : "Editing"}
         </span>
-
-        {!creating && canDelete && (
-          <button
-            type="button"
-            onClick={remove}
-            disabled={busy}
-            className="pressable min-h-10 rounded-xl border border-line px-3 text-sm font-medium text-danger disabled:opacity-60"
-          >
-            Remove
-          </button>
-        )}
 
         <button
           type="button"

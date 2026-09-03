@@ -26,10 +26,13 @@ export default async function Page({
 
   const [record, contacts, provinces, districts, communes, mine] = await Promise.all([
     supabase.from("customers").select(CUSTOMER_COLUMNS).eq("id", id).maybeSingle(),
+    // Active only: a retired contact is not something the form should offer to
+    // edit, and saving one back would quietly reinstate them.
     supabase
       .from("customer_contacts")
       .select(CONTACT_COLUMNS)
       .eq("customer_id", id)
+      .eq("active", true)
       .order("is_primary", { ascending: false })
       .order("sort_order"),
     supabase.from("geo_provinces").select("code, name_en, name_km").order("sort_order"),
@@ -60,7 +63,6 @@ export default async function Page({
         provinces={(provinces.data ?? []) as Province[]}
         districts={(districts.data ?? []) as District[]}
         communes={(communes.data ?? []) as Commune[]}
-        canDelete={can(mine, "customer", "delete")}
         viewKey={view}
       />
     </div>

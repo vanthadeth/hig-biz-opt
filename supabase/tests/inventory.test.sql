@@ -192,8 +192,11 @@ begin
   -- different English categories can share a Khmer word without either being
   -- a data-entry slip.
   insert into public.item_categories (name_en, name_km) values ('IX Beverages', 'ភេសជ្ជៈ');
+  -- Scoped to this suite's own rows: a real catalogue may well file something
+  -- under the same Khmer word, and that must not decide whether this passes.
   perform pg_temp.eq('the same Khmer name may sit on two categories',
-    (select count(*)::text from public.item_categories where name_km = 'ភេសជ្ជៈ'), '2');
+    (select count(*)::text from public.item_categories
+      where name_km = 'ភេសជ្ជៈ' and name_en like 'IX %'), '2');
 
   ----------------------------------------------------------------------------
   -- Brands
@@ -335,8 +338,12 @@ begin
               values (%L, ''items/a/second-main.jpg'', true)', v_itm));
   insert into public.item_pictures (item_id, photo_path, is_primary)
     values (v_pln, 'items/b/hero.jpg', true);
+  -- Scoped to this suite's own two items. The database holds real stock now,
+  -- and an assertion that counts every row in a table is an assertion that
+  -- starts failing the day somebody uses the app.
   perform pg_temp.eq('but two items may each have one',
-    (select count(*)::text from public.item_pictures where is_primary), '2');
+    (select count(*)::text from public.item_pictures
+      where is_primary and item_id in (v_itm, v_pln)), '2');
 
   -- An item with a variant photo but no picture of its own. The variant's photo
   -- stands in, so nothing entered before 0029 stops showing.

@@ -10,8 +10,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
   bothPrices,
   categoryPath,
-  formatKhr,
-  formatUsd,
   INVENTORY_BUCKET,
   ITEM_COLUMNS,
   variantLabel,
@@ -19,6 +17,7 @@ import {
   type Item,
   type Variant,
 } from "@/lib/inventory";
+import { ItemStatusControls } from "../ItemStatusControls";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -87,13 +86,8 @@ export default async function Page({
   // name goes on its own chip beside it, where there is room for it.
   const categoryKm = (category.data?.name_km as string) ?? null;
 
-  const priced = variants.filter((v) => v.active);
-  const summary = bothPrices({
-    min_price_usd: min(priced.map((v) => v.price_usd)),
-    max_price_usd: max(priced.map((v) => v.price_usd)),
-    min_price_khr: min(priced.map((v) => v.price_khr)),
-    max_price_khr: max(priced.map((v) => v.price_khr)),
-  });
+  // One item, one price. There is nothing to take a span across any more.
+  const summary = bothPrices(item);
 
   const lead = variants.find((v) => v.photo_path)?.photo_path ?? null;
 
@@ -119,6 +113,7 @@ export default async function Page({
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold tracking-tight">{item.name_en}</h1>
             {item.name_km && <p className="text-sm text-muted">{item.name_km}</p>}
+            {item.code && <p className="text-xs text-muted">{item.code}</p>}
             <p className="mt-1 text-sm">{summary}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {!item.active && <Chip tone="warn">Inactive</Chip>}
@@ -171,41 +166,30 @@ export default async function Page({
                   <span className="block truncate text-sm font-medium">
                     {variantLabel(variant)}
                   </span>
-                  {/* The code names the thing on the shelf and the barcode is
-                      what a scanner reads, so both belong on the row rather
-                      than only inside the edit form. */}
-                  {(variant.code || variant.barcode) && (
+                  {/* The barcode is what a scanner reads off this particular
+                      package, so it belongs on the row rather than only inside
+                      the edit form. The price is the item's, and is above. */}
+                  {variant.barcode && variantLabel(variant) !== variant.barcode.trim() && (
                     <span className="block truncate text-xs text-muted">
-                      {[variant.code, variant.barcode].filter(Boolean).join(" · ")}
+                      {variant.barcode}
                     </span>
                   )}
                   {!variant.active && (
                     <span className="text-xs text-muted">Not for sale</span>
                   )}
                 </span>
-                <span className="shrink-0 text-right text-sm">
-                  <span className="block">{formatUsd(variant.price_usd) ?? "—"}</span>
-                  <span className="block text-xs text-muted">
-                    {formatKhr(variant.price_khr) ?? "—"}
-                  </span>
-                </span>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      <ItemStatusControls
+        itemId={item.id}
+        name={item.name_en}
+        active={item.active}
+        canEdit={canEdit}
+      />
     </div>
   );
-}
-
-// The catalogue view does this in SQL for the list; one record is not worth a
-// second round trip to ask the same question.
-function min(values: (number | null)[]): number | null {
-  const set = values.filter((v): v is number => v !== null);
-  return set.length ? Math.min(...set) : null;
-}
-
-function max(values: (number | null)[]): number | null {
-  const set = values.filter((v): v is number => v !== null);
-  return set.length ? Math.max(...set) : null;
 }

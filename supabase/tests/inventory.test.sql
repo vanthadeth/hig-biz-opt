@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  INVENTORY OK - 71 assertions passed (rls: ran)
+--     ERROR:  INVENTORY OK - 76 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -219,93 +219,111 @@ begin
     'insert into public.items (name_en) values (''  '')');
   perform pg_temp.rejects('a blank Khmer name is not a Khmer name',
     'insert into public.items (name_en, name_km) values (''IX Blank'', ''   '')');
-  -- The item no longer carries a code of its own; that moved to the variant in
-  -- 0026, because the variant is what somebody picks up and scans.
-  perform pg_temp.eq('an item has no code column to collide on',
-    (select count(*)::text from information_schema.columns
-      where table_schema = 'public' and table_name = 'items' and column_name = 'code'), '0');
+
+  ----------------------------------------------------------------------------
+  -- The item carries the code and the price
+  --
+  -- 0028 moved both back up from the variant. HIG prices one item one way, and
+  -- a price per variant made every screen report a range where a single figure
+  -- was meant. The code is unique across the whole catalogue rather than within
+  -- one category: a code that identifies two different things is not an
+  -- identifier.
+  ----------------------------------------------------------------------------
+  update public.items set code = 'IX-001', price_usd = 0.50, price_khr = 2000
+    where id = v_itm;
+
+  perform pg_temp.eq('riel is stored whole',
+    (select price_khr::text from public.items where id = v_itm), '2000');
+  perform pg_temp.eq('dollars keep their cents',
+    (select price_usd::text from public.items where id = v_itm), '0.50');
+  perform pg_temp.rejects('a price may not be negative in dollars',
+    'insert into public.items (name_en, price_usd) values (''IX Negative'', -1)');
+  perform pg_temp.rejects('nor in riel',
+    'insert into public.items (name_en, price_khr) values (''IX Negative'', -1)');
+  perform pg_temp.rejects('a blank code is not a code',
+    'insert into public.items (name_en, code) values (''IX Blank Code'', ''   '')');
+  perform pg_temp.rejects('a code may not be reused on another item',
+    'insert into public.items (name_en, code) values (''IX Clash'', ''IX-001'')');
+  perform pg_temp.rejects('and case does not make it a different code',
+    'insert into public.items (name_en, code) values (''IX Clash'', ''ix-001'')');
+  -- Two absent codes are not a clash: the unique index skips nulls, which is
+  -- what lets most of a catalogue be entered before anybody assigns codes.
   insert into public.items (name_en) values ('IX Uncoded One');
   insert into public.items (name_en) values ('IX Uncoded Two');
+  perform pg_temp.eq('items without a code do not collide',
+    (select count(*)::text from public.items
+      where code is null and name_en like 'IX Uncoded%'), '2');
 
   -- A brand is optional; a category is optional.
   insert into public.items (name_en) values ('IX Unbranded') returning id into v_pln;
 
   ----------------------------------------------------------------------------
-  -- Variants carry the price and the picture
+  -- Variants describe: the size, the colour, the picture
+  --
+  -- The barcode stays on the variant deliberately. It is the one identifier
+  -- that genuinely differs between a 500 ml bottle and a 1.5 L one, because it
+  -- is assigned to the physical package rather than to the product. It is
+  -- unique across the whole catalogue, because a barcode names a product to the
+  -- world rather than only to us.
   ----------------------------------------------------------------------------
-  insert into public.item_variants (item_id, property_name, property_value, code, barcode,
-                                    price_usd, price_khr, photo_path, sort_order)
-    values (v_itm, 'Size', '500 ml', 'IX-001', '8850000000001', 0.50, 2000, 'items/a/500.jpg', 1);
-  insert into public.item_variants (item_id, property_name, property_value, code,
-                                    price_usd, price_khr, photo_path, sort_order)
-    values (v_itm, 'Size', '1.5 L', 'IX-002', 1.25, 5000, 'items/a/1500.jpg', 2);
+  perform pg_temp.eq('a variant carries neither a code nor a price of its own',
+    (select count(*)::text from information_schema.columns
+      where table_schema = 'public' and table_name = 'item_variants'
+        and column_name in ('code', 'price_usd', 'price_khr')), '0');
 
-  -- The plain item: one row, no property, which is where its price lives.
-  insert into public.item_variants (item_id, price_usd, price_khr) values (v_pln, 3.00, 12000);
+  insert into public.item_variants (item_id, property_name, property_value, barcode,
+                                    photo_path, sort_order)
+    values (v_itm, 'Size', '500 ml', '8850000000001', 'items/a/500.jpg', 1);
+  insert into public.item_variants (item_id, property_name, property_value, barcode,
+                                    photo_path, sort_order)
+    values (v_itm, 'Size', '1.5 L', '8850000000002', 'items/a/1500.jpg', 2);
+
+  -- The plain item: one bare row, which is the item in the single form it
+  -- comes in rather than a variation of it.
+  insert into public.item_variants (item_id) values (v_pln);
 
   perform pg_temp.rejects('a property name without a value is unfinished',
     format('insert into public.item_variants (item_id, property_name) values (%L, ''Colour'')', v_pln));
   perform pg_temp.rejects('a value without a name reads as nothing',
     format('insert into public.item_variants (item_id, property_value) values (%L, ''Blue'')', v_pln));
-  perform pg_temp.rejects('a price may not be negative in dollars',
-    format('insert into public.item_variants (item_id, property_name, property_value, price_usd)
-              values (%L, ''Colour'', ''Blue'', -1)', v_pln));
-  perform pg_temp.rejects('nor in riel',
-    format('insert into public.item_variants (item_id, property_name, property_value, price_khr)
-              values (%L, ''Colour'', ''Blue'', -1)', v_pln));
   perform pg_temp.rejects('the same property may not appear twice on one item',
     format('insert into public.item_variants (item_id, property_name, property_value)
               values (%L, ''size'', ''500 ML'')', v_itm));
   perform pg_temp.rejects('nor may an item have two bare rows',
-    format('insert into public.item_variants (item_id, price_usd) values (%L, 9)', v_pln));
+    format('insert into public.item_variants (item_id) values (%L)', v_pln));
   -- The same property on a different item is ordinary.
-  insert into public.item_variants (item_id, property_name, property_value, price_usd)
-    values (v_pln, 'Size', '500 ml', 0.60);
+  insert into public.item_variants (item_id, property_name, property_value)
+    values (v_pln, 'Size', '500 ml');
 
-  perform pg_temp.eq('riel is stored whole',
-    (select price_khr::text from public.item_variants
-      where item_id = v_itm and property_value = '500 ml'), '2000');
-  perform pg_temp.eq('dollars keep their cents',
-    (select price_usd::text from public.item_variants
-      where item_id = v_itm and property_value = '500 ml'), '0.50');
-
-  ----------------------------------------------------------------------------
-  -- The variant is the sellable unit, so it carries the code and the barcode
-  --
-  -- Both are unique across the whole catalogue rather than within one item: a
-  -- code that identifies two different things is not an identifier, and a
-  -- barcode names a product to the world rather than only to us.
-  ----------------------------------------------------------------------------
-  perform pg_temp.rejects('a code may not be reused on a sibling variant',
-    format('insert into public.item_variants (item_id, property_name, property_value, code)
-              values (%L, ''Size'', ''2 L'', ''IX-001'')', v_itm));
+  perform pg_temp.rejects('a barcode may not be reused on a sibling variant',
+    format('insert into public.item_variants (item_id, property_name, property_value, barcode)
+              values (%L, ''Size'', ''2 L'', ''8850000000001'')', v_itm));
   perform pg_temp.rejects('nor on a different item',
-    format('insert into public.item_variants (item_id, code) values (%L, ''IX-001'')', v_pln));
-  perform pg_temp.rejects('and case does not make it a different code',
-    format('insert into public.item_variants (item_id, code) values (%L, ''ix-001'')', v_pln));
-  perform pg_temp.rejects('a barcode may not be reused either',
     format('insert into public.item_variants (item_id, barcode)
               values (%L, ''8850000000001'')', v_pln));
-  perform pg_temp.rejects('a blank code is not a code',
-    format('insert into public.item_variants (item_id, code) values (%L, ''   '')', v_pln));
-  -- Two absent codes are not a clash: the unique indexes skip nulls, which is
-  -- what lets most of a catalogue be entered before anybody assigns codes.
-  -- The plain item already carries two such variants.
-  perform pg_temp.eq('variants without a code do not collide',
+  perform pg_temp.rejects('a blank barcode is not a barcode',
+    format('insert into public.item_variants (item_id, barcode) values (%L, ''   '')', v_pln));
+  -- The plain item already carries two variants with no barcode at all.
+  perform pg_temp.eq('variants without a barcode do not collide',
     (select count(*)::text from public.item_variants
-      where code is null and item_id = v_pln), '2');
+      where barcode is null and item_id = v_pln), '2');
 
   ----------------------------------------------------------------------------
   -- The catalogue view
   ----------------------------------------------------------------------------
   perform pg_temp.eq('the catalogue counts an item''s variants',
     (select variant_count::text from public.item_catalogue where id = v_itm), '2');
-  perform pg_temp.eq('and reports the price range in dollars',
-    (select min_price_usd::text || '-' || max_price_usd::text
-       from public.item_catalogue where id = v_itm), '0.50-1.25');
+  -- One figure per currency, not a span: the price belongs to the item now, so
+  -- there is nothing left to take a range across.
+  perform pg_temp.eq('and reports the item''s one price in dollars',
+    (select price_usd::text from public.item_catalogue where id = v_itm), '0.50');
   perform pg_temp.eq('and in riel',
-    (select min_price_khr::text || '-' || max_price_khr::text
-       from public.item_catalogue where id = v_itm), '2000-5000');
+    (select price_khr::text from public.item_catalogue where id = v_itm), '2000');
+  perform pg_temp.eq('the catalogue no longer reports a price range',
+    (select count(*)::text from information_schema.columns
+      where table_schema = 'public' and table_name = 'item_catalogue'
+        and column_name in ('min_price_usd', 'max_price_usd',
+                            'min_price_khr', 'max_price_khr')), '0');
   perform pg_temp.eq('it names the category and its parent',
     (select category_parent_name_en || ' / ' || category_name_en
        from public.item_catalogue where id = v_itm), 'IX Grocery / IX Drinks');
@@ -313,22 +331,29 @@ begin
     (select category_name_km from public.item_catalogue where id = v_itm), 'ភេសជ្ជៈ');
   perform pg_temp.eq('it names the brand',
     (select brand_name from public.item_catalogue where id = v_itm), 'IX Angkor');
-  -- One string per item holding every code and barcode under it, which is what
-  -- lets the list find an item by a code belonging to one of its variants
-  -- without fetching every variant first.
-  perform pg_temp.eq('it collects the codes and barcodes of every variant',
+  -- One string per item holding its own code and every barcode under it, which
+  -- is what lets the list find an item by a barcode belonging to one of its
+  -- variants without fetching every variant first.
+  perform pg_temp.eq('it collects the item code and every barcode beneath it',
     (select codes from public.item_catalogue where id = v_itm),
-    'IX-001 8850000000001 IX-002');
+    'IX-001 8850000000001 8850000000002');
   perform pg_temp.eq('the first picture stands for the item',
     (select photo_path from public.item_catalogue where id = v_itm), 'items/a/500.jpg');
   perform pg_temp.eq('an item with no brand still appears',
     (select name_en from public.item_catalogue where id = v_pln), 'IX Unbranded');
 
-  -- A deactivated variant leaves the price range, because it is not for sale.
+  -- A deactivated variant drops out of the count and takes its barcode with it,
+  -- because nothing is being sold under it any more.
   update public.item_variants set active = false
     where item_id = v_itm and property_value = '1.5 L';
-  perform pg_temp.eq('a deactivated variant leaves the range',
-    (select max_price_usd::text from public.item_catalogue where id = v_itm), '0.50');
+  perform pg_temp.eq('a deactivated variant leaves the count',
+    (select variant_count::text from public.item_catalogue where id = v_itm), '1');
+  perform pg_temp.eq('and its barcode leaves the search string',
+    (select codes from public.item_catalogue where id = v_itm),
+    'IX-001 8850000000001');
+  perform pg_temp.eq('but the item keeps its own price and code',
+    (select code || ' ' || price_usd::text from public.item_catalogue where id = v_itm),
+    'IX-001 0.50');
   update public.item_variants set active = true
     where item_id = v_itm and property_value = '1.5 L';
 
@@ -371,11 +396,9 @@ begin
     update public.items set name_en = 'IX Accountant Fixed' where name_en = 'IX Accountant Made';
     perform pg_temp.eq('and may correct one',
       (select count(*)::text from public.items where name_en = 'IX Accountant Fixed'), '1');
-    update public.item_variants set price_usd = 0.55
-      where item_id = v_itm and property_value = '500 ml';
+    update public.items set price_usd = 0.55 where id = v_itm;
     perform pg_temp.eq('and may reprice one',
-      (select price_usd::text from public.item_variants
-        where item_id = v_itm and property_value = '500 ml'), '0.55');
+      (select price_usd::text from public.items where id = v_itm), '0.55');
     insert into public.item_categories (name_en) values ('IX Accountant Category');
     perform pg_temp.eq('and may add a category',
       (select count(*)::text from public.item_categories where name_en = 'IX Accountant Category'), '1');
@@ -394,8 +417,8 @@ begin
     perform pg_temp.eq('an administrator may destroy one',
       (select count(*)::text from public.items where name_en = 'IX Accountant Fixed'), '0');
 
-    -- Deleting an item takes its prices with it; leaving orphaned variants
-    -- would leave prices in the system for something nobody can name.
+    -- Deleting an item takes its variants with it; leaving them orphaned would
+    -- leave barcodes in the system for something nobody can name.
     delete from public.items where id = v_itm;
     perform pg_temp.eq('and its variants go with it',
       (select count(*)::text from public.item_variants where item_id = v_itm), '0');

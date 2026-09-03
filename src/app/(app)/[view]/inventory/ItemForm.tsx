@@ -26,22 +26,28 @@ import {
 } from "./VariantRows";
 
 type Draft = {
+  code: string;
+  price_usd: string;
+  price_khr: string;
   name_en: string;
   name_km: string;
   description: string;
   category_id: string;
   brand_id: string;
-  active: boolean;
 };
 
 function draftFrom(item: Item | null): Draft {
   return {
+    code: item?.code ?? "",
+    // Straight to a string, not through a formatter: this is the number to
+    // edit, not the number to read, and "$0.50" is not something to type into.
+    price_usd: item?.price_usd == null ? "" : String(item.price_usd),
+    price_khr: item?.price_khr == null ? "" : String(item.price_khr),
     name_en: item?.name_en ?? "",
     name_km: item?.name_km ?? "",
     description: item?.description ?? "",
     category_id: item?.category_id ?? "",
     brand_id: item?.brand_id ?? "",
-    active: item?.active ?? true,
   };
 }
 
@@ -50,14 +56,9 @@ function variantsFrom(rows: Variant[]): VariantDraft[] {
   return rows.map((row) => ({
     key: row.id,
     id: row.id,
-    code: row.code ?? "",
     barcode: row.barcode ?? "",
     property_name: row.property_name ?? "",
     property_value: row.property_value ?? "",
-    // Straight to a string, not through a formatter: this is the number to
-    // edit, not the number to read, and "$0.50" is not something to type into.
-    price_usd: row.price_usd === null ? "" : String(row.price_usd),
-    price_khr: row.price_khr === null ? "" : String(row.price_khr),
     photo_path: row.photo_path,
     file: null,
     active: row.active,
@@ -104,19 +105,26 @@ export function ItemForm({
 
   const nameMissing = draft.name_en.trim() === "";
   const badVariant = variants.some((v) => variantProblem(v) !== null);
-  // A code repeated across two rows would be refused by the unique index at the
-  // end of a long form. Catching it here says so while it is still being typed.
+  // A barcode repeated across two rows would be refused by the unique index at
+  // the end of a long form. Catching it here says so while it is still typed.
   const clashingCodes = duplicateCodes(variants).size > 0;
-  const blocked = nameMissing || badVariant || clashingCodes;
+  const badPrice =
+    parsePrice(draft.price_usd) === undefined || parsePrice(draft.price_khr) === undefined;
+  const blocked = nameMissing || badVariant || clashingCodes || badPrice;
 
   function toRow() {
     return {
+      code: blank(draft.code),
+      price_usd: parsePrice(draft.price_usd) ?? null,
+      price_khr: parsePrice(draft.price_khr) ?? null,
       name_en: draft.name_en.trim(),
       name_km: blank(draft.name_km),
       description: blank(draft.description),
       category_id: blank(draft.category_id),
       brand_id: blank(draft.brand_id),
-      active: draft.active,
+      // No `active` here. A new item is active by the column default, and an
+      // existing one keeps whatever the status card set — this form has no
+      // business changing it in a batch of corrections.
     };
   }
 
@@ -140,12 +148,9 @@ export function ItemForm({
 
       const row = {
         item_id: itemId,
-        code: blank(variant.code),
         barcode: blank(variant.barcode),
         property_name: blank(variant.property_name),
         property_value: blank(variant.property_value),
-        price_usd: parsePrice(variant.price_usd) ?? null,
-        price_khr: parsePrice(variant.price_khr) ?? null,
         photo_path: photoPath,
         active: variant.active,
         sort_order: index + 1,
@@ -161,7 +166,7 @@ export function ItemForm({
           .select("id");
         if (error) throw error;
         if (!data?.length) {
-          throw new Error("Those prices could not be saved. You may not have permission.");
+          throw new Error("Those variants could not be saved. You may not have permission.");
         }
       } else {
         const { error } = await supabase.from("item_variants").insert(row);
@@ -242,7 +247,7 @@ export function ItemForm({
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <SectionHeader title="Name" />
+        <SectionHeader title="Item" />
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field
             label="Name (English)"
@@ -259,12 +264,40 @@ export function ItemForm({
             placeholder="ទឹកសុទ្ធ"
           />
           <Field
-            label="Description"
+            label="Item code"
             optional
-            value={draft.description}
-            onChange={(v) => set("description", v)}
-            placeholder="Anything worth knowing about it"
+            value={draft.code}
+            onChange={(v) => set("code", v)}
+            placeholder="HIG-001"
+            hint="Your own reference. Unique across the catalogue when it is set."
           />
+          <Field
+            label="Price USD"
+            optional
+            inputMode="numeric"
+            value={draft.price_usd}
+            onChange={(v) => set("price_usd", v)}
+            placeholder="0.50"
+            error={parsePrice(draft.price_usd) === undefined ? "That is not a price." : null}
+          />
+          <Field
+            label="Price KHR"
+            optional
+            inputMode="numeric"
+            value={draft.price_khr}
+            onChange={(v) => set("price_khr", v)}
+            placeholder="2000"
+            error={parsePrice(draft.price_khr) === undefined ? "That is not a price." : null}
+          />
+          <div className="sm:col-span-2">
+            <Field
+              label="Description"
+              optional
+              value={draft.description}
+              onChange={(v) => set("description", v)}
+              placeholder="Anything worth knowing about it"
+            />
+          </div>
         </div>
       </Card>
 
@@ -300,23 +333,19 @@ export function ItemForm({
           .
         </p>
 
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.active}
-            onChange={(e) => set("active", e.target.checked)}
-            className="size-4 accent-[var(--brand)]"
-          />
-          Active in the catalogue
-        </label>
+        <p className="mt-3 text-xs text-muted">
+          {creating
+            ? "A new item starts active. Taking one out of the catalogue is done from the record, where it asks first."
+            : "Whether an item is active is changed from the record, where it asks first."}
+        </p>
       </Card>
 
       <Card className="p-4">
         <SectionHeader title="Variants" />
         <p className="mt-1 text-xs text-muted">
-          One row per version of the item — each with its own code, barcode,
-          price and picture. Leave the property boxes empty for an item that
-          comes in only one form.
+          The sizes, colours and packs this item comes in — each with its own
+          picture and barcode. The price and the code above cover the item as a
+          whole. Leave this alone for an item that comes in only one form.
         </p>
         <div className="mt-3">
           <VariantRows
@@ -346,7 +375,9 @@ export function ItemForm({
               : badVariant
                 ? "Check the variants below."
                 : clashingCodes
-                  ? "A code is used twice."
+                  ? "A barcode is used twice."
+                  : badPrice
+                    ? "Check the price."
                 : creating
                   ? "New item"
                   : "Editing"}

@@ -4,13 +4,14 @@
  * Two things here are worth stating once rather than rediscovering in every
  * component:
  *
- *   * The variant is the sellable unit. It carries the code, the barcode, the
- *     price and the picture, because what somebody picks up, scans and sells is
- *     one variant — a 500 ml bottle, not "drinking water in general". An item
- *     with nothing to vary still has exactly one variant, with no property on
- *     it. So a list showing "the price" is really showing a range that happens
- *     to have one end, which is why `priceRange` takes a min and a max even
- *     when they are the same number.
+ *   * The item carries the code and the price. One item, one price — so every
+ *     screen shows a figure rather than a range, and "the price of an item" has
+ *     one answer.
+ *
+ *   * A variant describes: the size, the colour, the picture. It carries a
+ *     barcode too, which is the one identifier that genuinely differs between a
+ *     500 ml bottle and a 1.5 L one, because a barcode is assigned to the
+ *     physical package rather than to the product.
  *
  *   * Both currencies are stored, not converted. Riel is whole — the smallest
  *     note in circulation is 100៛ — so it is formatted without decimals, while
@@ -39,6 +40,9 @@ export type Brand = {
 
 export type Item = {
   id: string;
+  code: string | null;
+  price_usd: number | null;
+  price_khr: number | null;
   name_en: string;
   name_km: string | null;
   description: string | null;
@@ -50,20 +54,20 @@ export type Item = {
 export type Variant = {
   id: string;
   item_id: string;
-  code: string | null;
   barcode: string | null;
   property_name: string | null;
   property_value: string | null;
-  price_usd: number | null;
-  price_khr: number | null;
   photo_path: string | null;
   active: boolean;
   sort_order: number;
 };
 
-/** One row of public.item_catalogue: an item with its names and price range. */
+/** One row of public.item_catalogue. */
 export type CatalogueEntry = {
   id: string;
+  code: string | null;
+  price_usd: number | null;
+  price_khr: number | null;
   name_en: string;
   name_km: string | null;
   active: boolean;
@@ -76,20 +80,16 @@ export type CatalogueEntry = {
   brand_id: string | null;
   brand_name: string | null;
   variant_count: number | null;
-  min_price_usd: number | null;
-  max_price_usd: number | null;
-  min_price_khr: number | null;
-  max_price_khr: number | null;
   photo_path: string | null;
-  /** Every code and barcode on the item, joined — what search looks through. */
+  /** The item's code plus every barcode beneath it — what search looks through. */
   codes: string | null;
 };
 
 export const ITEM_COLUMNS =
-  "id, name_en, name_km, description, category_id, brand_id, active";
+  "id, code, price_usd, price_khr, name_en, name_km, description, category_id, brand_id, active";
 
 export const VARIANT_COLUMNS =
-  "id, item_id, code, barcode, property_name, property_value, price_usd, price_khr, photo_path, active, sort_order";
+  "id, item_id, barcode, property_name, property_value, photo_path, active, sort_order";
 
 export const CATEGORY_COLUMNS =
   "id, parent_id, name_en, name_km, description, photo_path, active, sort_order";
@@ -101,7 +101,7 @@ export const BRAND_COLUMNS =
 // system to work out the row shape, and a joined expression widens to `string`,
 // which it can only read back as an error type.
 export const CATALOGUE_COLUMNS =
-  "id, name_en, name_km, active, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, variant_count, min_price_usd, max_price_usd, min_price_khr, max_price_khr, photo_path, codes";
+  "id, code, price_usd, price_khr, name_en, name_km, active, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, variant_count, photo_path, codes";
 
 /** Where item pictures go in the inventory bucket. */
 export const INVENTORY_BUCKET = "inventory";
@@ -126,32 +126,17 @@ export function formatKhr(value: number | null | undefined): string | null {
 }
 
 /**
- * A price, or the span between the cheapest and dearest variant.
+ * Both currencies on one line, or whichever of them is priced.
  *
- * One number when the ends agree, which is the ordinary case: most items have
- * one price, and printing "$1.50 – $1.50" would look like a bug.
+ * One figure per currency rather than a range: the price belongs to the item,
+ * so there is nothing to take a span across.
  */
-export function priceRange(
-  min: number | null | undefined,
-  max: number | null | undefined,
-  format: (v: number | null | undefined) => string | null,
-): string | null {
-  const low = format(min);
-  const high = format(max);
-  if (low === null) return high;
-  if (high === null || low === high) return low;
-  return `${low} – ${high}`;
-}
-
-/** Both currencies on one line, or whichever of them is priced. */
-export function bothPrices(entry: {
-  min_price_usd: number | null;
-  max_price_usd: number | null;
-  min_price_khr: number | null;
-  max_price_khr: number | null;
+export function bothPrices(item: {
+  price_usd: number | null;
+  price_khr: number | null;
 }): string {
-  const dollars = priceRange(entry.min_price_usd, entry.max_price_usd, formatUsd);
-  const riel = priceRange(entry.min_price_khr, entry.max_price_khr, formatKhr);
+  const dollars = formatUsd(item.price_usd);
+  const riel = formatKhr(item.price_khr);
   return [dollars, riel].filter(Boolean).join(" · ") || "No price yet";
 }
 
@@ -159,19 +144,19 @@ export function bothPrices(entry: {
  * What to call a variant on screen.
  *
  * The property is what tells one variant from its siblings, so it leads. A
- * variant with no property but a code is still identifiable — that is what the
- * code is for — so the code stands in rather than an empty cell. Failing both,
- * the row is the item itself rather than a variation of it, and says so.
+ * variant with no property but a barcode is still identifiable, so the barcode
+ * stands in rather than an empty cell. Failing both, the row is the item itself
+ * rather than a variation of it, and says so.
  */
 export function variantLabel(variant: {
   property_name: string | null;
   property_value: string | null;
-  code?: string | null;
+  barcode?: string | null;
 }): string {
   if (variant.property_name && variant.property_value) {
     return `${variant.property_name}: ${variant.property_value}`;
   }
-  return variant.code?.trim() || "Standard";
+  return variant.barcode?.trim() || "Standard";
 }
 
 /**
@@ -371,6 +356,38 @@ export const ACTIVE_FILTERS: { value: ActiveFilter; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "inactive", label: "Inactive" },
 ];
+
+/** The one thing that can be done to an item's status, and what it will do. */
+export type ItemStatusAction = {
+  label: string;
+  icon: string;
+  danger: boolean;
+  describe: (name: string) => string;
+};
+
+/**
+ * Withdrawing an item is the destructive half of this pair, so it is the half
+ * that is coloured as such and asks first. Restoring one is not, and says only
+ * what comes back.
+ */
+export function itemStatusAction(active: boolean): ItemStatusAction {
+  if (active) {
+    return {
+      label: "Make inactive",
+      icon: "square",
+      danger: true,
+      describe: (name) =>
+        `${name} comes out of the catalogue and cannot be sold. Its prices, variants and history stay as they are, and it can be brought back at any time.`,
+    };
+  }
+
+  return {
+    label: "Make active",
+    icon: "check",
+    danger: false,
+    describe: (name) => `${name} goes back into the catalogue and can be sold again.`,
+  };
+}
 
 export function matchesActive(active: boolean, filter: ActiveFilter): boolean {
   if (filter === "all") return true;

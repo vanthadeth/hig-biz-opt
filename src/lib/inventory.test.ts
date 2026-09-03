@@ -8,6 +8,7 @@ import {
   countCategories,
   filterBrands,
   filterCategoryTree,
+  itemStatusAction,
   matchesActive,
   matchesBrand,
   matchesCategory,
@@ -20,7 +21,6 @@ import {
   matchesItem,
   OPTION_INDENT,
   parsePrice,
-  priceRange,
   variantLabel,
   type CatalogueEntry,
   type Brand,
@@ -29,6 +29,9 @@ import {
 
 const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   id: "i1",
+  code: null,
+  price_usd: null,
+  price_khr: null,
   name_en: "Drinking Water",
   name_km: null,
   active: true,
@@ -41,10 +44,6 @@ const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   brand_id: null,
   brand_name: null,
   variant_count: 1,
-  min_price_usd: null,
-  max_price_usd: null,
-  min_price_khr: null,
-  max_price_khr: null,
   photo_path: null,
   codes: null,
   ...over,
@@ -88,57 +87,20 @@ describe("formatKhr", () => {
   });
 });
 
-describe("priceRange", () => {
-  it("prints one number when both ends agree", () => {
-    expect(priceRange(1.5, 1.5, formatUsd)).toBe("$1.50");
-  });
-
-  it("prints a span when they do not", () => {
-    expect(priceRange(0.5, 1.25, formatUsd)).toBe("$0.50 – $1.25");
-  });
-
-  it("falls back to whichever end is priced", () => {
-    expect(priceRange(null, 1.25, formatUsd)).toBe("$1.25");
-    expect(priceRange(0.5, null, formatUsd)).toBe("$0.50");
-  });
-
-  it("is null when nothing is priced", () => {
-    expect(priceRange(null, null, formatUsd)).toBeNull();
-  });
-});
-
 describe("bothPrices", () => {
   it("puts the two currencies on one line", () => {
-    expect(
-      bothPrices({
-        min_price_usd: 0.5,
-        max_price_usd: 1.25,
-        min_price_khr: 2000,
-        max_price_khr: 5000,
-      }),
-    ).toBe("$0.50 – $1.25 · ៛2,000 – ៛5,000");
+    // One figure each, not a span: the price belongs to the item now, so there
+    // is nothing left to take a range across.
+    expect(bothPrices({ price_usd: 0.5, price_khr: 2000 })).toBe("$0.50 · ៛2,000");
   });
 
   it("shows whichever currency was filled in", () => {
-    expect(
-      bothPrices({
-        min_price_usd: null,
-        max_price_usd: null,
-        min_price_khr: 2000,
-        max_price_khr: 2000,
-      }),
-    ).toBe("៛2,000");
+    expect(bothPrices({ price_usd: null, price_khr: 2000 })).toBe("៛2,000");
+    expect(bothPrices({ price_usd: 0.5, price_khr: null })).toBe("$0.50");
   });
 
   it("says so plainly when nothing is priced", () => {
-    expect(
-      bothPrices({
-        min_price_usd: null,
-        max_price_usd: null,
-        min_price_khr: null,
-        max_price_khr: null,
-      }),
-    ).toBe("No price yet");
+    expect(bothPrices({ price_usd: null, price_khr: null })).toBe("No price yet");
   });
 });
 
@@ -149,23 +111,23 @@ describe("variantLabel", () => {
     );
   });
 
-  it("falls back to the code, which also identifies one thing on a shelf", () => {
+  it("falls back to the barcode, which also identifies one package", () => {
     expect(
-      variantLabel({ property_name: null, property_value: null, code: "HIG-001" }),
-    ).toBe("HIG-001");
+      variantLabel({ property_name: null, property_value: null, barcode: "8850123456789" }),
+    ).toBe("8850123456789");
   });
 
-  it("prefers the property over the code when both are there", () => {
+  it("prefers the property over the barcode when both are there", () => {
     expect(
-      variantLabel({ property_name: "Size", property_value: "1.5 L", code: "HIG-002" }),
+      variantLabel({ property_name: "Size", property_value: "1.5 L", barcode: "885012" }),
     ).toBe("Size: 1.5 L");
   });
 
   it("calls the bare row what it is", () => {
-    // Not an empty cell: this row is the item itself, and it carries the price.
+    // Not an empty cell: an item that comes in one form has one such row.
     expect(variantLabel({ property_name: null, property_value: null })).toBe("Standard");
     expect(
-      variantLabel({ property_name: null, property_value: null, code: "  " }),
+      variantLabel({ property_name: null, property_value: null, barcode: "  " }),
     ).toBe("Standard");
   });
 });
@@ -244,7 +206,7 @@ describe("matchesItem", () => {
     expect(matchesItem(water, "ទឹក")).toBe(true);
   });
 
-  it("matches a variant's code or barcode, the brand and either category level", () => {
+  it("matches the item code, a variant's barcode, the brand and either category level", () => {
     expect(matchesItem(water, "hig-001")).toBe(true);
     expect(matchesItem(water, "8850123456789")).toBe(true);
     expect(matchesItem(water, "angkor")).toBe(true);
@@ -444,6 +406,30 @@ const brand = (over: Partial<Brand> & { id: string; name: string }): Brand => ({
   active: true,
   sort_order: 0,
   ...over,
+});
+
+describe("itemStatusAction", () => {
+  it("offers the opposite of where the item stands", () => {
+    expect(itemStatusAction(true).label).toBe("Make inactive");
+    expect(itemStatusAction(false).label).toBe("Make active");
+  });
+
+  it("colours only the withdrawal as destructive", () => {
+    // Putting an item back takes nothing away, so it should not be red.
+    expect(itemStatusAction(true).danger).toBe(true);
+    expect(itemStatusAction(false).danger).toBe(false);
+  });
+
+  it("names the item in the confirmation, so the wrong tab is obvious", () => {
+    expect(itemStatusAction(true).describe("Drinking Water")).toContain("Drinking Water");
+    expect(itemStatusAction(false).describe("Drinking Water")).toContain("Drinking Water");
+  });
+
+  it("says the withdrawal is reversible and keeps what is recorded", () => {
+    // Otherwise it reads like a delete, and somebody deletes instead of hiding.
+    expect(itemStatusAction(true).describe("Water")).toContain("brought back");
+    expect(itemStatusAction(true).describe("Water")).toContain("history");
+  });
 });
 
 describe("matchesActive", () => {

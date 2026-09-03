@@ -12,11 +12,14 @@ import {
   categoryPath,
   INVENTORY_BUCKET,
   ITEM_COLUMNS,
+  ITEM_PICTURE_COLUMNS,
   variantLabel,
   VARIANT_COLUMNS,
   type Item,
+  type ItemPicture,
   type Variant,
 } from "@/lib/inventory";
+import { ItemPictures } from "../ItemPictures";
 import { ItemStatusControls } from "../ItemStatusControls";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -39,12 +42,20 @@ export default async function Page({
   const { view, id } = await params;
   const supabase = await createClient();
 
-  const [itemResult, variantsResult, mine] = await Promise.all([
+  const [itemResult, variantsResult, picturesResult, mine] = await Promise.all([
     supabase.from("items").select(ITEM_COLUMNS).eq("id", id).maybeSingle(),
     supabase
       .from("item_variants")
       .select(VARIANT_COLUMNS)
       .eq("item_id", id)
+      .order("sort_order"),
+    // The same order the catalogue view uses to pick the one picture it shows,
+    // so the picture leading this card is the picture in the list.
+    supabase
+      .from("item_pictures")
+      .select(ITEM_PICTURE_COLUMNS)
+      .eq("item_id", id)
+      .order("is_primary", { ascending: false })
       .order("sort_order"),
     getMyPermissions(),
   ]);
@@ -55,6 +66,7 @@ export default async function Page({
 
   const item = itemResult.data as unknown as Item;
   const variants = (variantsResult.data ?? []) as unknown as Variant[];
+  const pictures = (picturesResult.data ?? []) as unknown as ItemPicture[];
   const canEdit = can(mine, "inventory", "edit");
 
   const [category, brand] = await Promise.all([
@@ -89,7 +101,10 @@ export default async function Page({
   // One item, one price. There is nothing to take a span across any more.
   const summary = bothPrices(item);
 
-  const lead = variants.find((v) => v.photo_path)?.photo_path ?? null;
+  // The item's own main picture leads; a variant's photo stands in when it has
+  // none, which is the same rule the catalogue view applies to the list.
+  const lead =
+    pictures[0]?.photo_path ?? variants.find((v) => v.photo_path)?.photo_path ?? null;
 
   return (
     <div className="space-y-5">
@@ -141,6 +156,8 @@ export default async function Page({
         )}
       </Card>
 
+      <ItemPictures itemId={item.id} pictures={pictures} canEdit={canEdit} />
+
       <Card className="p-4">
         <SectionHeader
           title="Variants"
@@ -148,8 +165,10 @@ export default async function Page({
         />
 
         {variants.length === 0 ? (
+          // Not a gap in the record: an item that comes in one form has none,
+          // and that is the ordinary case.
           <p className="mt-3 text-sm text-muted">
-            No variant has been entered for this item yet.
+            This item is sold in one form.
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-line">

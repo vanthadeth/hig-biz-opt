@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  INVENTORY OK - 76 assertions passed (rls: ran)
+--     ERROR:  INVENTORY OK - 84 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -109,6 +109,7 @@ declare
   v_brd uuid;   -- a brand
   v_itm uuid;   -- an item with two variants
   v_pln uuid;   -- an item with one bare variant
+  v_fbk uuid;   -- an item whose only picture is on a variant
   v_rls text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -309,6 +310,41 @@ begin
       where barcode is null and item_id = v_pln), '2');
 
   ----------------------------------------------------------------------------
+  -- Item pictures
+  --
+  -- Several per item, one of them primary. The picture that stands for an item
+  -- belongs to the item; a variant's photo is the narrower thing, that
+  -- particular size or colour.
+  ----------------------------------------------------------------------------
+  insert into public.item_pictures (item_id, photo_path, description, is_primary, sort_order)
+    values (v_itm, 'items/a/hero.jpg', 'On the shelf', true, 1);
+  insert into public.item_pictures (item_id, photo_path, sort_order)
+    values (v_itm, 'items/a/back.jpg', 2);
+
+  perform pg_temp.ok('a picture is not primary unless it is said to be',
+    (select not is_primary from public.item_pictures where photo_path = 'items/a/back.jpg'));
+  perform pg_temp.rejects('a picture needs a path',
+    format('insert into public.item_pictures (item_id, photo_path) values (%L, ''   '')', v_itm));
+  perform pg_temp.rejects('a blank caption is not a caption',
+    format('insert into public.item_pictures (item_id, photo_path, description)
+              values (%L, ''items/a/x.jpg'', ''  '')', v_itm));
+  -- The partial unique index, which is what stops a form that ticks a second
+  -- box without clearing the first from leaving two.
+  perform pg_temp.rejects('an item may not have two main pictures',
+    format('insert into public.item_pictures (item_id, photo_path, is_primary)
+              values (%L, ''items/a/second-main.jpg'', true)', v_itm));
+  insert into public.item_pictures (item_id, photo_path, is_primary)
+    values (v_pln, 'items/b/hero.jpg', true);
+  perform pg_temp.eq('but two items may each have one',
+    (select count(*)::text from public.item_pictures where is_primary), '2');
+
+  -- An item with a variant photo but no picture of its own. The variant's photo
+  -- stands in, so nothing entered before 0029 stops showing.
+  insert into public.items (name_en) values ('IX Photo Fallback') returning id into v_fbk;
+  insert into public.item_variants (item_id, photo_path)
+    values (v_fbk, 'items/c/only.jpg');
+
+  ----------------------------------------------------------------------------
   -- The catalogue view
   ----------------------------------------------------------------------------
   perform pg_temp.eq('the catalogue counts an item''s variants',
@@ -337,8 +373,12 @@ begin
   perform pg_temp.eq('it collects the item code and every barcode beneath it',
     (select codes from public.item_catalogue where id = v_itm),
     'IX-001 8850000000001 8850000000002');
-  perform pg_temp.eq('the first picture stands for the item',
-    (select photo_path from public.item_catalogue where id = v_itm), 'items/a/500.jpg');
+  -- The item's own main picture leads, even though its variants have photos of
+  -- their own: the bottle on a white background is what belongs in a list.
+  perform pg_temp.eq('the item''s main picture stands for it',
+    (select photo_path from public.item_catalogue where id = v_itm), 'items/a/hero.jpg');
+  perform pg_temp.eq('and a variant''s photo stands in when it has none',
+    (select photo_path from public.item_catalogue where id = v_fbk), 'items/c/only.jpg');
   perform pg_temp.eq('an item with no brand still appears',
     (select name_en from public.item_catalogue where id = v_pln), 'IX Unbranded');
 
@@ -384,6 +424,8 @@ begin
       (select count(*)::text from public.brands), '0');
     perform pg_temp.eq('nor the catalogue',
       (select count(*)::text from public.item_catalogue), '0');
+    perform pg_temp.eq('nor any pictures of stock',
+      (select count(*)::text from public.item_pictures), '0');
     perform pg_temp.refused('and may not create an item',
       'insert into public.items (name_en) values (''IX Sneaked In'')');
 
@@ -422,6 +464,8 @@ begin
     delete from public.items where id = v_itm;
     perform pg_temp.eq('and its variants go with it',
       (select count(*)::text from public.item_variants where item_id = v_itm), '0');
+    perform pg_temp.eq('and its pictures too',
+      (select count(*)::text from public.item_pictures where item_id = v_itm), '0');
 
     -- The depth guard runs as definer, so it still bites under a policy.
     perform pg_temp.rejects('the one-level rule holds under RLS too',

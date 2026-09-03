@@ -78,6 +78,10 @@ export function duplicateCodes(variants: VariantDraft[]): Set<string> {
  * the picture of it, and the barcode. The barcode is on the variant because it
  * is assigned to the physical package, so a 500 ml bottle and a 1.5 L one
  * genuinely carry different ones.
+ *
+ * An item starts with none of these. Most stock comes in one form, and seeding
+ * a blank row would make every one of those items carry an empty variant that
+ * somebody had to notice and delete.
  */
 export function VariantRows({
   variants,
@@ -104,6 +108,14 @@ export function VariantRows({
 
   return (
     <div className="space-y-3">
+      {variants.length === 0 && (
+        // Not an empty row waiting to be filled in. Most stock comes in one
+        // form, and a row nobody wants is a row somebody has to think about.
+        <p className="text-sm text-muted">
+          No variants. This item is sold in one form.
+        </p>
+      )}
+
       {variants.map((variant, index) => {
         const problem = variantProblem(variant);
         const barcodeClash = clashing.has(variant.barcode.trim().toLowerCase());
@@ -121,7 +133,7 @@ export function VariantRows({
                   barcode: variant.barcode.trim() || null,
                 })}
               </span>
-              {!disabled && variants.length > 1 && (
+              {!disabled && (
                 <button
                   type="button"
                   onClick={() => remove(variant.key)}
@@ -204,7 +216,7 @@ export function VariantRows({
           className="pressable flex min-h-10 items-center gap-1.5 rounded-xl border border-dashed border-brand/50 px-3 text-sm font-medium text-brand"
         >
           <Icon name="plus" className="size-4" />
-          Add another variant
+          {variants.length === 0 ? "Add a variant" : "Add another variant"}
         </button>
       )}
     </div>

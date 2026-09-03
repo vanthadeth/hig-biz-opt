@@ -62,6 +62,40 @@ export type Variant = {
   sort_order: number;
 };
 
+/**
+ * A picture of the item itself.
+ *
+ * Distinct from a variant's photo: this is the item on a white background, the
+ * one that stands for it in a list. A variant's picture is the narrower thing —
+ * that particular size or colour. An item with no variants at all, which after
+ * the price moved up is the ordinary case, still needs somewhere to put one.
+ */
+export type ItemPicture = {
+  id: string;
+  item_id: string;
+  photo_path: string;
+  description: string | null;
+  is_primary: boolean;
+  sort_order: number;
+};
+
+export const ITEM_PICTURE_COLUMNS =
+  "id, item_id, photo_path, description, is_primary, sort_order";
+
+/**
+ * The pictures in the order they are shown: the primary one first, then
+ * whatever order they were put in.
+ *
+ * The database orders them the same way when it picks the one for the
+ * catalogue, so the picture leading this list is the picture in the list.
+ */
+export function orderPictures(pictures: ItemPicture[]): ItemPicture[] {
+  return [...pictures].sort(
+    (a, b) =>
+      Number(b.is_primary) - Number(a.is_primary) || a.sort_order - b.sort_order,
+  );
+}
+
 /** One row of public.item_catalogue. */
 export type CatalogueEntry = {
   id: string;

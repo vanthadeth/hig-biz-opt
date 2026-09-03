@@ -19,7 +19,6 @@ import {
 import { uploadInventoryImage } from "./ImageField";
 import {
   duplicateCodes,
-  emptyVariant,
   VariantRows,
   variantProblem,
   type VariantDraft,
@@ -51,8 +50,12 @@ function draftFrom(item: Item | null): Draft {
   };
 }
 
+/**
+ * No blank row is seeded for an item that has none. Most stock is sold in one
+ * form, and an empty variant waiting to be filled in is one more thing to
+ * notice and delete on every such item.
+ */
 function variantsFrom(rows: Variant[]): VariantDraft[] {
-  if (rows.length === 0) return [emptyVariant()];
   return rows.map((row) => ({
     key: row.id,
     id: row.id,
@@ -343,9 +346,9 @@ export function ItemForm({
       <Card className="p-4">
         <SectionHeader title="Variants" />
         <p className="mt-1 text-xs text-muted">
-          The sizes, colours and packs this item comes in — each with its own
-          picture and barcode. The price and the code above cover the item as a
-          whole. Leave this alone for an item that comes in only one form.
+          Only if this item comes in more than one form — a size, a colour, a
+          pack — each with its own barcode. The price and the code above cover
+          the item as a whole, and its pictures live on the record.
         </p>
         <div className="mt-3">
           <VariantRows

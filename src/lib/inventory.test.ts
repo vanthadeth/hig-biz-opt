@@ -20,8 +20,10 @@ import {
   itemTitle,
   matchesItem,
   OPTION_INDENT,
+  orderPictures,
   parsePrice,
   variantLabel,
+  type ItemPicture,
   type CatalogueEntry,
   type Brand,
   type Category,
@@ -406,6 +408,56 @@ const brand = (over: Partial<Brand> & { id: string; name: string }): Brand => ({
   active: true,
   sort_order: 0,
   ...over,
+});
+
+describe("orderPictures", () => {
+  const picture = (over: Partial<ItemPicture> & { id: string }): ItemPicture => ({
+    item_id: "i1",
+    photo_path: `items/i1/${over.id}.jpg`,
+    description: null,
+    is_primary: false,
+    sort_order: 0,
+    ...over,
+  });
+
+  it("puts the main picture first, whatever order it came back in", () => {
+    // The catalogue view picks the same one for the list, so the picture
+    // leading this card has to be the picture in the list.
+    const ordered = orderPictures([
+      picture({ id: "b", sort_order: 2 }),
+      picture({ id: "a", sort_order: 1 }),
+      picture({ id: "c", sort_order: 3, is_primary: true }),
+    ]);
+    expect(ordered.map((p) => p.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("keeps the rest in the order they were added", () => {
+    const ordered = orderPictures([
+      picture({ id: "b", sort_order: 2 }),
+      picture({ id: "a", sort_order: 1 }),
+    ]);
+    expect(ordered.map((p) => p.id)).toEqual(["a", "b"]);
+  });
+
+  it("copes with an item that has no main picture yet", () => {
+    const ordered = orderPictures([picture({ id: "a", sort_order: 1 })]);
+    expect(ordered.map((p) => p.id)).toEqual(["a"]);
+  });
+
+  it("leaves the list it was given alone", () => {
+    // It is React state; sorting it where it lies would mutate a value the
+    // component has already rendered from.
+    const given = [
+      picture({ id: "b", sort_order: 2 }),
+      picture({ id: "a", sort_order: 1, is_primary: true }),
+    ];
+    orderPictures(given);
+    expect(given.map((p) => p.id)).toEqual(["b", "a"]);
+  });
+
+  it("has nothing to order when there are no pictures", () => {
+    expect(orderPictures([])).toEqual([]);
+  });
 });
 
 describe("itemStatusAction", () => {

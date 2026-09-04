@@ -219,6 +219,20 @@ export const PICTURE_COLUMNS =
 export const CUSTOMERS_BUCKET = "customers";
 
 /**
+ * What a new shop starts on, in dollars.
+ *
+ * Mirrors the column default set in 0032, which is derived from
+ * app.default_credit_limit(). A shop created any other way — a script, a
+ * migration, a hand-written insert — lands on the same number, so the form is
+ * agreeing with the database rather than deciding on its own.
+ *
+ * It is a number rather than nothing because "no limit set" and "unlimited"
+ * look identical in a nullable numeric column, and the second is not what
+ * anybody meant by leaving the box alone.
+ */
+export const DEFAULT_CREDIT_LIMIT = 500;
+
+/**
  * The address on one line, largest unit last.
  *
  * Cambodian addresses are read street-first, so that is the order here, and

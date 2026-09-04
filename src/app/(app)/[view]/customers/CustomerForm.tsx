@@ -9,6 +9,7 @@ import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
   coordinateProblem,
+  DEFAULT_CREDIT_LIMIT,
   parseCoordinate,
   type Commune,
   type Customer,
@@ -47,10 +48,16 @@ function draftFrom(customer: Customer | null): Draft {
     zipcode: customer?.zipcode ?? "",
     latitude: customer?.latitude === null || customer === null ? "" : String(customer.latitude),
     longitude: customer?.longitude === null || customer === null ? "" : String(customer.longitude),
+    // A new shop starts at the standard limit rather than at nothing: "no
+    // limit set" and "unlimited" look the same in the column, and the second is
+    // not what anybody meant. The database default agrees, so a row created any
+    // other way lands on the same number.
     credit_limit_usd:
-      customer?.credit_limit_usd === null || customer === null
-        ? ""
-        : String(customer.credit_limit_usd),
+      customer === null
+        ? String(DEFAULT_CREDIT_LIMIT)
+        : customer.credit_limit_usd === null
+          ? ""
+          : String(customer.credit_limit_usd),
     remarks: customer?.remarks ?? "",
   };
 }
@@ -85,6 +92,7 @@ export function CustomerForm({
   provinces,
   districts,
   communes,
+  canSetCredit,
   viewKey,
 }: {
   customer: Customer | null;
@@ -92,6 +100,9 @@ export function CustomerForm({
   provinces: Province[];
   districts: District[];
   communes: Commune[];
+  /** Whether this person may move the credit limit. The trigger decides in the
+      end; this only keeps the box from inviting an edit that would be refused. */
+  canSetCredit: boolean;
   viewKey: string;
 }) {
   const router = useRouter();
@@ -285,7 +296,7 @@ export function CustomerForm({
       <Card className="p-4">
         <SectionHeader title="Contacts" />
         <p className="mt-1 text-xs text-muted">
-          Everyone worth ringing at this shop. The one marked “Ring first” is the
+          Everyone worth ringing at this shop. The one marked “Primary” is the
           one the list shows.
         </p>
         <div className="mt-3">
@@ -325,15 +336,23 @@ export function CustomerForm({
             : "Status is changed from the record, where it asks first."}
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Field
-            label="Credit limit (USD)"
-            optional
-            inputMode="numeric"
-            value={draft.credit_limit_usd}
-            onChange={(v) => set("credit_limit_usd", v)}
-            placeholder="500"
-            error={badLimit ? "That is not an amount." : null}
-          />
+          <div className="sm:col-span-2">
+            <Field
+              label="Credit limit (USD)"
+              optional
+              inputMode="numeric"
+              value={draft.credit_limit_usd}
+              onChange={(v) => set("credit_limit_usd", v)}
+              placeholder={String(DEFAULT_CREDIT_LIMIT)}
+              disabled={!canSetCredit}
+              error={badLimit ? "That is not an amount." : null}
+              hint={
+                canSetCredit
+                  ? undefined
+                  : "How much this shop may owe. Changing it is the supervisor's, the manager's or accounting's to do."
+              }
+            />
+          </div>
           <div className="sm:col-span-2">
             <Field
               label="Remarks"

@@ -2,8 +2,9 @@
 --
 -- The customer module's suite, alongside access_model.test.sql and
 -- inventory.test.sql. It gets its own file because it needs a whole cast —
--- a manager, a rep who reports to them, an unrelated rep, a warehouse user and
--- an accountant — and because this is the module where permission *scope*
+-- a manager, a rep who reports to them, an unrelated rep, a warehouse user, an
+-- accountant and a sale supervisor — and because this is the module where
+-- permission *scope*
 -- finally does real work, so most of what is worth asserting is about who can
 -- see and change whose accounts.
 --
@@ -14,7 +15,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CUSTOMERS OK - 57 assertions passed (rls: ran)
+--     ERROR:  CUSTOMERS OK - 71 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -108,6 +109,7 @@ declare
   v_other uuid := '00000000-0000-4000-8000-0000000c0004'; -- sales, unrelated
   v_wh   uuid := '00000000-0000-4000-8000-0000000c0005';  -- warehouse, view 'sub'
   v_acc  uuid := '00000000-0000-4000-8000-0000000c0006';  -- accounting, view 'any'
+  v_sup  uuid := '00000000-0000-4000-8000-0000000c0007';  -- sale supervisor
   v_mine uuid;   -- a customer owned by the rep
   v_thrs uuid;   -- one owned by the unrelated rep
   v_house uuid;  -- one with no owner
@@ -124,6 +126,7 @@ begin
   perform pg_temp.new_user(v_other,'cx.oth@example.test', 'Cx Other', 'sales');
   perform pg_temp.new_user(v_wh,   'cx.wh@example.test',  'Cx Wh',    'warehouse');
   perform pg_temp.new_user(v_acc,  'cx.acc@example.test', 'Cx Acc',   'accounting');
+  perform pg_temp.new_user(v_sup,  'cx.sup@example.test', 'Cx Sup',   'sales_supervisor');
   update public.users set is_super_admin = true where id = v_sa;
   update public.users set manager_id = v_mgr where id in (v_rep, v_wh);
 
@@ -326,6 +329,38 @@ begin
        from public.customers where id = v_house2), 'active/none');
 
   ----------------------------------------------------------------------------
+  -- The credit limit: a default, and a permission of its own
+  --
+  -- 0032. A shop starts at $500 rather than at nothing, because "no limit set"
+  -- and "unlimited" are the same value in a nullable numeric column and the
+  -- second is not what anybody meant by leaving the box alone.
+  ----------------------------------------------------------------------------
+  insert into public.customers (shop_name) values ('CX Default Credit');
+  perform pg_temp.eq('a new shop starts on the standard limit',
+    (select credit_limit_usd::text from public.customers
+      where shop_name = 'CX Default Credit'), '500.00');
+  perform pg_temp.eq('and the form is reading the same number the column uses',
+    app.default_credit_limit()::text, '500');
+  -- Still a decision somebody can make, not a value forced on the record.
+  insert into public.customers (shop_name, credit_limit_usd) values ('CX No Credit', 0);
+  perform pg_temp.eq('but it can still be set to nothing outright',
+    (select credit_limit_usd::text from public.customers
+      where shop_name = 'CX No Credit'), '0.00');
+
+  perform pg_temp.eq('a supervisor may move a credit limit',
+    app.effective_scope(v_sup, 'customer_credit', 'edit')::text, 'any');
+  perform pg_temp.eq('so may accounting',
+    app.effective_scope(v_acc, 'customer_credit', 'edit')::text, 'any');
+  perform pg_temp.eq('and an administrator',
+    app.effective_scope(v_sa, 'customer_credit', 'edit')::text, 'any');
+  perform pg_temp.eq('an ordinary rep may not',
+    app.effective_scope(v_rep, 'customer_credit', 'edit')::text, null);
+  -- The permission exists to be granted, not to be walked into: it is in the
+  -- matrix but in nobody's navigation.
+  perform pg_temp.eq('and it is not a page anybody can navigate to',
+    (select count(*)::text from public.view_modules where module_key = 'customer_credit'), '0');
+
+  ----------------------------------------------------------------------------
   -- Scope, which is the whole point of this module
   ----------------------------------------------------------------------------
   begin
@@ -358,6 +393,38 @@ begin
     -- statement never reaches a policy to be filtered by.
     perform pg_temp.refused('sales may not delete a shop',
       format('delete from public.customers where id = %L', v_mine));
+
+    -- The credit limit is the one field on their own account a rep may not
+    -- move. Row level security chooses rows, not columns, so this is a trigger
+    -- and it raises rather than silently matching nothing.
+    perform pg_temp.refused('a rep may not raise a credit limit, even on their own shop',
+      format('update public.customers set credit_limit_usd = 5000 where id = %L', v_mine));
+    perform pg_temp.eq('and the limit is left where it was',
+      (select coalesce(credit_limit_usd::text, 'none') from public.customers where id = v_mine),
+      '500.00');
+    -- An ordinary correction sends every field back, the limit among them. That
+    -- must go through, or a rep could not edit their own shop at all.
+    update public.customers
+       set business_type = 'Grocery', credit_limit_usd = credit_limit_usd
+     where id = v_mine;
+    perform pg_temp.eq('but sending it back unchanged is not a change',
+      (select business_type from public.customers where id = v_mine), 'Grocery');
+    -- Creating a shop on the standard limit is likewise not a decision.
+    insert into public.customers (shop_name, credit_limit_usd) values ('CX Rep Default', 500);
+    perform pg_temp.eq('and a rep may create a shop on the default',
+      (select count(*)::text from public.customers where shop_name = 'CX Rep Default'), '1');
+    perform pg_temp.refused('though not on one they chose',
+      'insert into public.customers (shop_name, credit_limit_usd) values (''CX Rep Rich'', 9000)');
+
+    perform pg_temp.act_as(v_sup);
+    insert into public.customers (shop_name) values ('CX Sup Shop');
+    update public.customers set credit_limit_usd = 2500 where shop_name = 'CX Sup Shop';
+    perform pg_temp.eq('a supervisor may move one on a shop they hold',
+      (select credit_limit_usd::text from public.customers where shop_name = 'CX Sup Shop'),
+      '2500.00');
+
+    -- Back to the rep, whose account the assertions below are about.
+    perform pg_temp.act_as(v_rep);
 
     -- A contact follows the customer it hangs off, through app.customer_owner.
     insert into public.customer_contacts (customer_id, name) values (v_mine, 'CX Added By Rep');

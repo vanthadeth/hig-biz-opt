@@ -120,7 +120,7 @@ export function ContactRows({
                   onChange={() => makePrimary(contact.key)}
                   className="size-4 accent-[var(--brand)]"
                 />
-                Ring first
+                Primary
               </label>
               {!disabled && contacts.length > 1 && (
                 <button

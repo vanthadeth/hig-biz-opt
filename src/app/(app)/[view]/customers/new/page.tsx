@@ -42,6 +42,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         provinces={(provinces.data ?? []) as Province[]}
         districts={(districts.data ?? []) as District[]}
         communes={(communes.data ?? []) as Commune[]}
+        canSetCredit={can(mine, "customer_credit", "edit")}
         viewKey={view}
       />
     </div>

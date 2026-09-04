@@ -12,10 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // The Telegram mini app is its own project, with its own eslint config,
-    // its own tsconfig and its own node_modules. Linting it from here resolves
-    // its @/* aliases against this app's src and reports nonsense.
-    "telegram-checkin/**",
   ]),
 ]);
 

@@ -2,26 +2,31 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { PageTitle } from "@/components/PageTitle";
 import { Card } from "@/components/ui/Card";
-import { getMyNav, groupNav } from "@/lib/access";
+import { getMyModules, groupNav } from "@/lib/access";
 
 /**
- * Everything this view offers, under headings.
+ * Everything this person can reach, under headings.
  *
- * The bottom bar's fifth slot used to open a sheet holding whatever did not fit
- * in four. That is a different thing from a menu: one is an apology for running
- * out of room, the other is where somebody goes to find a screen they know
- * exists but cannot see. So this lists the whole view rather than the remainder,
- * including the modules already sitting in the bar — a menu that hides what is
- * on screen makes you check twice.
+ * Not the current view's modules — the whole app, minus what their permissions
+ * do not cover. The bars are view-scoped because a view is a deliberate
+ * grouping and the bar belongs to the view you are standing in; a menu is the
+ * opposite errand. Somebody who holds the Audit Log and is in the Sale view has
+ * to be able to find it, and looking for it in a bar that does not carry it is
+ * the moment they decide the app cannot do it.
  *
- * The headings come from the module registry, so they are the same on every
- * view and change when somebody edits the row rather than when somebody edits
- * this file.
+ * Nothing is shown greyed out or locked. A row for something you cannot open
+ * teaches you where the walls are, which is neither useful nor anybody's
+ * business; my_modules simply does not return it.
+ *
+ * Each row leads through a view that actually holds the module, so the bar, the
+ * title and the quick actions all agree when you land. Rows that leave the
+ * current view say which one they go to, because the shell changing underfoot
+ * without warning reads as a bug.
  */
 export default async function Page({ params }: { params: Promise<{ view: string }> }) {
   const { view } = await params;
-  const nav = await getMyNav(view);
-  const groups = groupNav(nav);
+  const modules = await getMyModules(view);
+  const groups = groupNav(modules);
 
   return (
     <div className="space-y-5">
@@ -48,9 +53,12 @@ export default async function Page({ params }: { params: Promise<{ view: string 
               {group.items.map((item) => (
                 <MenuRow
                   key={item.module_key}
-                  href={`/${view}/${item.href}`}
+                  href={`/${item.view_key}/${item.href}`}
                   icon={item.icon}
                   name={item.name}
+                  caption={
+                    item.view_key === view ? undefined : `Opens in ${item.view_name}`
+                  }
                 />
               ))}
             </ul>
@@ -61,8 +69,8 @@ export default async function Page({ params }: { params: Promise<{ view: string 
       {groups.length === 0 && (
         <Card className="p-6 text-center">
           <p className="text-sm text-muted">
-            This view has nothing in it yet. Ask an administrator which modules
-            your role should reach.
+            Nothing here yet. Ask an administrator which modules your role should
+            reach.
           </p>
         </Card>
       )}

@@ -41,8 +41,21 @@ export type NavItem = {
   group_name: string;
 };
 
-/** One heading on the menu, and what sits under it. */
-export type NavGroup = { name: string; items: NavItem[] };
+/**
+ * Everything one person can reach, wherever it is filed.
+ *
+ * Distinct from NavItem, which is what one *view* offers. The bars belong to
+ * the view you are standing in; the menu belongs to you, so it carries the view
+ * to enter each module through — the current one where it holds the module, and
+ * otherwise the first one you hold that does.
+ */
+export type MenuModule = NavItem & {
+  view_key: string;
+  view_name: string;
+};
+
+/** One heading, and what sits under it. */
+export type Group<T> = { name: string; items: T[] };
 
 /**
  * The navigation under its headings, in the order the registry gives.
@@ -52,8 +65,8 @@ export type NavGroup = { name: string; items: NavItem[] };
  * cannot put its group somewhere surprising without sorting there itself, and
  * there is no second ordering to keep consistent with the first.
  */
-export function groupNav(nav: NavItem[]): NavGroup[] {
-  const groups: NavGroup[] = [];
+export function groupNav<T extends { group_name: string }>(nav: T[]): Group<T>[] {
+  const groups: Group<T>[] = [];
 
   for (const item of nav) {
     const existing = groups.find((g) => g.name === item.group_name);
@@ -122,6 +135,21 @@ export async function getMyNav(viewKey: string): Promise<NavItem[]> {
   const { data, error } = await supabase.rpc("my_nav", { p_view: viewKey });
   if (error) throw error;
   return (data ?? []) as NavItem[];
+}
+
+/**
+ * Every module this person can reach, for the menu.
+ *
+ * Not view-scoped, unlike getMyNav: somebody holding the Audit Log while
+ * standing in the Sale view should be able to find it, and looking for it in
+ * the bar of a view that does not carry it is the moment they conclude the app
+ * cannot do it.
+ */
+export async function getMyModules(viewKey: string): Promise<MenuModule[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("my_modules", { p_view: viewKey });
+  if (error) throw error;
+  return (data ?? []) as MenuModule[];
 }
 
 export async function getMyPermissions(): Promise<Permission[]> {

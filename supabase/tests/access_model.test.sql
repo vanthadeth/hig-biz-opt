@@ -12,14 +12,17 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  ACCESS MODEL OK - 147 assertions passed (rls: ran)
+--     ERROR:  ACCESS MODEL OK - 155 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke:
 --
 --     ERROR:  FAILED: deny override beats role grant -- expected null, got any
 --
 -- The fixtures are self-contained: they do not read the seeded employee, so this
--- runs against a freshly migrated database as well as a populated one.
+-- runs against a freshly migrated database as well as a populated one. Where it
+-- reasons about a role's permissions it sets them first, because the Roles
+-- screen lets an administrator change them and a suite that assumed the seed
+-- would fail for a reason that is not a bug.
 
 -- Assertion helpers. pg_temp is session-local, so these never touch the schema.
 create or replace function pg_temp.bump() returns void language plpgsql as $f$
@@ -183,6 +186,40 @@ begin
   perform pg_temp.notok('subordinate: self is not',       app.is_subordinate(v_rep, v_rep));
 
   ----------------------------------------------------------------------------
+  -- Pin the matrix this suite reasons about
+  --
+  -- The assertions below check that effective_scope resolves a role matrix
+  -- correctly, using Sales as the worked example. They were written against the
+  -- seeded defaults — but the Roles screen exists precisely so an administrator
+  -- can change those, and the moment somebody has, a suite that hard-codes them
+  -- stops testing the resolver and starts testing the configuration. It then
+  -- fails for a reason that is not a bug, which is the worst kind of test.
+  --
+  -- So the transaction sets the matrix it is about to reason over, back to the
+  -- documented seed. It rolls back with everything else, so whatever HIG has
+  -- actually configured is untouched.
+  ----------------------------------------------------------------------------
+  delete from public.role_permissions
+   where role_id = (select id from public.roles where key = 'sales');
+
+  insert into public.role_permissions (role_id, module_key, action, scope)
+  select r.id, p.module_key, p.action::public.permission_action, p.scope::public.permission_scope
+  from (values
+    ('customer',   'view', 'any'),
+    ('customer',   'add',  'own'),
+    ('customer',   'edit', 'own'),
+    ('sale_order', 'view', 'sub'),
+    ('sale_order', 'add',  'own'),
+    ('sale_order', 'edit', 'own'),
+    ('invoice',    'view', 'sub'),
+    ('payment',    'view', 'own'),
+    ('payment',    'add',  'own'),
+    ('product',    'view', 'any')
+  ) as p(module_key, action, scope)
+  cross join public.roles r
+  where r.key = 'sales';
+
+  ----------------------------------------------------------------------------
   -- app.effective_scope: role defaults
   ----------------------------------------------------------------------------
   perform pg_temp.eq('sales: customer.view',    app.effective_scope(v_rep, 'customer', 'view')::text,   'any');
@@ -344,6 +381,47 @@ begin
     'Product, Sales Order, Settings');
 
   ----------------------------------------------------------------------------
+  -- app.my_modules: the menu, which is not the navigation
+  --
+  -- my_nav answers "what does this view offer" and drives the bars. my_modules
+  -- answers "what can this person reach", wherever it is filed, and carries the
+  -- view to enter it through. The menu needs the second: somebody holding the
+  -- Audit Log while standing in Sale has to be able to find it.
+  ----------------------------------------------------------------------------
+  perform pg_temp.act_as(v_jr);
+  perform pg_temp.eq('my_modules: one view, so the same set as its nav',
+    (select string_agg(name, ', ' order by name) from app.my_modules('sales')),
+    (select string_agg(name, ', ' order by name) from app.my_nav('sales')));
+  perform pg_temp.eq('my_modules: and every row leads through that view',
+    (select count(*)::text from app.my_modules('sales') where view_key <> 'sales'), '0');
+  -- A module they may view but which lives only in a view they cannot enter is
+  -- left out: there would be nowhere to send them, and a row that leads nowhere
+  -- is worse than a missing one.
+  perform pg_temp.ok('my_modules: this rep may view Invoice',
+    app.effective_scope(v_jr, 'invoice', 'view') is not null);
+  perform pg_temp.eq('but it is left out, sitting in no view they hold',
+    (select count(*)::text from app.my_modules('sales') where module_key = 'invoice'), '0');
+
+  perform pg_temp.act_as(v_sa);
+  perform pg_temp.eq('my_modules: an administrator sees the whole app',
+    (select string_agg(name, ', ' order by sort_order) from app.my_modules('sales')),
+    'User, Customer, Product, Inventory, Sales Order, Invoice, Payment, Role & Permission, Audit Log, Settings');
+  -- The view they are standing in wins where it carries the module, so the
+  -- common case does not send anybody through a view switch they did not ask
+  -- for; another view is named only when it is the only way in.
+  perform pg_temp.eq('my_modules: the current view is preferred',
+    (select view_key from app.my_modules('sales') where module_key = 'customer'), 'sales');
+  perform pg_temp.eq('my_modules: and another is used when it is the only way in',
+    (select view_key from app.my_modules('sales') where module_key = 'audit_log'), 'admin');
+  -- A permission-only module has no view_modules row and no page behind it, so
+  -- it must never become a menu row — while staying a module somebody can grant.
+  perform pg_temp.eq('my_modules: a permission-only module never appears',
+    (select count(*)::text from app.my_modules('sales')
+      where module_key = 'customer_credit'), '0');
+  perform pg_temp.eq('though it is still a module, and still grantable',
+    (select count(*)::text from public.modules where key = 'customer_credit'), '1');
+
+  ----------------------------------------------------------------------------
   -- app.my_permissions
   ----------------------------------------------------------------------------
   perform pg_temp.act_as(v_rep);
@@ -418,13 +496,13 @@ begin
       where n.nspname = 'public' and p.proconfig is null),
     '0');
 
-  -- The six the frontend calls, and nothing else.
+  -- The seven the frontend calls, and nothing else.
   perform pg_temp.eq('exactly the frontend RPCs are callable',
     (select string_agg(p.proname, ',' order by p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
         and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
-    'can_delete_user,can_edit_user,my_nav,my_permissions,my_views,set_default_printer');
+    'can_delete_user,can_edit_user,my_modules,my_nav,my_permissions,my_views,set_default_printer');
 
   ----------------------------------------------------------------------------
   -- Every table carries row level security
@@ -659,10 +737,17 @@ begin
     delete from public.users where id = v_vic;
     get diagnostics v_hit = row_count;
     perform pg_temp.eq('and their delete touches no rows', v_hit::text, '0');
+
+    -- Checked as the administrator, not as the rep. The rep holds user.view at
+    -- 'own', so this record is invisible to them either way — asking them
+    -- whether it survived would return 0 whether the delete was refused or
+    -- carried out, which is the one thing this assertion must be able to tell
+    -- apart. The row_count above is what proves the delete did nothing; this
+    -- proves the record is still there to have done nothing to.
+    perform pg_temp.act_as(v_sa);
     perform pg_temp.eq('leaving the record in place',
       (select count(*)::text from public.users where id = v_vic), '1');
 
-    perform pg_temp.act_as(v_sa);
     delete from public.users where id = v_vic;
     get diagnostics v_hit = row_count;
     perform pg_temp.eq('a permitted delete removes exactly one row', v_hit::text, '1');

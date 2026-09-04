@@ -5,6 +5,7 @@ import {
   AGEING_BUCKETS,
   communesIn,
   coordinateProblem,
+  contactHeading,
   formatAccuracy,
   formatCoordinate,
   locationProblem,
@@ -532,5 +533,49 @@ describe("locationProblem", () => {
     for (const code of [undefined, 0, 1, 2, 3, 4, -1]) {
       expect(locationProblem(code).length).toBeGreaterThan(10);
     }
+  });
+});
+
+describe("contactHeading", () => {
+  it("leads with the number and puts the person underneath", () => {
+    // A rep opening a shop is nearly always about to ring it.
+    expect(
+      contactHeading({ name: "Sok Dara", position: "Owner", phone: "012 345 678" }),
+    ).toEqual({ title: "012 345 678", subtitle: "Sok Dara · Owner" });
+  });
+
+  it("drops the position from the subtitle when there is none", () => {
+    expect(contactHeading({ name: "Sok Dara", position: null, phone: "012 345 678" })).toEqual(
+      { title: "012 345 678", subtitle: "Sok Dara" },
+    );
+  });
+
+  it("leads with the person when there is nothing to dial", () => {
+    // Otherwise the row would head with an empty line.
+    expect(contactHeading({ name: "Sok Dara", position: "Owner", phone: null })).toEqual({
+      title: "Sok Dara",
+      subtitle: "Owner",
+    });
+  });
+
+  it("treats a blank number as no number at all", () => {
+    expect(contactHeading({ name: "Sok Dara", position: null, phone: "   " })).toEqual({
+      title: "Sok Dara",
+      subtitle: null,
+    });
+  });
+
+  it("never heads a row with an empty string", () => {
+    // The title is the only line that always renders, so it has to hold
+    // something whatever the record is missing.
+    for (const phone of [null, "", "  ", "012 345 678"]) {
+      expect(contactHeading({ name: "Sok Dara", position: null, phone }).title).not.toBe("");
+    }
+  });
+
+  it("trims what it is given, since the form does not", () => {
+    expect(
+      contactHeading({ name: "  Sok Dara  ", position: "  Owner ", phone: " 012 345 678 " }),
+    ).toEqual({ title: "012 345 678", subtitle: "Sok Dara · Owner" });
   });
 });

@@ -250,6 +250,33 @@ export function mapHref(customer: {
   return `https://www.google.com/maps/search/?api=1&query=${customer.latitude},${customer.longitude}`;
 }
 
+/**
+ * How a contact reads on the record: the number first, the person second.
+ *
+ * Inverted from the obvious order on purpose. A rep opening a shop is nearly
+ * always about to ring it, and the number is what they are looking for; the
+ * name tells them who will answer. Where there is no number to dial, the person
+ * is all there is, so they lead instead of an empty line.
+ */
+export function contactHeading(contact: {
+  name: string;
+  position: string | null;
+  phone: string | null;
+}): { title: string; subtitle: string | null } {
+  const phone = contact.phone?.trim() || null;
+  const name = contact.name.trim();
+  const position = contact.position?.trim() || null;
+
+  if (phone) {
+    return {
+      title: phone,
+      subtitle: [name, position].filter(Boolean).join(" · ") || null,
+    };
+  }
+
+  return { title: name, subtitle: position };
+}
+
 export function telegramHref(handle: string | null): string | null {
   if (!handle) return null;
   return `https://t.me/${handle.replace(/^@/, "")}`;

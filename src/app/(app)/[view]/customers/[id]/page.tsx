@@ -9,6 +9,7 @@ import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import {
   addressLine,
+  contactHeading,
   CONTACT_COLUMNS,
   CUSTOMERS_BUCKET,
   CUSTOMER_COLUMNS,
@@ -23,10 +24,15 @@ import {
 } from "@/lib/customers";
 import { formatDate } from "@/lib/users";
 import { CustomerStatusControls } from "../CustomerStatusControls";
+import { CustomerTabs } from "./CustomerTabs";
 import { PictureManager } from "../PictureManager";
 import { Receivables } from "../Receivables";
 
-export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const supabase = await createClient();
   const { data } = await supabase
@@ -46,32 +52,37 @@ export default async function Page({
   const { view, id } = await params;
   const supabase = await createClient();
 
-  const [record, contactsResult, picturesResult, directory, mine] = await Promise.all([
-    supabase.from("customers").select(CUSTOMER_COLUMNS).eq("id", id).maybeSingle(),
-    // Retired contacts and pictures stay in the table and off the screen.
-    // 0031 replaced deleting them with this, so the record of who used to
-    // answer a shop's phone survives without cluttering who answers it now.
-    supabase
-      .from("customer_contacts")
-      .select(CONTACT_COLUMNS)
-      .eq("customer_id", id)
-      .eq("active", true)
-      .order("is_primary", { ascending: false })
-      .order("sort_order"),
-    supabase
-      .from("customer_pictures")
-      .select(PICTURE_COLUMNS)
-      .eq("customer_id", id)
-      .eq("active", true)
-      .order("is_primary", { ascending: false })
-      .order("sort_order"),
-    supabase
-      .from("customer_directory")
-      .select("province_name, district_name, commune_name, owner_name")
-      .eq("id", id)
-      .maybeSingle(),
-    getMyPermissions(),
-  ]);
+  const [record, contactsResult, picturesResult, directory, mine] =
+    await Promise.all([
+      supabase
+        .from("customers")
+        .select(CUSTOMER_COLUMNS)
+        .eq("id", id)
+        .maybeSingle(),
+      // Retired contacts and pictures stay in the table and off the screen.
+      // 0031 replaced deleting them with this, so the record of who used to
+      // answer a shop's phone survives without cluttering who answers it now.
+      supabase
+        .from("customer_contacts")
+        .select(CONTACT_COLUMNS)
+        .eq("customer_id", id)
+        .eq("active", true)
+        .order("is_primary", { ascending: false })
+        .order("sort_order"),
+      supabase
+        .from("customer_pictures")
+        .select(PICTURE_COLUMNS)
+        .eq("customer_id", id)
+        .eq("active", true)
+        .order("is_primary", { ascending: false })
+        .order("sort_order"),
+      supabase
+        .from("customer_directory")
+        .select("province_name, district_name, commune_name, owner_name")
+        .eq("id", id)
+        .maybeSingle(),
+      getMyPermissions(),
+    ]);
 
   // Row level security already hid it; a missing row and a forbidden row look
   // the same from here, which is the right answer to give either way.
@@ -115,7 +126,9 @@ export default async function Page({
             className="size-20 rounded-2xl"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold tracking-tight">{customer.shop_name}</h1>
+            <h1 className="text-xl font-semibold tracking-tight">
+              {customer.shop_name}
+            </h1>
             {customer.business_type && (
               <p className="text-sm text-muted">{customer.business_type}</p>
             )}
@@ -133,122 +146,162 @@ export default async function Page({
           </div>
         </div>
 
-        {canEdit && (
-          <Link
-            href={`/${view}/customers/${customer.id}/edit`}
-            className="pressable mt-4 flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
-          >
-            <Icon name="pencil" className="size-4" />
-            Edit customer
-          </Link>
+        {(canEdit || map) && (
+          <div className="mt-4 flex gap-2">
+            {canEdit && (
+              <Link
+                href={`/${view}/customers/${customer.id}/edit`}
+                className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
+              >
+                <Icon name="pencil" className="size-4" />
+                Edit customer
+              </Link>
+            )}
+            {/* Only when the shop has actually been pinned. A map button that
+                opens the middle of the country is worse than no button. */}
+            {map && (
+              <a
+                href={map}
+                target="_blank"
+                rel="noreferrer"
+                className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium text-fg"
+              >
+                <Icon name="pin" className="size-4" />
+                Show on map
+              </a>
+            )}
+          </div>
         )}
       </Card>
 
-      <Card className="p-4">
-        <SectionHeader
-          title="Contacts"
-          caption={`${contacts.length} ${contacts.length === 1 ? "person" : "people"}`}
-        />
-        {contacts.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">Nobody recorded at this shop yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-line">
-            {contacts.map((contact) => {
-              const telegram = telegramHref(contact.telegram_id);
-              return (
-                <li key={contact.id} className="flex items-center gap-3 py-2">
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="truncate text-sm font-medium">{contact.name}</span>
-                      {contact.is_primary && <Chip tone="brand">Ring first</Chip>}
-                    </span>
-                    {/* The number itself, not only the button that dials it.
-                        A rep reads it out over the radio, copies it into a
-                        message, or checks it against the one on the door — none
-                        of which a tel: link does. */}
-                    {(contact.position || contact.phone) && (
-                      <span className="block truncate text-xs text-muted">
-                        {[contact.position, contact.phone].filter(Boolean).join(" · ")}
-                      </span>
-                    )}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1">
-                    {contact.phone && (
-                      <a
-                        href={`tel:${contact.phone.replace(/\s/g, "")}`}
-                        aria-label={`Call ${contact.name}`}
-                        className="pressable flex size-9 items-center justify-center rounded-lg border border-line text-muted hover:text-fg"
+      <CustomerTabs
+        contact={
+          <>
+            <Card className="p-4">
+              <SectionHeader
+                title="Contacts"
+                caption={`${contacts.length} ${contacts.length === 1 ? "person" : "people"}`}
+              />
+              {contacts.length === 0 ? (
+                <p className="mt-3 text-sm text-muted">
+                  Nobody recorded at this shop yet.
+                </p>
+              ) : (
+                <ul className="mt-3 divide-y divide-line">
+                  {contacts.map((contact) => {
+                    const telegram = telegramHref(contact.telegram_id);
+                    const heading = contactHeading(contact);
+                    return (
+                      <li
+                        key={contact.id}
+                        className="flex items-center gap-3 py-2"
                       >
-                        <Icon name="phone" className="size-4" />
-                      </a>
-                    )}
-                    {telegram && (
+                        <span className="min-w-0 flex-1">
+                          {/* The number leads: a rep opening a shop is nearly always
+                        about to ring it, and this is also the form they read
+                        aloud or copy into a message, which a tel: link is not. */}
+                          <span className="block truncate text-sm font-medium tabular-nums">
+                            {heading.title}
+                          </span>
+                          {heading.subtitle && (
+                            <span className="block truncate text-xs text-muted">
+                              {heading.subtitle}
+                            </span>
+                          )}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {contact.is_primary && (
+                            <Chip tone="brand">Primary</Chip>
+                          )}
+                          {contact.phone && (
+                            <a
+                              href={`tel:${contact.phone.replace(/\s/g, "")}`}
+                              aria-label={`Call ${contact.name}`}
+                              className="pressable flex size-9 items-center justify-center rounded-lg border border-line text-muted hover:text-fg"
+                            >
+                              <Icon name="phone" className="size-4" />
+                            </a>
+                          )}
+                          {telegram && (
+                            <a
+                              href={telegram}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`Telegram ${contact.name}`}
+                              className="pressable flex size-9 items-center justify-center rounded-lg border border-line text-muted hover:text-fg"
+                            >
+                              <Icon name="send" className="size-4" />
+                            </a>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <SectionHeader title="Address" />
+              <dl className="mt-3 space-y-2 text-sm">
+                <Row label="Where" value={where} />
+                <Row label="Landmark" value={customer.landmark} />
+                <Row label="Postal code" value={customer.zipcode} />
+                <div className="flex gap-3">
+                  <dt className="w-28 shrink-0 text-xs text-muted">Location</dt>
+                  <dd className="min-w-0 flex-1">
+                    {map ? (
                       <a
-                        href={telegram}
+                        href={map}
                         target="_blank"
                         rel="noreferrer"
-                        aria-label={`Telegram ${contact.name}`}
-                        className="pressable flex size-9 items-center justify-center rounded-lg border border-line text-muted hover:text-fg"
+                        className="text-brand underline"
                       >
-                        <Icon name="send" className="size-4" />
+                        {customer.latitude}, {customer.longitude}
                       </a>
+                    ) : (
+                      <span className="text-muted">Not pinned</span>
                     )}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </Card>
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          </>
+        }
+        gallery={
+          <PictureManager
+            customerId={customer.id}
+            pictures={pictures}
+            canEdit={canEdit}
+          />
+        }
+        account={
+          <>
+            <CustomerStatusControls
+              customerId={customer.id}
+              shopName={customer.shop_name}
+              status={customer.status}
+              statusNote={customer.status_note}
+              canEdit={canEdit}
+            />
 
-      <Card className="p-4">
-        <SectionHeader title="Address" />
-        <dl className="mt-3 space-y-2 text-sm">
-          <Row label="Where" value={where} />
-          <Row label="Landmark" value={customer.landmark} />
-          <Row label="Postal code" value={customer.zipcode} />
-          <div className="flex gap-3">
-            <dt className="w-28 shrink-0 text-xs text-muted">Location</dt>
-            <dd className="min-w-0 flex-1">
-              {map ? (
-                <a
-                  href={map}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-brand underline"
-                >
-                  {customer.latitude}, {customer.longitude}
-                </a>
-              ) : (
-                <span className="text-muted">Not pinned</span>
-              )}
-            </dd>
-          </div>
-        </dl>
-      </Card>
+            <Receivables
+              creditLimit={customer.credit_limit_usd}
+              lastVisit={formatDate(customer.last_visit_date)}
+              lastPurchase={formatDate(customer.last_purchase_date)}
+            />
 
-      <PictureManager customerId={customer.id} pictures={pictures} canEdit={canEdit} />
-
-      <CustomerStatusControls
-        customerId={customer.id}
-        shopName={customer.shop_name}
-        status={customer.status}
-        statusNote={customer.status_note}
-        canEdit={canEdit}
+            {customer.remarks && (
+              <Card className="p-4">
+                <SectionHeader title="Remarks" />
+                <p className="mt-2 whitespace-pre-wrap text-sm text-muted">
+                  {customer.remarks}
+                </p>
+              </Card>
+            )}
+          </>
+        }
       />
-
-      <Receivables
-        creditLimit={customer.credit_limit_usd}
-        lastVisit={formatDate(customer.last_visit_date)}
-        lastPurchase={formatDate(customer.last_purchase_date)}
-      />
-
-      {customer.remarks && (
-        <Card className="p-4">
-          <SectionHeader title="Remarks" />
-          <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{customer.remarks}</p>
-        </Card>
-      )}
 
       <p className="px-1 text-xs text-muted">
         Nothing here is deleted. A shop leaves the book by its status, and a
@@ -263,7 +316,9 @@ function Row({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex gap-3">
       <dt className="w-28 shrink-0 text-xs text-muted">{label}</dt>
-      <dd className="min-w-0 flex-1">{value ?? <span className="text-muted">—</span>}</dd>
+      <dd className="min-w-0 flex-1">
+        {value ?? <span className="text-muted">—</span>}
+      </dd>
     </div>
   );
 }

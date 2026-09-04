@@ -166,16 +166,40 @@ migration — add a new one.
 0025_customers.sql            shops, their contacts, pictures and address
 0026_variant_code_and_barcode the variant becomes the sellable unit
 0027_order_catalogue_codes    a stable order for the collected codes
+0028_item_code_and_price      code and prices belong to the item, not the variant
+0029_item_pictures            an item's own gallery
+0030_audit_log.sql            who changed what, and when
+0031_customer_soft_delete     a customer is retired rather than removed
+0032_credit_limit_permission  a $500 default, and its own permission
+0033_module_groups.sql        a module says which heading it sits under
+0034_my_modules.sql           everything one person can reach, wherever it is filed
+0035_telegram_check_ins       attendance punches, from the Telegram mini app
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
 finding left open is leaked-password protection, which is a project auth setting
 rather than schema — enable it under Authentication → Policies in the dashboard.
 
+## The Telegram check-in app
+
+`telegram-checkin/` is a second Next.js project in this repository: a Telegram
+Mini App where staff check in and out with their location and a photo. It shares
+this Supabase project, these employee records and these access rules — the
+migrations above are the source of truth for both apps.
+
+It has its own `package.json` and its own deployment. See
+[`telegram-checkin/README.md`](telegram-checkin/README.md) for the bot setup,
+the two extra environment variables (both secrets, unlike this app's two), and
+how the Telegram launch becomes a real Supabase session.
+
+`check_in` is the second permission-only module, after `customer_credit`: a
+`modules` row with no `view_modules` row, so it can be granted and checked
+before any screen in this app reads it. There is no check-in screen here yet.
+
 ## Tests
 
 ```bash
-npm test          # Vitest, 378 tests
+npm test          # Vitest, 437 tests
 npm run test:watch
 ```
 
@@ -243,6 +267,23 @@ chain, the one-primary rules and the directory view.
 ERROR:  CUSTOMERS OK - 47 assertions passed (rls: ran)
 ```
 
+### Check-in tests
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/check_ins.test.sql
+```
+
+56 assertions. Two of them are the reason this file exists rather than being
+folded into the access-model suite. `check_ins` is append-only, and "nobody may
+change this, the super admin included" is a claim about *grants* rather than
+about policies, so it is asserted differently from everything else here. And
+0035 reopened `guard_self_edit` to add a column to its tuple — the kind of edit
+that silently stops guarding if it is got wrong, so the guard is re-tested here.
+
+```
+ERROR:  CHECK-INS OK - 56 assertions passed (rls: ran)
+```
+
 ## Deploy
 
 The app runs on **Vercel**. It cannot go on GitHub Pages: `src/proxy.ts` is
@@ -250,6 +291,12 @@ middleware and several routes are server components that read cookies and
 redirect, none of which survive a static export.
 
 `main` is the production branch. Every push to it redeploys.
+
+There are **two** Vercel projects from this one repository: this app from the
+root, and the Telegram check-in app with its Root Directory set to
+`telegram-checkin`. CI checks both, as `check (.)` and `check (telegram-checkin)`
+— if a branch protection rule requires the old `check` context, it needs
+updating to those two names.
 
 ### First-time setup
 

@@ -112,9 +112,8 @@ create table public.check_ins (
   user_id         uuid not null default auth.uid()
                     references public.users (id) on update cascade on delete restrict,
   kind            public.check_in_kind not null,
-  -- Stored rather than taken from created_at, so a punch recorded after the
-  -- fact — a phone that was out of signal — has somewhere to say when it
-  -- actually happened.
+  -- Stamped by the trigger below whenever a person is doing the punching, never
+  -- taken from the client. See stamp_check_in.
   occurred_at     timestamptz not null default now(),
   latitude        numeric(9, 6) not null,
   longitude       numeric(9, 6) not null,
@@ -143,6 +142,36 @@ comment on table public.check_ins is
 -- being asked for.
 create index check_ins_by_person on public.check_ins (user_id, occurred_at desc);
 create index check_ins_recent    on public.check_ins (occurred_at desc);
+
+-- The clock is the server's ---------------------------------------------------------
+-- A phone's clock is a setting. The entire value of an attendance record is
+-- that the time on it was not chosen by the person it is about — and the policy
+-- above admits any occurred_at a rep cares to send, because row level security
+-- chooses rows and not columns. So whatever arrives is discarded.
+--
+-- A caller with no JWT keeps what it sent: that is a migration, a data fix, or
+-- a backfill, and none of those is somebody punching. It is the same carve-out
+-- guard_credit_limit makes in 0032, for the same reason.
+create function public.stamp_check_in()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if auth.uid() is not null then
+    new.occurred_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+create trigger check_ins_stamp
+  before insert on public.check_ins
+  for each row execute function public.stamp_check_in();
+
+-- Callable only as a trigger, as 0023 established for the others.
+revoke execute on function public.stamp_check_in()
+  from public, anon, authenticated, service_role;
 
 -- The permission ------------------------------------------------------------------
 -- No view_modules row, so it never appears in anybody's navigation. app.my_nav

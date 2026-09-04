@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/*
+ * Telegram publishes the viewer's own theme as CSS variables on the document,
+ * and the app borrows them so it reads as part of the client rather than as a
+ * web page in a frame. The fallbacks are the HIG palette from the web app's
+ * globals.css, which is what a desktop browser and an old client get.
+ *
+ * --brand keeps the web app's deeper blue rather than the logo's: at the logo
+ * value, white-on-blue lands near 4.2:1, short of the 4.5:1 a button label
+ * needs.
+ */
+:root {
+  --bg: var(--tg-theme-bg-color, #f6f7f9);
+  --surface: var(--tg-theme-secondary-bg-color, #ffffff);
+  --fg: var(--tg-theme-text-color, #101828);
+  --muted: var(--tg-theme-hint-color, #667085);
+  --line: color-mix(in srgb, var(--muted) 25%, transparent);
+  --brand: var(--tg-theme-button-color, #1975bf);
+  --brand-fg: var(--tg-theme-button-text-color, #ffffff);
+  --accent: #3ab54a;
+  --danger: var(--tg-theme-destructive-text-color, #b42318);
+}
+
+/*
+ * Outside Telegram there are no theme params, so the dark values come from the
+ * operating system instead. As in the web app, --brand-fg goes dark on the
+ * brighter blue: white on it fails contrast.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--tg-theme-bg-color, #0f1419);
+    --surface: var(--tg-theme-secondary-bg-color, #18202a);
+    --fg: var(--tg-theme-text-color, #e7edf4);
+    --muted: var(--tg-theme-hint-color, #94a3b8);
+    --brand: var(--tg-theme-button-color, #35aeea);
+    --brand-fg: var(--tg-theme-button-text-color, #06121c);
+    --accent: #4ecb5e;
+    --danger: var(--tg-theme-destructive-text-color, #ff8a80);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--tg-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
+  /* Telegram's own safe areas, so the button clears the home indicator. */
+  padding-bottom: var(--tg-safe-area-inset-bottom, 0px);
+}
+
+/* Matches the web app's .pressable: a press should feel like one. */
+.pressable {
+  transition: transform 120ms ease;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.fade-up { animation: fade-up 240ms ease both; }

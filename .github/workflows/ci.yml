@@ -6,17 +6,31 @@ on:
   pull_request:
     branches: [main]
 
-# Vercel builds the deployed app, but that build is not visible from every
+# Vercel builds the deployed apps, but that build is not visible from every
 # environment this repo is worked on from. This is the check that a clean
-# machine can install, lint, typecheck, test and build the thing.
+# machine can install, lint, typecheck, test and build them.
 jobs:
   check:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # The web app at the root, and the Telegram check-in mini app beside it.
+        # Two dependency trees, two builds, checked the same way.
+        project: [".", "telegram-checkin"]
+
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+
     env:
-      # Nothing rendered at build time talks to Supabase — the only static page
-      # is /login, whose client component creates its client in the browser. So
-      # placeholders are enough and CI needs no secrets.
+      # Nothing rendered at build time talks to Supabase — the only static pages
+      # are /login, whose client component creates its client in the browser,
+      # and the mini app's single page, which does the same. The mini app reads
+      # its bot token and secret key inside the route handlers rather than at
+      # module scope, so those never reach a build either. Placeholders are
+      # enough and CI needs no secrets.
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_placeholder
 
@@ -27,6 +41,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: ${{ matrix.project }}/package-lock.json
 
       - run: npm ci
 

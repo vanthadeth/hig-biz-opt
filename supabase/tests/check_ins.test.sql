@@ -17,7 +17,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CHECK-INS OK - 51 assertions passed (rls: ran)
+--     ERROR:  CHECK-INS OK - 56 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -231,7 +231,24 @@ begin
     v_rep::text);
   perform pg_temp.ok('an accuracy the instrument did not report is allowed',
     (select accuracy_m is null from public.check_ins where photo_path = 'defaulted.jpg'));
+
+  -- The clock is the server's. A phone's is a setting, and an attendance record
+  -- whose time the employee chose is not evidence of anything.
+  insert into public.check_ins
+    (kind, occurred_at, latitude, longitude, location_source, photo_path)
+  values ('in', timestamptz '2001-01-01 08:00+07', 11.5564, 104.9282, 'telegram', 'backdated.jpg');
+  perform pg_temp.ok('a backdated punch is stamped with the time it arrived',
+    (select occurred_at > now() - interval '1 minute'
+       from public.check_ins where photo_path = 'backdated.jpg'));
   perform pg_temp.act_as_nobody();
+
+  -- ...but a migration or a backfill, which is nobody, keeps what it sent.
+  insert into public.check_ins
+    (user_id, kind, occurred_at, latitude, longitude, location_source, photo_path)
+  values (v_rep, 'in', timestamptz '2001-01-01 08:00+07', 11.5564, 104.9282, 'browser', 'backfill.jpg');
+  perform pg_temp.eq('while a backfill keeps the time it states',
+    (select to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD')
+       from public.check_ins where photo_path = 'backfill.jpg'), '2001-01-01');
 
   ----------------------------------------------------------------------------
   -- Append-only, by grant rather than by policy
@@ -250,6 +267,13 @@ begin
   perform pg_temp.eq('and no delete policy either',
     (select count(*)::text from pg_policies
       where schemaname = 'public' and tablename = 'check_ins' and cmd = 'DELETE'), '0');
+  perform pg_temp.ok('the stamping trigger is not callable as an RPC',
+    not has_function_privilege('authenticated', 'public.stamp_check_in()', 'execute'));
+  perform pg_temp.ok('nor by the service role',
+    not has_function_privilege('service_role', 'public.stamp_check_in()', 'execute'));
+  perform pg_temp.ok('and it pins its search path, as every function here does',
+    (select 'search_path=' = any(proconfig) or proconfig::text like '%search_path=%'
+       from pg_proc where oid = 'public.stamp_check_in()'::regprocedure));
   perform pg_temp.ok('row level security is on',
     (select relrowsecurity from pg_class where oid = 'public.check_ins'::regclass));
   perform pg_temp.eq('and anon was given nothing',

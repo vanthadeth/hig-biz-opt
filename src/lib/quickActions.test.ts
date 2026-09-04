@@ -9,6 +9,7 @@ const nav = (...keys: string[]): NavItem[] =>
     icon: "square",
     href: key.replace("_", "-"),
     sort_order: i,
+    group_name: "Selling",
   }));
 
 const perm = (module_key: string, action: Permission["action"]): Permission => ({
@@ -50,7 +51,14 @@ describe("quickActionsFor", () => {
 
   it("also carries the bare module name for narrow tiles", () => {
     const orders: NavItem[] = [
-      { module_key: "sale_order", name: "Sales Order", icon: "cart", href: "sale-orders", sort_order: 1 },
+      {
+        module_key: "sale_order",
+        name: "Sales Order",
+        icon: "cart",
+        href: "sale-orders",
+        sort_order: 1,
+        group_name: "Selling",
+      },
     ];
     const actions = quickActionsFor(orders, [perm("sale_order", "add")], "sales");
     expect(actions[0].short).toBe("Sales Order");
@@ -60,7 +68,16 @@ describe("quickActionsFor", () => {
   it("falls back to the module name for a module it has never heard of", () => {
     // A module added later still gets a usable action with no code change.
     const actions = quickActionsFor(
-      [{ module_key: "delivery", name: "Delivery", icon: "box", href: "deliveries", sort_order: 1 }],
+      [
+        {
+          module_key: "delivery",
+          name: "Delivery",
+          icon: "box",
+          href: "deliveries",
+          sort_order: 1,
+          group_name: "Stock",
+        },
+      ],
       [perm("delivery", "add")],
       "warehouse",
     );
@@ -69,7 +86,14 @@ describe("quickActionsFor", () => {
 
   it("builds hrefs inside the current view", () => {
     const customers: NavItem[] = [
-      { module_key: "customer", name: "Customer", icon: "building", href: "customers", sort_order: 1 },
+      {
+        module_key: "customer",
+        name: "Customer",
+        icon: "building",
+        href: "customers",
+        sort_order: 1,
+        group_name: "Selling",
+      },
     ];
     const actions = quickActionsFor(customers, [perm("customer", "add")], "accounting");
     expect(actions[0].href).toBe("/accounting/customers");

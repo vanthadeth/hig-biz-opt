@@ -36,7 +36,33 @@ export type NavItem = {
   icon: string;
   href: string;
   sort_order: number;
+  /** Which heading this module sits under on the menu. From the registry, so a
+      module cannot be filed one way in the database and another on screen. */
+  group_name: string;
 };
+
+/** One heading on the menu, and what sits under it. */
+export type NavGroup = { name: string; items: NavItem[] };
+
+/**
+ * The navigation under its headings, in the order the registry gives.
+ *
+ * Group order is not stored anywhere: a group sits where its first module sits,
+ * which is the sort order somebody already curated. That means a new module
+ * cannot put its group somewhere surprising without sorting there itself, and
+ * there is no second ordering to keep consistent with the first.
+ */
+export function groupNav(nav: NavItem[]): NavGroup[] {
+  const groups: NavGroup[] = [];
+
+  for (const item of nav) {
+    const existing = groups.find((g) => g.name === item.group_name);
+    if (existing) existing.items.push(item);
+    else groups.push({ name: item.group_name, items: [item] });
+  }
+
+  return groups;
+}
 
 export type Viewer = {
   id: string;

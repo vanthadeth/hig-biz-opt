@@ -14,8 +14,22 @@ const data: ShellData = {
   view: { key: "sales", name: "Sale", description: null, icon: "cart", sort_order: 2 },
   views: [{ key: "sales", name: "Sale", description: null, icon: "cart", sort_order: 2 }],
   nav: [
-    { module_key: "customer", name: "Customer", icon: "building", href: "customers", sort_order: 1 },
-    { module_key: "sale_order", name: "Sales Order", icon: "cart", href: "sale-orders", sort_order: 2 },
+    {
+      module_key: "customer",
+      name: "Customer",
+      icon: "building",
+      href: "customers",
+      sort_order: 1,
+      group_name: "Selling",
+    },
+    {
+      module_key: "sale_order",
+      name: "Sales Order",
+      icon: "cart",
+      href: "sale-orders",
+      sort_order: 2,
+      group_name: "Selling",
+    },
   ],
   permissions: [],
 };

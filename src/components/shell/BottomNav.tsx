@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
-import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { QuickActions } from "./QuickActions";
@@ -21,22 +20,20 @@ function entries(nav: ReturnType<typeof useShell>["nav"]) {
 /**
  * Phone navigation.
  *
- * Four slots around a raised centre button. Home plus three modules fit
- * directly; anything beyond that collapses into a More sheet rather than
- * shrinking the labels until they are unreadable.
+ * Four slots around a raised centre button: Home, the first two modules of the
+ * view, and Menu. Menu is always the fourth rather than appearing only when
+ * something overflows — it is a page listing the whole view, not a sheet
+ * holding the remainder, so it is worth a fixed place somebody can learn.
  */
 export function BottomNav() {
   const pathname = usePathname();
   const hidden = useScrollHidden();
   const { view, nav } = useShell();
   const [quickOpen, setQuickOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
 
-  // Four nav slots around the centre button, five equal columns in total.
-  // Anything past the fourth collapses into More rather than shrinking labels.
-  const all = entries(nav);
-  const overflow = all.length > 4 ? all.slice(3) : [];
-  const slots = overflow.length ? all.slice(0, 3) : all.slice(0, 4);
+  // Three direct slots plus Menu, five equal columns counting the centre
+  // button. Three rather than four because Menu always takes the last one.
+  const slots = entries(nav).slice(0, 3);
 
   const left = slots.slice(0, 2);
   const right = slots.slice(2);
@@ -61,7 +58,6 @@ export function BottomNav() {
     );
   };
 
-  const moreActive = overflow.some((e) => pathname === `/${view.key}/${e.href}`);
 
   return (
     <>
@@ -95,49 +91,11 @@ export function BottomNav() {
 
           {right.map(item)}
 
-          {overflow.length > 0 && (
-            <li className="flex-1">
-              <button
-                type="button"
-                onClick={() => {
-                  haptic("tap");
-                  setMoreOpen(true);
-                }}
-                aria-current={moreActive ? "page" : undefined}
-                className="flex min-h-16 w-full flex-col items-center justify-center gap-1.5 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
-              >
-                <Icon name="dots" className="size-6" />
-                <span className="text-[11px] font-medium leading-none">More</span>
-              </button>
-            </li>
-          )}
+          {item({ key: "menu", name: "Menu", icon: "menu", href: "menu" })}
         </ul>
       </nav>
 
       <QuickActions open={quickOpen} onClose={() => setQuickOpen(false)} />
-
-      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="More">
-        <ul className="stagger">
-          {overflow.map((entry, i) => (
-            <li key={entry.key} style={{ "--i": i } as React.CSSProperties}>
-              <Link
-                href={`/${view.key}/${entry.href}`}
-                onClick={() => {
-                  haptic("tap");
-                  setMoreOpen(false);
-                }}
-                className="pressable flex min-h-14 items-center gap-3 rounded-2xl px-3 hover:bg-subtle"
-              >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-subtle text-muted">
-                  <Icon name={entry.icon} className="size-5" />
-                </span>
-                <span className="flex-1 text-sm font-medium">{entry.name}</span>
-                <Icon name="chevron" className="size-4 text-muted" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Sheet>
     </>
   );
 }

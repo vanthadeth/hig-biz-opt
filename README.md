@@ -196,6 +196,27 @@ may simply not be synced yet. Run the parent's sync, run the child's again, and
 the link appears — which is why the order syncs run in does not have to be got
 right the first time.
 
+### Clearing what a sync imported
+
+Mapping somebody else's spreadsheet is a guess, and the second guess is better.
+**Clear imported data**, on a sync's own page, deletes rows in the target table
+whose `sheet_id` is not null — everything a sync put there, and nothing this app
+created itself. That is the other reason `sheet_id` earns its place.
+
+It is per **table**, not per sync: anything else writing into that table is
+cleared too. It shows the count first and asks you to type the table name, and
+it cannot be undone from the app — run the sync again to bring the rows back
+from the sheet.
+
+**Super admin only, and checked in the database.** `public.sync_clear` reads
+`auth.uid()` and refuses anybody whose `is_super_admin` is not true, so it is not
+guarded merely by a button that happens not to be rendered. Every deleted row
+still goes through the audit trigger, stamped with who did it.
+
+A sync matching on a natural key does not fill `sheet_id`, so what it wrote
+cannot be told apart from what people entered — clearing reports nothing to do,
+and says why.
+
 ### Matching and merging
 
 Rows are matched on the sheet's ID by default, or on the target's key column
@@ -411,7 +432,7 @@ ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
 psql "$DATABASE_URL" -f supabase/tests/data_sync.test.sql
 ```
 
-52 assertions. Most of them answer one question: what stops somebody who may
+58 assertions. Most of them answer one question: what stops somebody who may
 define a sync from defining one into `public.users` that maps a sheet column
 onto `is_super_admin`. The answer is in three places and all three are asserted
 — the target must be in a seeded registry, every mapped column must survive an
@@ -425,7 +446,7 @@ sheet IDs the sheets link to each other by, and a reference that resolves only
 once its parent table has been synced.
 
 ```
-ERROR:  DATA SYNC OK - 52 assertions passed (rls: ran)
+ERROR:  DATA SYNC OK - 58 assertions passed (rls: ran)
 ```
 
 ### Customer tests

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { PageTitle } from "@/components/PageTitle";
-import { can, getMyPermissions } from "@/lib/access";
+import { can, getMyPermissions, getViewer } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import {
   SYNC_TARGET_COLUMNS,
@@ -48,6 +48,8 @@ export default async function Page({
       getMyPermissions(),
     ]);
 
+  const viewer = await getViewer();
+
   if (!sync) notFound();
 
   const definition = sync as unknown as SyncDefinition;
@@ -59,6 +61,7 @@ export default async function Page({
         sync={definition}
         runs={(runs ?? []) as unknown as SyncRun[]}
         canDelete={can(mine, "data_sync", "delete")}
+        isSuperAdmin={viewer?.is_super_admin ?? false}
         viewKey={view}
       />
       {can(mine, "data_sync", "edit") && (

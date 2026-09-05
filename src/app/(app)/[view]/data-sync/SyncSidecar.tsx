@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
+import { Field } from "@/components/ui/Field";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
@@ -28,11 +29,13 @@ export function SyncSidecar({
   sync,
   runs,
   canDelete,
+  isSuperAdmin,
   viewKey,
 }: {
   sync: SyncDefinition;
   runs: SyncRun[];
   canDelete: boolean;
+  isSuperAdmin: boolean;
   viewKey: string;
 }) {
   const router = useRouter();
@@ -40,6 +43,45 @@ export function SyncSidecar({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Clearing is counted before it is done, and the number somebody confirms is
+  // the number that goes: the same predicate produces both.
+  const [clearCount, setClearCount] = useState<number | null>(null);
+  const [clearTyped, setClearTyped] = useState("");
+  const [cleared, setCleared] = useState<number | null>(null);
+
+  async function countClearable() {
+    haptic("tap");
+    setError(null);
+    setCleared(null);
+    const { data, error: e } = await createClient()
+      .rpc("sync_clear", { p_table: sync.target_table, p_commit: false });
+    if (e) {
+      setError(e.message);
+      return;
+    }
+    setClearCount((data as number) ?? 0);
+  }
+
+  async function clearNow() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data, error: e } = await createClient()
+        .rpc("sync_clear", { p_table: sync.target_table, p_commit: true });
+      if (e) throw new Error(e.message);
+      haptic("success");
+      setCleared((data as number) ?? 0);
+      setClearCount(null);
+      setClearTyped("");
+      router.refresh();
+    } catch (e) {
+      haptic("error");
+      setError(e instanceof Error ? e.message : "Nothing was cleared.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Read at render rather than stored: the app can be moved to another domain
   // and an instruction carrying the old one would send the sheet nowhere.
@@ -171,6 +213,85 @@ function onSheetChange() {
           </ul>
         )}
       </Card>
+
+      {/* Super admin only, and the database says so too: a destructive action
+          guarded by a button that happens not to be rendered is not guarded. */}
+      {isSuperAdmin && (
+        <Card className="space-y-3 p-4">
+          <SectionHeader
+            title="Clear imported data"
+            caption="Everything a sync put into this table, so a mapping got wrong the first time can be undone."
+          />
+
+          <p className="text-sm text-muted">
+            Deletes rows in <strong>{sync.target_table}</strong> that came from a
+            sheet. Rows entered in this app are left alone. This is the table,
+            not this sync — anything else writing into {sync.target_table} is
+            cleared too.
+          </p>
+
+          {cleared !== null && (
+            <p className="text-sm">
+              {cleared} {cleared === 1 ? "row" : "rows"} cleared. Run the sync
+              again to bring them back from the sheet.
+            </p>
+          )}
+
+          {clearCount === null ? (
+            <button
+              type="button"
+              onClick={countClearable}
+              disabled={busy}
+              className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium text-danger disabled:opacity-60"
+            >
+              <Icon name="trash" className="size-4" />
+              Clear imported data
+            </button>
+          ) : clearCount === 0 ? (
+            <p className="text-sm text-muted">
+              Nothing here came from a sheet, so there is nothing to clear.
+              {sync.match_on === "natural" &&
+                " This sync matches on a natural key and does not fill sheet_id, so what it wrote cannot be told apart from what people entered."}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm">
+                This will delete <strong>{clearCount}</strong>{" "}
+                {clearCount === 1 ? "row" : "rows"} from {sync.target_table}, and
+                whatever hangs off them. It cannot be undone from here.
+              </p>
+              {/* Typing the name is the friction. A second button is not: the
+                  hand that pressed the first one is already moving. */}
+              <Field
+                label={`Type ${sync.target_table} to confirm`}
+                value={clearTyped}
+                onChange={setClearTyped}
+                placeholder={sync.target_table}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClearCount(null);
+                    setClearTyped("");
+                  }}
+                  className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium"
+                >
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  onClick={clearNow}
+                  disabled={busy || clearTyped.trim() !== sync.target_table}
+                  className="pressable min-h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {busy ? "Clearing…" : `Delete ${clearCount}`}
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {canDelete && (
         <Card className="space-y-2 p-4">

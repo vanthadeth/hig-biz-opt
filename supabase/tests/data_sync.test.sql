@@ -17,7 +17,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  DATA SYNC OK - 52 assertions passed (rls: ran)
+--     ERROR:  DATA SYNC OK - 58 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 create or replace function pg_temp.bump() returns void language plpgsql as $f$
@@ -401,6 +401,42 @@ begin
   perform pg_temp.eq('rows the app made itself do not collide on an absent one',
     (select count(*)::text from public.item_categories
       where sheet_id is null and name_en like 'DX No Sheet%'), '2');
+
+  ----------------------------------------------------------------------------
+  -- Clearing what a sync imported
+  --
+  -- Mapping somebody else's spreadsheet is a guess, and the second guess is
+  -- better. Without this the first one is permanent.
+  --
+  -- Super admin only, and checked in the database rather than only in the
+  -- screen: a destructive action guarded by a button that happens not to be
+  -- rendered is not guarded.
+  ----------------------------------------------------------------------------
+  insert into public.brands (name, sheet_id) values ('DX Cleared A', 'B-1');
+  insert into public.brands (name, sheet_id) values ('DX Cleared B', 'B-2');
+  insert into public.brands (name) values ('DX By Hand');
+
+  perform pg_temp.act_as(v_rep);
+  perform pg_temp.refused('a rep may not clear a table',
+    'select public.sync_clear(''brands'', true)');
+
+  perform pg_temp.act_as(v_sa);
+  perform pg_temp.rejects('nor may anyone clear a table no sync writes to',
+    'select public.sync_clear(''users'', true)');
+
+  -- Counting is not deleting: the number somebody confirms has to be the number
+  -- that goes, so both come from the same predicate.
+  perform pg_temp.ok('counting finds what came from a sheet',
+    public.sync_clear('brands', false) >= 2);
+  perform pg_temp.eq('and deletes nothing while it counts',
+    (select count(*)::text from public.brands where sheet_id in ('B-1', 'B-2')), '2');
+
+  v_n := public.sync_clear('brands', true);
+  perform pg_temp.eq('clearing removes what a sync imported',
+    (select count(*)::text from public.brands where sheet_id in ('B-1', 'B-2')), '0');
+  -- The whole reason sheet_id is worth having beyond resolving references.
+  perform pg_temp.eq('and leaves what somebody entered by hand',
+    (select count(*)::text from public.brands where name = 'DX By Hand'), '1');
 
   raise exception 'DATA SYNC OK - % assertions passed (rls: %)',
     current_setting('higtest.checks'), v_rls;

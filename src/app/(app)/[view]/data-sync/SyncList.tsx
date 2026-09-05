@@ -88,8 +88,11 @@ export function SyncList({
           </p>
         ) : (
           <p className="text-xs text-danger">
-            No Google service account is configured yet, so no sync can read
-            anything. Set GOOGLE_SERVICE_ACCOUNT_JSON.
+            No Google service account is configured, so nothing can be read yet.
+            Set <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> where the app is hosted
+            and redeploy — a new environment variable does not reach a build
+            that is already running. The steps are under &ldquo;Data
+            sync&rdquo; in the README.
           </p>
         )}
       </Card>

@@ -42,12 +42,16 @@ export async function GET(request: Request) {
       samples: rows.slice(0, 3),
     });
   } catch (e) {
-    const message =
-      e instanceof GoogleSheetsError
-        ? e.message
-        : "The sheet could not be read.";
+    // The code travels with the message so the screen can show setup steps for
+    // a missing credential and a sharing instruction for a sheet we cannot
+    // open, rather than the same red sentence for both.
+    const known = e instanceof GoogleSheetsError;
     return NextResponse.json(
-      { error: message, serviceAccount: serviceAccountEmail() },
+      {
+        error: known ? e.message : "The sheet could not be read.",
+        code: known ? e.code : "other",
+        serviceAccount: serviceAccountEmail(),
+      },
       { status: 400 },
     );
   }

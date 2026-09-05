@@ -77,6 +77,7 @@ export function SyncForm({
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const spreadsheetId = spreadsheetIdFrom(sheetInput);
@@ -105,6 +106,7 @@ export function SyncForm({
     }
     setReading(true);
     setError(null);
+    setErrorCode(null);
     setNotice(null);
 
     try {
@@ -114,7 +116,10 @@ export function SyncForm({
 
       const response = await fetch(`/api/sync/sheet?${query}`);
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "The sheet could not be read.");
+      if (!response.ok) {
+        setErrorCode(body.code ?? "other");
+        throw new Error(body.error ?? "The sheet could not be read.");
+      }
 
       setTabs(body.tabs ?? []);
       if (!tab && body.tabs?.length) {
@@ -456,9 +461,52 @@ export function SyncForm({
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
+        <div role="alert" className="space-y-2">
+          <p className="text-sm text-danger">{error}</p>
+
+          {/* A variable name is not an instruction. Somebody who has just hit
+              this needs the four steps, not the name of the thing that is
+              missing. */}
+          {errorCode === "no_credential" && (
+            <Card className="space-y-2 p-4">
+              <p className="text-sm font-medium">Connect Google first</p>
+              <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+                <li>
+                  In the Google Cloud console, create a project and enable the{" "}
+                  <strong>Google Sheets API</strong>.
+                </li>
+                <li>
+                  Create a <strong>service account</strong> and download a{" "}
+                  <strong>JSON key</strong> for it. It needs no roles.
+                </li>
+                <li>
+                  Put that key in <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> where the
+                  app is hosted — base64 it first, so the private key&rsquo;s
+                  newlines survive being pasted.
+                </li>
+                <li>
+                  <strong>Redeploy.</strong> A new environment variable does not
+                  reach a build that is already running.
+                </li>
+              </ol>
+              <p className="text-xs text-muted">
+                Then share each spreadsheet with the service account&rsquo;s address
+                as a Viewer. Full steps are under &ldquo;Data sync&rdquo; in the
+                README.
+              </p>
+            </Card>
+          )}
+
+          {errorCode === "bad_credential" && (
+            <Card className="p-4">
+              <p className="text-sm text-muted">
+                The key is set but unreadable. The usual cause is the private
+                key&rsquo;s newlines being flattened when it was pasted — store the
+                base64 of the whole file instead, then redeploy.
+              </p>
+            </Card>
+          )}
+        </div>
       )}
 
       <button

@@ -18,8 +18,20 @@ const SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
+/**
+ * `code` separates the three failures that need different answers from a
+ * person: nothing is configured, the sheet is not shared with us, or Google
+ * said something else. The screen shows setup steps for the first and the
+ * sharing instruction for the second, rather than one message for all three.
+ */
+export type GoogleSheetsErrorCode = "no_credential" | "bad_credential" | "access" | "other";
+
 export class GoogleSheetsError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(
+    message: string,
+    readonly code: GoogleSheetsErrorCode = "other",
+    readonly status?: number,
+  ) {
     super(message);
     this.name = "GoogleSheetsError";
   }
@@ -38,7 +50,8 @@ function serviceAccount(): ServiceAccount {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (!raw) {
     throw new GoogleSheetsError(
-      "GOOGLE_SERVICE_ACCOUNT_JSON is not set. Data Sync cannot read any sheet until it is.",
+      "No Google service account is configured, so no sheet can be read yet.",
+      "no_credential",
     );
   }
 
@@ -51,13 +64,17 @@ function serviceAccount(): ServiceAccount {
     parsed = JSON.parse(text);
   } catch {
     throw new GoogleSheetsError(
-      "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON, base64 or otherwise.",
+      "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON, base64 or otherwise. "
+        + "Paste the whole key file, or its base64.",
+      "bad_credential",
     );
   }
 
   if (!parsed.client_email || !parsed.private_key) {
     throw new GoogleSheetsError(
-      "GOOGLE_SERVICE_ACCOUNT_JSON has no client_email or private_key.",
+      "GOOGLE_SERVICE_ACCOUNT_JSON has no client_email or private_key. "
+        + "That is not a service account key file.",
+      "bad_credential",
     );
   }
 
@@ -100,7 +117,9 @@ async function accessToken(): Promise<string> {
     signature = signer.sign(account.private_key, "base64url");
   } catch {
     throw new GoogleSheetsError(
-      "The service account's private key could not be read. Check it survived being pasted.",
+      "The service account's private key could not be read. It usually means the "
+        + "newlines did not survive being pasted — use the base64 form instead.",
+      "bad_credential",
     );
   }
 
@@ -117,6 +136,7 @@ async function accessToken(): Promise<string> {
   if (!response.ok || !body.access_token) {
     throw new GoogleSheetsError(
       `Google refused the service account: ${body.error_description ?? body.error ?? response.statusText}`,
+      "bad_credential",
       response.status,
     );
   }
@@ -168,10 +188,11 @@ export async function readSheet(
         `Google will not open that sheet: ${detail}. Share it with ${
           serviceAccountEmail() ?? "the service account"
         } as a Viewer.`,
+        "access",
         response.status,
       );
     }
-    throw new GoogleSheetsError(`Google Sheets: ${detail}`, response.status);
+    throw new GoogleSheetsError(`Google Sheets: ${detail}`, "other", response.status);
   }
 
   const body = (await response.json()) as { values?: unknown[][] };
@@ -197,6 +218,7 @@ export async function readTabs(spreadsheetId: string): Promise<string[]> {
     throw new GoogleSheetsError(
       `Google will not open that sheet: ${body?.error?.message ?? response.statusText}. ` +
         `Share it with ${serviceAccountEmail() ?? "the service account"} as a Viewer.`,
+      "access",
       response.status,
     );
   }

@@ -152,16 +152,16 @@ begin
   ----------------------------------------------------------------------------
   -- Categories go exactly one level deep
   ----------------------------------------------------------------------------
-  insert into public.item_categories (name_en) values ('IX Grocery') returning id into v_top;
-  insert into public.item_categories (name_en) values ('IX Hardware') returning id into v_alt;
-  insert into public.item_categories (parent_id, name_en) values (v_top, 'IX Drinks')
+  insert into public.item_categories (name) values ('IX Grocery') returning id into v_top;
+  insert into public.item_categories (name) values ('IX Hardware') returning id into v_alt;
+  insert into public.item_categories (parent_id, name) values (v_top, 'IX Drinks')
     returning id into v_sub;
 
   perform pg_temp.eq('a sub-category knows its parent',
     (select parent_id::text from public.item_categories where id = v_sub), v_top::text);
 
   perform pg_temp.rejects('a sub-category may not have children of its own',
-    format('insert into public.item_categories (parent_id, name_en) values (%L, ''IX Water'')', v_sub));
+    format('insert into public.item_categories (parent_id, name) values (%L, ''IX Water'')', v_sub));
   perform pg_temp.rejects('a category with children may not be moved under another',
     format('update public.item_categories set parent_id = %L where id = %L', v_alt, v_top));
   perform pg_temp.rejects('a category may not be its own parent',
@@ -174,35 +174,35 @@ begin
   update public.item_categories set parent_id = v_top where id = v_sub;
 
   perform pg_temp.rejects('two top categories may not share a name',
-    'insert into public.item_categories (name_en) values (''ix grocery'')');
+    'insert into public.item_categories (name) values (''ix grocery'')');
   perform pg_temp.rejects('two siblings may not share a name',
-    format('insert into public.item_categories (parent_id, name_en) values (%L, ''IX DRINKS'')', v_top));
+    format('insert into public.item_categories (parent_id, name) values (%L, ''IX DRINKS'')', v_top));
   -- The same name under a different parent is ordinary.
-  insert into public.item_categories (parent_id, name_en) values (v_alt, 'IX Drinks');
+  insert into public.item_categories (parent_id, name) values (v_alt, 'IX Drinks');
   perform pg_temp.eq('the same name may sit under two different parents',
-    (select count(*)::text from public.item_categories where lower(name_en) = 'ix drinks'), '2');
+    (select count(*)::text from public.item_categories where lower(name) = 'ix drinks'), '2');
 
-  perform pg_temp.rejects('a category needs an English name',
-    'insert into public.item_categories (name_en) values (''   '')');
-  perform pg_temp.rejects('a blank Khmer name is not a Khmer name',
-    'insert into public.item_categories (name_en, name_km) values (''IX Blank KM'', ''   '')');
+  perform pg_temp.rejects('a category needs a name',
+    'insert into public.item_categories (name) values (''   '')');
+  perform pg_temp.rejects('a blank second name is not a second name',
+    'insert into public.item_categories (name, name_alt) values (''IX Blank KM'', ''   '')');
 
-  -- Bilingual, exactly as an item is: English required, Khmer optional.
-  update public.item_categories set name_km = 'ភេសជ្ជៈ' where id = v_sub;
-  perform pg_temp.eq('a category keeps its Khmer name',
-    (select name_km from public.item_categories where id = v_sub), 'ភេសជ្ជៈ');
+  -- Two names, exactly as an item has: the first required, the second not.
+  update public.item_categories set name_alt = 'ភេសជ្ជៈ' where id = v_sub;
+  perform pg_temp.eq('a category keeps its second name',
+    (select name_alt from public.item_categories where id = v_sub), 'ភេសជ្ជៈ');
   perform pg_temp.eq('and a category without one is not required to have it',
-    (select coalesce(name_km, 'none') from public.item_categories where id = v_alt), 'none');
+    (select coalesce(name_alt, 'none') from public.item_categories where id = v_alt), 'none');
 
-  -- Uniqueness keys on the English name, so the Khmer one may repeat: two
-  -- different English categories can share a Khmer word without either being
+  -- Uniqueness keys on the first name, so the second may repeat: two
+  -- differently-named categories can share a second name without either being
   -- a data-entry slip.
-  insert into public.item_categories (name_en, name_km) values ('IX Beverages', 'ភេសជ្ជៈ');
+  insert into public.item_categories (name, name_alt) values ('IX Beverages', 'ភេសជ្ជៈ');
   -- Scoped to this suite's own rows: a real catalogue may well file something
-  -- under the same Khmer word, and that must not decide whether this passes.
-  perform pg_temp.eq('the same Khmer name may sit on two categories',
+  -- under the same second name, and that must not decide whether this passes.
+  perform pg_temp.eq('the same second name may sit on two categories',
     (select count(*)::text from public.item_categories
-      where name_km = 'ភេសជ្ជៈ' and name_en like 'IX %'), '2');
+      where name_alt = 'ភេសជ្ជៈ' and name like 'IX %'), '2');
 
   ----------------------------------------------------------------------------
   -- Brands
@@ -219,16 +219,16 @@ begin
   ----------------------------------------------------------------------------
   -- Items
   ----------------------------------------------------------------------------
-  insert into public.items (name_en, name_km, category_id, brand_id)
+  insert into public.items (name, name_alt, category_id, brand_id)
     values ('Drinking Water', 'ទឹកសុទ្ធ', v_sub, v_brd)
     returning id into v_itm;
 
-  perform pg_temp.eq('an item keeps its Khmer name',
-    (select name_km from public.items where id = v_itm), 'ទឹកសុទ្ធ');
-  perform pg_temp.rejects('an item needs an English name',
-    'insert into public.items (name_en) values (''  '')');
-  perform pg_temp.rejects('a blank Khmer name is not a Khmer name',
-    'insert into public.items (name_en, name_km) values (''IX Blank'', ''   '')');
+  perform pg_temp.eq('an item keeps its second name',
+    (select name_alt from public.items where id = v_itm), 'ទឹកសុទ្ធ');
+  perform pg_temp.rejects('an item needs a name',
+    'insert into public.items (name) values (''  '')');
+  perform pg_temp.rejects('a blank second name is not a second name',
+    'insert into public.items (name, name_alt) values (''IX Blank'', ''   '')');
 
   ----------------------------------------------------------------------------
   -- The item carries the code and the price
@@ -247,25 +247,25 @@ begin
   perform pg_temp.eq('dollars keep their cents',
     (select price_usd::text from public.items where id = v_itm), '0.50');
   perform pg_temp.rejects('a price may not be negative in dollars',
-    'insert into public.items (name_en, price_usd) values (''IX Negative'', -1)');
+    'insert into public.items (name, price_usd) values (''IX Negative'', -1)');
   perform pg_temp.rejects('nor in riel',
-    'insert into public.items (name_en, price_khr) values (''IX Negative'', -1)');
+    'insert into public.items (name, price_khr) values (''IX Negative'', -1)');
   perform pg_temp.rejects('a blank code is not a code',
-    'insert into public.items (name_en, code) values (''IX Blank Code'', ''   '')');
+    'insert into public.items (name, code) values (''IX Blank Code'', ''   '')');
   perform pg_temp.rejects('a code may not be reused on another item',
-    'insert into public.items (name_en, code) values (''IX Clash'', ''IX-001'')');
+    'insert into public.items (name, code) values (''IX Clash'', ''IX-001'')');
   perform pg_temp.rejects('and case does not make it a different code',
-    'insert into public.items (name_en, code) values (''IX Clash'', ''ix-001'')');
+    'insert into public.items (name, code) values (''IX Clash'', ''ix-001'')');
   -- Two absent codes are not a clash: the unique index skips nulls, which is
   -- what lets most of a catalogue be entered before anybody assigns codes.
-  insert into public.items (name_en) values ('IX Uncoded One');
-  insert into public.items (name_en) values ('IX Uncoded Two');
+  insert into public.items (name) values ('IX Uncoded One');
+  insert into public.items (name) values ('IX Uncoded Two');
   perform pg_temp.eq('items without a code do not collide',
     (select count(*)::text from public.items
-      where code is null and name_en like 'IX Uncoded%'), '2');
+      where code is null and name like 'IX Uncoded%'), '2');
 
   -- A brand is optional; a category is optional.
-  insert into public.items (name_en) values ('IX Unbranded') returning id into v_pln;
+  insert into public.items (name) values ('IX Unbranded') returning id into v_pln;
 
   ----------------------------------------------------------------------------
   -- Packing and stock
@@ -389,7 +389,7 @@ begin
 
   -- An item with a variant photo but no picture of its own. The variant's photo
   -- stands in, so nothing entered before 0029 stops showing.
-  insert into public.items (name_en) values ('IX Photo Fallback') returning id into v_fbk;
+  insert into public.items (name) values ('IX Photo Fallback') returning id into v_fbk;
   insert into public.item_variants (item_id, photo_path)
     values (v_fbk, 'items/c/only.jpg');
 
@@ -410,10 +410,10 @@ begin
         and column_name in ('min_price_usd', 'max_price_usd',
                             'min_price_khr', 'max_price_khr')), '0');
   perform pg_temp.eq('it names the category and its parent',
-    (select category_parent_name_en || ' / ' || category_name_en
+    (select category_parent_name || ' / ' || category_name
        from public.item_catalogue where id = v_itm), 'IX Grocery / IX Drinks');
-  perform pg_temp.eq('and carries the category''s Khmer name through',
-    (select category_name_km from public.item_catalogue where id = v_itm), 'ភេសជ្ជៈ');
+  perform pg_temp.eq('and carries the category''s second name through',
+    (select category_name_alt from public.item_catalogue where id = v_itm), 'ភេសជ្ជៈ');
   perform pg_temp.eq('it names the brand',
     (select brand_name from public.item_catalogue where id = v_itm), 'IX Angkor');
   -- One string per item holding its own code and every barcode under it, which
@@ -429,7 +429,7 @@ begin
   perform pg_temp.eq('and a variant''s photo stands in when it has none',
     (select photo_path from public.item_catalogue where id = v_fbk), 'items/c/only.jpg');
   perform pg_temp.eq('an item with no brand still appears',
-    (select name_en from public.item_catalogue where id = v_pln), 'IX Unbranded');
+    (select name from public.item_catalogue where id = v_pln), 'IX Unbranded');
 
   -- What the catalogue screen needs on top of what the inventory list needed:
   -- enough to say available / low / none, what the item comes packed in, and
@@ -494,7 +494,7 @@ begin
     -- Reading is all it buys. Everything that changes stock still keys on the
     -- inventory permissions, which the rep does not hold.
     perform pg_temp.refused('but may not create an item',
-      'insert into public.items (name_en) values (''IX Sneaked In'')');
+      'insert into public.items (name) values (''IX Sneaked In'')');
     update public.items set price_usd = 0.01 where id = v_itm;
     perform pg_temp.eq('nor reprice one',
       (select price_usd::text from public.items where id = v_itm), '0.50');
@@ -505,32 +505,32 @@ begin
     perform pg_temp.act_as(v_acc);
     perform pg_temp.ok('an accountant sees the catalogue',
       (select count(*) from public.items) >= 4);
-    insert into public.items (name_en, name_km) values ('IX Accountant Made', 'ធ្វើ');
+    insert into public.items (name, name_alt) values ('IX Accountant Made', 'ធ្វើ');
     perform pg_temp.eq('and may create an item',
-      (select count(*)::text from public.items where name_en = 'IX Accountant Made'), '1');
-    update public.items set name_en = 'IX Accountant Fixed' where name_en = 'IX Accountant Made';
+      (select count(*)::text from public.items where name = 'IX Accountant Made'), '1');
+    update public.items set name = 'IX Accountant Fixed' where name = 'IX Accountant Made';
     perform pg_temp.eq('and may correct one',
-      (select count(*)::text from public.items where name_en = 'IX Accountant Fixed'), '1');
+      (select count(*)::text from public.items where name = 'IX Accountant Fixed'), '1');
     update public.items set price_usd = 0.55 where id = v_itm;
     perform pg_temp.eq('and may reprice one',
       (select price_usd::text from public.items where id = v_itm), '0.55');
-    insert into public.item_categories (name_en) values ('IX Accountant Category');
+    insert into public.item_categories (name) values ('IX Accountant Category');
     perform pg_temp.eq('and may add a category',
-      (select count(*)::text from public.item_categories where name_en = 'IX Accountant Category'), '1');
+      (select count(*)::text from public.item_categories where name = 'IX Accountant Category'), '1');
 
     -- A refused delete matches no rows and raises nothing, so the count is what
     -- proves it was refused.
-    delete from public.items where name_en = 'IX Accountant Fixed';
+    delete from public.items where name = 'IX Accountant Fixed';
     perform pg_temp.eq('but may not destroy one',
-      (select count(*)::text from public.items where name_en = 'IX Accountant Fixed'), '1');
+      (select count(*)::text from public.items where name = 'IX Accountant Fixed'), '1');
     delete from public.brands where id = v_brd;
     perform pg_temp.eq('nor a brand',
       (select count(*)::text from public.brands where id = v_brd), '1');
 
     perform pg_temp.act_as(v_sa);
-    delete from public.items where name_en = 'IX Accountant Fixed';
+    delete from public.items where name = 'IX Accountant Fixed';
     perform pg_temp.eq('an administrator may destroy one',
-      (select count(*)::text from public.items where name_en = 'IX Accountant Fixed'), '0');
+      (select count(*)::text from public.items where name = 'IX Accountant Fixed'), '0');
 
     -- Deleting an item takes its variants with it; leaving them orphaned would
     -- leave barcodes in the system for something nobody can name.
@@ -542,7 +542,7 @@ begin
 
     -- The depth guard runs as definer, so it still bites under a policy.
     perform pg_temp.rejects('the one-level rule holds under RLS too',
-      format('insert into public.item_categories (parent_id, name_en) values (%L, ''IX Too Deep'')', v_sub));
+      format('insert into public.item_categories (parent_id, name) values (%L, ''IX Too Deep'')', v_sub));
 
     execute 'reset role';
     v_rls := 'ran';

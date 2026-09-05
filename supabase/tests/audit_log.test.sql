@@ -170,10 +170,10 @@ begin
   -- issues an UPDATE. updated_at moves on every one of those, which is why it
   -- is excluded from the comparison rather than counted as a change.
   ----------------------------------------------------------------------------
-  insert into public.items (name_en) values ('AX Item') returning id into v_itm;
+  insert into public.items (name) values ('AX Item') returning id into v_itm;
   select coalesce(max(id), 0) into v_base from public.audit_log;
 
-  update public.items set name_en = name_en, price_usd = price_usd where id = v_itm;
+  update public.items set name = name, price_usd = price_usd where id = v_itm;
   perform pg_temp.eq('an update that moves nothing leaves no entry',
     (select count(*)::text from public.audit_log where id > v_base), '0');
 

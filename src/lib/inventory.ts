@@ -21,8 +21,8 @@
 export type Category = {
   id: string;
   parent_id: string | null;
-  name_en: string;
-  name_km: string | null;
+  name: string;
+  name_alt: string | null;
   description: string | null;
   photo_path: string | null;
   active: boolean;
@@ -43,8 +43,8 @@ export type Item = {
   code: string | null;
   price_usd: number | null;
   price_khr: number | null;
-  name_en: string;
-  name_km: string | null;
+  name: string;
+  name_alt: string | null;
   description: string | null;
   category_id: string | null;
   brand_id: string | null;
@@ -102,15 +102,15 @@ export type CatalogueEntry = {
   code: string | null;
   price_usd: number | null;
   price_khr: number | null;
-  name_en: string;
-  name_km: string | null;
+  name: string;
+  name_alt: string | null;
   active: boolean;
   category_id: string | null;
-  category_name_en: string | null;
-  category_name_km: string | null;
+  category_name: string | null;
+  category_name_alt: string | null;
   category_parent_id: string | null;
-  category_parent_name_en: string | null;
-  category_parent_name_km: string | null;
+  category_parent_name: string | null;
+  category_parent_name_alt: string | null;
   brand_id: string | null;
   brand_name: string | null;
   variant_count: number | null;
@@ -120,13 +120,13 @@ export type CatalogueEntry = {
 };
 
 export const ITEM_COLUMNS =
-  "id, code, price_usd, price_khr, name_en, name_km, description, category_id, brand_id, active";
+  "id, code, price_usd, price_khr, name, name_alt, description, category_id, brand_id, active";
 
 export const VARIANT_COLUMNS =
   "id, item_id, barcode, property_name, property_value, photo_path, active, sort_order";
 
 export const CATEGORY_COLUMNS =
-  "id, parent_id, name_en, name_km, description, photo_path, active, sort_order";
+  "id, parent_id, name, name_alt, description, photo_path, active, sort_order";
 
 export const BRAND_COLUMNS =
   "id, name, description, logo_path, active, sort_order";
@@ -135,7 +135,7 @@ export const BRAND_COLUMNS =
 // system to work out the row shape, and a joined expression widens to `string`,
 // which it can only read back as an error type.
 export const CATALOGUE_COLUMNS =
-  "id, code, price_usd, price_khr, name_en, name_km, active, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, variant_count, photo_path, codes";
+  "id, code, price_usd, price_khr, name, name_alt, active, category_id, category_name, category_name_alt, category_parent_id, category_parent_name, category_parent_name_alt, brand_id, brand_name, variant_count, photo_path, codes";
 
 /** Where item pictures go in the inventory bucket. */
 export const INVENTORY_BUCKET = "inventory";
@@ -196,45 +196,49 @@ export function variantLabel(variant: {
 /**
  * Both names, when there are two.
  *
- * The one rendering of a bilingual name in the app, so an item and its category
+ * The one rendering of a two-part name in the app, so an item and its category
  * read the same way rather than each screen inventing a separator.
+ *
+ * The second name is whatever a business needs beside the first — the Khmer of
+ * a bilingual catalogue, a trade name beside a legal one, an abbreviation
+ * beside a full title. This does not care which.
  */
-export function bilingual(
-  en: string | null | undefined,
-  km: string | null | undefined,
+export function bothNames(
+  name: string | null | undefined,
+  alt: string | null | undefined,
 ): string {
-  if (!en) return km ?? "";
-  return km ? `${en} — ${km}` : en;
+  if (!name) return alt ?? "";
+  return alt ? `${name} — ${alt}` : name;
 }
 
-export function itemTitle(item: { name_en: string; name_km: string | null }): string {
-  return bilingual(item.name_en, item.name_km);
+export function itemTitle(item: { name: string; name_alt: string | null }): string {
+  return bothNames(item.name, item.name_alt);
 }
 
 export function categoryLabel(category: {
-  name_en: string;
-  name_km: string | null;
+  name: string;
+  name_alt: string | null;
 }): string {
-  return bilingual(category.name_en, category.name_km);
+  return bothNames(category.name, category.name_alt);
 }
 
 /**
  * "Grocery / Drinks", or just the one it has, or null.
  *
- * English only, and deliberately: this is the compact breadcrumb on a chip,
- * where it locates an item rather than naming it. Both names at both levels
- * would be four words on a chip that has room for two. The Khmer name is shown
- * where the category is the subject — the manager list, the picker, the group
- * heading — rather than here.
+ * The first name only, and deliberately: this is the compact breadcrumb on a
+ * chip, where it locates an item rather than naming it. Both names at both
+ * levels would be four words on a chip that has room for two. The second name
+ * is shown where the category is the subject — the manager list, the picker,
+ * the group heading — rather than here.
  */
 export function categoryPath(entry: {
-  category_name_en: string | null;
-  category_parent_name_en: string | null;
+  category_name: string | null;
+  category_parent_name: string | null;
 }): string | null {
-  if (!entry.category_name_en) return null;
-  return entry.category_parent_name_en
-    ? `${entry.category_parent_name_en} / ${entry.category_name_en}`
-    : entry.category_name_en;
+  if (!entry.category_name) return null;
+  return entry.category_parent_name
+    ? `${entry.category_parent_name} / ${entry.category_name}`
+    : entry.category_name;
 }
 
 const fold = (value: string) => value.toLowerCase().trim();
@@ -242,37 +246,38 @@ const fold = (value: string) => value.toLowerCase().trim();
 /**
  * Does this item answer the search?
  *
- * Khmer is matched as typed: it has no case to fold and no accents to strip, so
- * lowercasing it is a no-op rather than a mistake, and the same comparison
- * serves both languages.
+ * The second name is matched as typed. Khmer, which is what it usually holds
+ * here, has no case to fold and no accents to strip, so lowercasing it is a
+ * no-op rather than a mistake — and the same comparison serves either name.
  */
 export function matchesItem(entry: CatalogueEntry, query: string): boolean {
   const needle = fold(query);
   if (needle === "") return true;
 
   return [
-    entry.name_en,
-    entry.name_km,
+    entry.name,
+    entry.name_alt,
     // Every variant's code and barcode, so scanning or typing one finds the
     // item it belongs to.
     entry.codes,
     entry.brand_name,
-    entry.category_name_en,
-    entry.category_name_km,
-    entry.category_parent_name_en,
-    entry.category_parent_name_km,
+    entry.category_name,
+    entry.category_name_alt,
+    entry.category_parent_name,
+    entry.category_parent_name_alt,
   ].some((field) => field !== null && field !== undefined && fold(field).includes(needle));
 }
 
 /**
  * The two names are kept apart rather than joined here, because the heading
- * renders them differently: the English half is uppercased and letter-spaced,
- * and neither of those should be done to Khmer script.
+ * renders them differently: the first is uppercased and letter-spaced, and
+ * neither of those should be done to the second — Khmer script has no case for
+ * `uppercase` to change, and letter-spacing pulls its glyphs apart.
  */
 export type CatalogueGroup = {
   key: string;
-  nameEn: string;
-  nameKm: string | null;
+  name: string;
+  nameAlt: string | null;
   items: CatalogueEntry[];
 };
 
@@ -293,31 +298,31 @@ export function groupByCategory(
   for (const entry of matched) {
     // A sub-category's items belong under its parent's heading.
     const key = entry.category_parent_id ?? entry.category_id ?? "";
-    const nameEn =
-      entry.category_parent_name_en ?? entry.category_name_en ?? "No category";
-    // Whichever level supplied the English name supplies the Khmer one, so the
-    // heading never reads as a parent in one language and a child in the other.
-    const nameKm = entry.category_parent_name_en
-      ? entry.category_parent_name_km
-      : entry.category_name_en
-        ? entry.category_name_km
+    const name =
+      entry.category_parent_name ?? entry.category_name ?? "No category";
+    // Whichever level supplied the first name supplies the second, so the
+    // heading never reads as a parent in one and a child in the other.
+    const nameAlt = entry.category_parent_name
+      ? entry.category_parent_name_alt
+      : entry.category_name
+        ? entry.category_name_alt
         : null;
 
     const group = groups.get(key);
     if (group) group.items.push(entry);
-    else groups.set(key, { key: key || "uncategorised", nameEn, nameKm, items: [entry] });
+    else groups.set(key, { key: key || "uncategorised", name, nameAlt, items: [entry] });
   }
 
   return [...groups.values()]
     .map((group) => ({
       ...group,
-      items: [...group.items].sort((a, b) => a.name_en.localeCompare(b.name_en)),
+      items: [...group.items].sort((a, b) => a.name.localeCompare(b.name)),
     }))
     .sort((a, b) => {
       // Whatever has no category goes last, however it sorts by name.
       if (a.key === "uncategorised") return 1;
       if (b.key === "uncategorised") return -1;
-      return a.nameEn.localeCompare(b.nameEn);
+      return a.name.localeCompare(b.name);
     });
 }
 
@@ -325,9 +330,9 @@ export function countItems(groups: CatalogueGroup[]): number {
   return groups.reduce((total, group) => total + group.items.length, 0);
 }
 
-/** Sort order first, then the English name — the one every category has. */
+/** Sort order first, then the name — the one every category has. */
 const byOrder = (a: Category, b: Category) =>
-  a.sort_order - b.sort_order || a.name_en.localeCompare(b.name_en);
+  a.sort_order - b.sort_order || a.name.localeCompare(b.name);
 
 /**
  * Categories as a select list, sub-categories indented under their parent.
@@ -432,7 +437,7 @@ export function matchesActive(active: boolean, filter: ActiveFilter): boolean {
 export function matchesCategory(category: Category, query: string): boolean {
   const needle = fold(query);
   if (needle === "") return true;
-  return [category.name_en, category.name_km, category.description].some(
+  return [category.name, category.name_alt, category.description].some(
     (field) => field != null && fold(field).includes(needle),
   );
 }

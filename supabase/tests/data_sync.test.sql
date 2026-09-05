@@ -146,7 +146,7 @@ begin
   -- "a sync names public.users and maps a column onto is_super_admin".
   ----------------------------------------------------------------------------
   perform pg_temp.ok('a real column is offered',
-    exists (select 1 from app.sync_columns('items') where column_name = 'name_en'));
+    exists (select 1 from app.sync_columns('items') where column_name = 'name'));
   perform pg_temp.ok('identity is not',
     not exists (select 1 from app.sync_columns('items') where column_name = 'id'));
   perform pg_temp.ok('nor are the timestamps',
@@ -190,7 +190,7 @@ begin
   ----------------------------------------------------------------------------
   insert into public.sync_column_maps (sync_id, sheet_column, target_column, value_kind, sort_order)
     values (v_sync, 'Code', 'code', 'text', 1),
-           (v_sync, 'Name', 'name_en', 'text', 2),
+           (v_sync, 'Name', 'name', 'text', 2),
            (v_sync, 'Price', 'price_usd', 'number', 3),
            (v_sync, 'Notes', null, 'text', 4);
 
@@ -209,10 +209,10 @@ begin
               values (%L, ''Sneaky'', ''no_such_column'')', v_sync));
   perform pg_temp.rejects('two sheet columns may not feed one table column',
     format('insert into public.sync_column_maps (sync_id, sheet_column, target_column)
-              values (%L, ''Name Again'', ''name_en'')', v_sync));
+              values (%L, ''Name Again'', ''name'')', v_sync));
   perform pg_temp.rejects('nor may one sheet column appear twice',
     format('insert into public.sync_column_maps (sync_id, sheet_column, target_column)
-              values (%L, ''Code'', ''name_km'')', v_sync));
+              values (%L, ''Code'', ''name_alt'')', v_sync));
   insert into public.sync_column_maps (sync_id, sheet_column, target_column)
     values (v_sync, 'Notes 2', null);
   perform pg_temp.eq('but a sheet may have many columns nobody wants',
@@ -223,8 +223,8 @@ begin
   -- The write
   ----------------------------------------------------------------------------
   v_n := app.sync_apply(v_sync, '[
-    {"code": "DX-001", "name_en": "Sync Water", "price_usd": 0.5},
-    {"code": "DX-002", "name_en": "Sync Rice",  "price_usd": 12}
+    {"code": "DX-001", "name": "Sync Water", "price_usd": 0.5},
+    {"code": "DX-002", "name": "Sync Rice",  "price_usd": 12}
   ]'::jsonb);
 
   perform pg_temp.eq('two new rows are written', v_n::text, '2');
@@ -236,33 +236,33 @@ begin
   -- The second run is the one that matters: a sync that cannot tell an edited
   -- row from a new one doubles the table every night.
   v_n := app.sync_apply(v_sync, '[
-    {"code": "DX-001", "name_en": "Sync Water (1.5L)", "price_usd": 0.75}
+    {"code": "DX-001", "name": "Sync Water (1.5L)", "price_usd": 0.75}
   ]'::jsonb);
 
   perform pg_temp.eq('a row already there is updated, not added', v_n::text, '1');
   perform pg_temp.eq('still two rows',
     (select count(*)::text from public.items where code like 'DX-%'), '2');
   perform pg_temp.eq('and the row was changed',
-    (select name_en from public.items where code = 'DX-001'), 'Sync Water (1.5L)');
+    (select name from public.items where code = 'DX-001'), 'Sync Water (1.5L)');
   perform pg_temp.eq('including the price',
     (select price_usd::text from public.items where code = 'DX-001'), '0.75');
 
   -- The index is on lower(code), so a sheet that changed the case of a code
   -- must still match the row rather than make a second one.
-  v_n := app.sync_apply(v_sync, '[{"code": "dx-001", "name_en": "Lower"}]'::jsonb);
+  v_n := app.sync_apply(v_sync, '[{"code": "dx-001", "name": "Lower"}]'::jsonb);
   perform pg_temp.eq('a code in another case is the same code',
     (select count(*)::text from public.items where lower(code) = 'dx-001'), '1');
 
   -- Columns the mapping does not name are left alone rather than nulled: a
   -- sheet is not the whole truth about an item.
-  update public.items set name_km = 'ទឹក' where code = 'DX-002';
-  perform app.sync_apply(v_sync, '[{"code": "DX-002", "name_en": "Sync Rice"}]'::jsonb);
+  update public.items set name_alt = 'ទឹក' where code = 'DX-002';
+  perform app.sync_apply(v_sync, '[{"code": "DX-002", "name": "Sync Rice"}]'::jsonb);
   perform pg_temp.eq('an unmapped column is not wiped by a sync',
-    (select name_km from public.items where code = 'DX-002'), 'ទឹក');
+    (select name_alt from public.items where code = 'DX-002'), 'ទឹក');
 
   update public.sync_definitions set active = false where id = v_sync;
   perform pg_temp.rejects('a sync that is switched off does not write',
-    format('select app.sync_apply(%L, ''[{"code":"DX-003","name_en":"Nope"}]''::jsonb)', v_sync));
+    format('select app.sync_apply(%L, ''[{"code":"DX-003","name":"Nope"}]''::jsonb)', v_sync));
 
   ----------------------------------------------------------------------------
   -- Privileges
@@ -350,7 +350,7 @@ begin
 
   insert into public.sync_column_maps (sync_id, sheet_column, target_column, sort_order)
     values (v_cat_sync, 'ID', 'sheet_id', 1),
-           (v_cat_sync, 'Name', 'name_en', 2);
+           (v_cat_sync, 'Name', 'name', 2);
 
   insert into public.sync_definitions
     (name, spreadsheet_id, tab_name, target_table, trigger_kind, interval_minutes)
@@ -359,23 +359,23 @@ begin
   insert into public.sync_column_maps
     (sync_id, sheet_column, target_column, reference_table, sort_order)
     values (v_ref_sync, 'ID', 'sheet_id', null, 1),
-           (v_ref_sync, 'Name', 'name_en', null, 2),
+           (v_ref_sync, 'Name', 'name', null, 2),
            (v_ref_sync, 'Category', 'category_id', 'item_categories', 3);
 
   -- The child first, deliberately. The parent has not been synced, and a
   -- reference that finds nothing must write null rather than fail: getting the
   -- order right the first time is not something anybody should have to do.
   v_n := app.sync_apply(v_ref_sync,
-    '[{"sheet_id":"I-1","name_en":"DX Ref Water","category_id":"C-9"}]'::jsonb);
+    '[{"sheet_id":"I-1","name":"DX Ref Water","category_id":"C-9"}]'::jsonb);
   perform pg_temp.eq('a reference to a row that is not there yet writes null',
     (select coalesce(category_id::text, 'null') from public.items where sheet_id = 'I-1'),
     'null');
   perform pg_temp.eq('and the row itself is still written',
-    (select name_en from public.items where sheet_id = 'I-1'), 'DX Ref Water');
+    (select name from public.items where sheet_id = 'I-1'), 'DX Ref Water');
 
-  perform app.sync_apply(v_cat_sync, '[{"sheet_id":"C-9","name_en":"DX Ref Drinks"}]'::jsonb);
+  perform app.sync_apply(v_cat_sync, '[{"sheet_id":"C-9","name":"DX Ref Drinks"}]'::jsonb);
   perform app.sync_apply(v_ref_sync,
-    '[{"sheet_id":"I-1","name_en":"DX Ref Water","category_id":"C-9"}]'::jsonb);
+    '[{"sheet_id":"I-1","name":"DX Ref Water","category_id":"C-9"}]'::jsonb);
 
   perform pg_temp.eq('running it again once the parent is there links them up',
     (select i.category_id::text from public.items i where i.sheet_id = 'I-1'),
@@ -396,13 +396,13 @@ begin
   -- Two rows may not claim the same sheet ID: it is an identifier or it is
   -- nothing.
   perform pg_temp.rejects('two rows may not share a sheet ID',
-    'insert into public.item_categories (name_en, sheet_id) values (''DX Clash'', ''C-9'')');
+    'insert into public.item_categories (name, sheet_id) values (''DX Clash'', ''C-9'')');
   -- But the rows this app created itself have none, and must not collide.
-  insert into public.item_categories (name_en) values ('DX No Sheet One');
-  insert into public.item_categories (name_en) values ('DX No Sheet Two');
+  insert into public.item_categories (name) values ('DX No Sheet One');
+  insert into public.item_categories (name) values ('DX No Sheet Two');
   perform pg_temp.eq('rows the app made itself do not collide on an absent one',
     (select count(*)::text from public.item_categories
-      where sheet_id is null and name_en like 'DX No Sheet%'), '2');
+      where sheet_id is null and name like 'DX No Sheet%'), '2');
 
   ----------------------------------------------------------------------------
   -- Clearing what a sync imported
@@ -459,7 +459,7 @@ begin
   -- Emptying a table something still points at refuses, and says which table to
   -- clear first rather than naming a constraint at somebody.
   insert into public.brands (name) values ('DX Held') returning id into v_held;
-  insert into public.items (name_en, brand_id) values ('DX Holder', v_held);
+  insert into public.items (name, brand_id) values ('DX Holder', v_held);
   begin
     perform public.sync_clear('brands', true, 'all');
     v_msg := 'NOT REFUSED';

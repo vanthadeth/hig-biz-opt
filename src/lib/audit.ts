@@ -4,7 +4,7 @@
  * The database records changes in its own terms — table names, column names,
  * whole rows as JSON. None of that is what somebody looking for "who dropped
  * the price on the 1.5 litre" wants to read, so everything here is the
- * translation: `items` becomes Item, `name_en` becomes Name (English), and a
+ * translation: `items` becomes Item, `name_alt` becomes Alternative name, and a
  * row is titled by whatever it calls itself rather than by its uuid.
  */
 
@@ -80,8 +80,8 @@ export function tablesIn(entries: AuditEntry[]): string[] {
 }
 
 const COLUMN_LABELS: Record<string, string> = {
-  name_en: "Name (English)",
-  name_km: "Name (Khmer)",
+  name: "Name",
+  name_alt: "Alternative name",
   price_usd: "Price USD",
   price_khr: "Price KHR",
   credit_limit_usd: "Credit limit USD",
@@ -147,7 +147,7 @@ export function actorLabel(entry: AuditEntry): string {
 const TITLE_KEYS = [
   "full_name",
   "shop_name",
-  "name_en",
+  "name",
   "name",
   "label",
   "property_value",

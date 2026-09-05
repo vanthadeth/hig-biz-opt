@@ -19,17 +19,17 @@ import {
 
 const item = (over: Partial<CatalogItem> & { id: string }): CatalogItem => ({
   code: null,
-  name_en: "Item",
-  name_km: null,
+  name: "Item",
+  name_alt: null,
   active: true,
   price_usd: null,
   price_khr: null,
   category_id: null,
-  category_name_en: null,
-  category_name_km: null,
+  category_name: null,
+  category_name_alt: null,
   category_parent_id: null,
-  category_parent_name_en: null,
-  category_parent_name_km: null,
+  category_parent_name: null,
+  category_parent_name_alt: null,
   brand_id: null,
   brand_name: null,
   photo_path: null,
@@ -103,7 +103,7 @@ describe("priceLine", () => {
 
 describe("byCode", () => {
   const coded = (id: string, code: string | null, name = "Item") =>
-    item({ id, code, name_en: name });
+    item({ id, code, name: name });
 
   it("sorts codes ascending", () => {
     const sorted = [coded("b", "HIG-003"), coded("a", "HIG-001")].sort(byCode);
@@ -123,7 +123,7 @@ describe("byCode", () => {
       coded("a", "HIG-001"),
       coded("b", null, "Apple"),
     ].sort(byCode);
-    expect(sorted.map((i) => i.code ?? i.name_en)).toEqual(["HIG-001", "Apple", "Zebra"]);
+    expect(sorted.map((i) => i.code ?? i.name)).toEqual(["HIG-001", "Apple", "Zebra"]);
   });
 
   it("ignores case, as a person reading a shelf would", () => {
@@ -135,17 +135,17 @@ describe("byCode", () => {
 describe("catalogGroups", () => {
   const drinks = {
     category_id: "drinks",
-    category_name_en: "Drinks",
+    category_name: "Drinks",
     category_parent_id: "grocery",
-    category_parent_name_en: "Grocery",
+    category_parent_name: "Grocery",
   };
   const snacks = {
     category_id: "snacks",
-    category_name_en: "Snacks",
+    category_name: "Snacks",
     category_parent_id: "grocery",
-    category_parent_name_en: "Grocery",
+    category_parent_name: "Grocery",
   };
-  const grocery = { category_id: "grocery", category_name_en: "Grocery" };
+  const grocery = { category_id: "grocery", category_name: "Grocery" };
 
   it("puts a sub-category's items under it, inside its parent", () => {
     const groups = catalogGroups([item({ id: "a", code: "A1", ...drinks })]);
@@ -183,7 +183,7 @@ describe("catalogGroups", () => {
 
   it("orders the categories themselves by name", () => {
     const groups = catalogGroups([
-      item({ id: "t", code: "T1", category_id: "tools", category_name_en: "Tools" }),
+      item({ id: "t", code: "T1", category_id: "tools", category_name: "Tools" }),
       item({ id: "g", code: "G1", ...grocery }),
     ]);
     expect(groups.map((g) => g.name)).toEqual(["Grocery", "Tools"]);
@@ -192,7 +192,7 @@ describe("catalogGroups", () => {
   it("puts what has no category last, whatever it would sort as", () => {
     const groups = catalogGroups([
       item({ id: "n", code: "N1" }),
-      item({ id: "t", code: "T1", category_id: "tools", category_name_en: "Tools" }),
+      item({ id: "t", code: "T1", category_id: "tools", category_name: "Tools" }),
     ]);
     expect(groups.map((g) => g.name)).toEqual(["Tools", "No category"]);
   });
@@ -224,7 +224,7 @@ describe("the cart", () => {
   it("pairs a line with what it is a line of", () => {
     const entries = cartEntries([line("w", 2)], [water, rice]);
     expect(entries).toHaveLength(1);
-    expect(entries[0].item.name_en).toBe(water.name_en);
+    expect(entries[0].item.name).toBe(water.name);
   });
 
   it("drops a line whose item is gone rather than rendering a blank row", () => {
@@ -291,8 +291,8 @@ describe("addableQty", () => {
 describe("matchesCatalog", () => {
   const water = item({
     id: "w",
-    name_en: "Drinking Water",
-    name_km: "ទឹកសុទ្ធ",
+    name: "Drinking Water",
+    name_alt: "ទឹកសុទ្ធ",
     code: "HIG-001",
     brand_name: "Angkor",
   });

@@ -28,8 +28,8 @@ type Draft = {
   code: string;
   price_usd: string;
   price_khr: string;
-  name_en: string;
-  name_km: string;
+  name: string;
+  name_alt: string;
   description: string;
   category_id: string;
   brand_id: string;
@@ -42,8 +42,8 @@ function draftFrom(item: Item | null): Draft {
     // edit, not the number to read, and "$0.50" is not something to type into.
     price_usd: item?.price_usd == null ? "" : String(item.price_usd),
     price_khr: item?.price_khr == null ? "" : String(item.price_khr),
-    name_en: item?.name_en ?? "",
-    name_km: item?.name_km ?? "",
+    name: item?.name ?? "",
+    name_alt: item?.name_alt ?? "",
     description: item?.description ?? "",
     category_id: item?.category_id ?? "",
     brand_id: item?.brand_id ?? "",
@@ -106,7 +106,7 @@ export function ItemForm({
     setDone(false);
   };
 
-  const nameMissing = draft.name_en.trim() === "";
+  const nameMissing = draft.name.trim() === "";
   const badVariant = variants.some((v) => variantProblem(v) !== null);
   // A barcode repeated across two rows would be refused by the unique index at
   // the end of a long form. Catching it here says so while it is still typed.
@@ -120,8 +120,8 @@ export function ItemForm({
       code: blank(draft.code),
       price_usd: parsePrice(draft.price_usd) ?? null,
       price_khr: parsePrice(draft.price_khr) ?? null,
-      name_en: draft.name_en.trim(),
-      name_km: blank(draft.name_km),
+      name: draft.name.trim(),
+      name_alt: blank(draft.name_alt),
       description: blank(draft.description),
       category_id: blank(draft.category_id),
       brand_id: blank(draft.brand_id),
@@ -253,17 +253,17 @@ export function ItemForm({
         <SectionHeader title="Item" />
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field
-            label="Name (English)"
-            value={draft.name_en}
-            onChange={(v) => set("name_en", v)}
+            label="Name"
+            value={draft.name}
+            onChange={(v) => set("name", v)}
             placeholder="Drinking Water"
-            error={nameMissing && draft.name_en !== "" ? "A name is needed." : null}
+            error={nameMissing && draft.name !== "" ? "A name is needed." : null}
           />
           <Field
-            label="Name (Khmer)"
+            label="Alternative name"
             optional
-            value={draft.name_km}
-            onChange={(v) => set("name_km", v)}
+            value={draft.name_alt}
+            onChange={(v) => set("name_alt", v)}
             placeholder="ទឹកសុទ្ធ"
           />
           <Field
@@ -374,7 +374,7 @@ export function ItemForm({
           {done
             ? "Saved."
             : nameMissing
-              ? "An English name is needed."
+              ? "A name is needed."
               : badVariant
                 ? "Check the variants below."
                 : clashingCodes

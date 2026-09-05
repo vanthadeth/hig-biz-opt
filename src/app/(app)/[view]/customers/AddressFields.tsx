@@ -130,7 +130,7 @@ export function AddressFields({
           // Changing the province invalidates everything under it.
           set({ province_code: v, district_code: "", commune_code: "", district_text: "", commune_text: "" })
         }
-        options={provinces.map((p) => ({ value: p.code, label: p.name_en }))}
+        options={provinces.map((p) => ({ value: p.code, label: p.name }))}
         placeholder="Not set"
         disabled={disabled}
       />
@@ -141,7 +141,7 @@ export function AddressFields({
           optional
           value={draft.district_code}
           onChange={(v) => set({ district_code: v, commune_code: "", commune_text: "" })}
-          options={districtChoices.map((d) => ({ value: d.code, label: d.name_en }))}
+          options={districtChoices.map((d) => ({ value: d.code, label: d.name }))}
           placeholder="Not set"
           disabled={disabled}
         />
@@ -167,7 +167,7 @@ export function AddressFields({
           optional
           value={draft.commune_code}
           onChange={(v) => set({ commune_code: v })}
-          options={communeChoices.map((c) => ({ value: c.code, label: c.name_en }))}
+          options={communeChoices.map((c) => ({ value: c.code, label: c.name }))}
           placeholder="Not set"
           disabled={disabled}
         />

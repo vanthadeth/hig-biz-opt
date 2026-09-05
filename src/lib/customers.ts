@@ -119,7 +119,7 @@ export function statusProblem(target: CustomerStatus, note: string): string | nu
   return null;
 }
 
-export type Province = { code: string; name_en: string; name_km: string | null };
+export type Province = { code: string; name: string; name_alt: string | null };
 export type District = Province & { province_code: string };
 export type Commune = Province & { district_code: string };
 
@@ -363,13 +363,13 @@ export function countCustomers(groups: CustomerGroup[]): number {
 export function districtsIn(districts: District[], provinceCode: string): District[] {
   return districts
     .filter((d) => d.province_code === provinceCode)
-    .sort((a, b) => a.name_en.localeCompare(b.name_en));
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function communesIn(communes: Commune[], districtCode: string): Commune[] {
   return communes
     .filter((c) => c.district_code === districtCode)
-    .sort((a, b) => a.name_en.localeCompare(b.name_en));
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

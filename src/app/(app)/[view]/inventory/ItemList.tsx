@@ -104,9 +104,9 @@ export function ItemList({
               a script that joins its marks to the base character damages it. */}
           <h2 className="flex flex-wrap items-baseline gap-x-1.5 px-1 text-xs text-muted">
             <span className="font-semibold uppercase tracking-wide">
-              {group.nameEn}
+              {group.name}
             </span>
-            {group.nameKm && <span className="min-w-0 truncate">{group.nameKm}</span>}
+            {group.nameAlt && <span className="min-w-0 truncate">{group.nameAlt}</span>}
             <span>{group.items.length}</span>
           </h2>
 
@@ -121,7 +121,7 @@ export function ItemList({
                   className="flex min-h-16 items-center gap-3 px-3 py-2 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-subtle"
                 >
                   <StoredPhoto
-                    name={item.name_en}
+                    name={item.name}
                     path={item.photo_path}
                     bucket={INVENTORY_BUCKET}
                     fallback={<Icon name="box" className="size-5" />}
@@ -130,11 +130,11 @@ export function ItemList({
 
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">
-                      {item.name_en}
+                      {item.name}
                     </span>
-                    {item.name_km && (
+                    {item.name_alt && (
                       <span className="block truncate text-xs text-muted">
-                        {item.name_km}
+                        {item.name_alt}
                       </span>
                     )}
                     {/* Wraps rather than truncates: two currencies and a range
@@ -153,9 +153,9 @@ export function ItemList({
                     {item.brand_name && <Chip tone="brand">{item.brand_name}</Chip>}
                     {/* Only worth saying when it adds something the heading
                         did not: the sub-category this item is filed under. */}
-                    {path && path !== group.nameEn && (
+                    {path && path !== group.name && (
                       <span className="max-w-28 truncate text-[11px] text-muted">
-                        {item.category_name_en}
+                        {item.category_name}
                       </span>
                     )}
                   </span>

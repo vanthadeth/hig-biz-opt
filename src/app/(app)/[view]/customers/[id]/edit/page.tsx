@@ -35,9 +35,9 @@ export default async function Page({
       .eq("active", true)
       .order("is_primary", { ascending: false })
       .order("sort_order"),
-    supabase.from("geo_provinces").select("code, name_en, name_km").order("sort_order"),
-    supabase.from("geo_districts").select("code, province_code, name_en, name_km").order("name_en"),
-    supabase.from("geo_communes").select("code, district_code, name_en, name_km").order("name_en"),
+    supabase.from("geo_provinces").select("code, name, name_alt").order("sort_order"),
+    supabase.from("geo_districts").select("code, province_code, name, name_alt").order("name"),
+    supabase.from("geo_communes").select("code, district_code, name, name_alt").order("name"),
     getMyPermissions(),
   ]);
 

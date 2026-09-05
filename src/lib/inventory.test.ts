@@ -34,15 +34,15 @@ const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   code: null,
   price_usd: null,
   price_khr: null,
-  name_en: "Drinking Water",
-  name_km: null,
+  name: "Drinking Water",
+  name_alt: null,
   active: true,
   category_id: null,
-  category_name_en: null,
-  category_name_km: null,
+  category_name: null,
+  category_name_alt: null,
   category_parent_id: null,
-  category_parent_name_en: null,
-  category_parent_name_km: null,
+  category_parent_name: null,
+  category_parent_name_alt: null,
   brand_id: null,
   brand_name: null,
   variant_count: 1,
@@ -51,9 +51,9 @@ const entry = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   ...over,
 });
 
-const category = (over: Partial<Category> & { id: string; name_en: string }): Category => ({
+const category = (over: Partial<Category> & { id: string; name: string }): Category => ({
   parent_id: null,
-  name_km: null,
+  name_alt: null,
   description: null,
   photo_path: null,
   active: true,
@@ -137,61 +137,61 @@ describe("variantLabel", () => {
 describe("categoryPath", () => {
   it("reads parent then child", () => {
     expect(
-      categoryPath({ category_name_en: "Drinks", category_parent_name_en: "Grocery" }),
+      categoryPath({ category_name: "Drinks", category_parent_name: "Grocery" }),
     ).toBe("Grocery / Drinks");
   });
 
   it("is just the category when it is top level", () => {
-    expect(categoryPath({ category_name_en: "Grocery", category_parent_name_en: null })).toBe(
+    expect(categoryPath({ category_name: "Grocery", category_parent_name: null })).toBe(
       "Grocery",
     );
   });
 
   it("is null when an item has no category", () => {
-    expect(categoryPath({ category_name_en: null, category_parent_name_en: null })).toBeNull();
+    expect(categoryPath({ category_name: null, category_parent_name: null })).toBeNull();
   });
 
   it("stays English, because it is a breadcrumb on a chip", () => {
     // Both names at both levels is four words in a space that holds two. The
     // Khmer name is shown where the category is the subject, not here.
     expect(
-      categoryPath({ category_name_en: "Drinks", category_parent_name_en: "Grocery" }),
+      categoryPath({ category_name: "Drinks", category_parent_name: "Grocery" }),
     ).not.toContain("—");
   });
 });
 
 describe("categoryLabel", () => {
   it("shows both names when a category has both", () => {
-    expect(categoryLabel({ name_en: "Grocery", name_km: "គ្រឿងទេស" })).toBe(
+    expect(categoryLabel({ name: "Grocery", name_alt: "គ្រឿងទេស" })).toBe(
       "Grocery — គ្រឿងទេស",
     );
   });
 
   it("shows the English name alone when there is no Khmer one", () => {
-    expect(categoryLabel({ name_en: "Grocery", name_km: null })).toBe("Grocery");
+    expect(categoryLabel({ name: "Grocery", name_alt: null })).toBe("Grocery");
   });
 });
 
 describe("itemTitle", () => {
   it("shows both names when both exist", () => {
-    expect(itemTitle({ name_en: "Water", name_km: "ទឹក" })).toBe("Water — ទឹក");
+    expect(itemTitle({ name: "Water", name_alt: "ទឹក" })).toBe("Water — ទឹក");
   });
 
   it("shows the English name alone otherwise", () => {
-    expect(itemTitle({ name_en: "Water", name_km: null })).toBe("Water");
+    expect(itemTitle({ name: "Water", name_alt: null })).toBe("Water");
   });
 });
 
 describe("matchesItem", () => {
   const water = entry({
-    name_en: "Drinking Water",
-    name_km: "ទឹកសុទ្ធ",
+    name: "Drinking Water",
+    name_alt: "ទឹកសុទ្ធ",
     codes: "HIG-001 8850123456789",
     brand_name: "Angkor",
-    category_name_en: "Drinks",
-    category_name_km: "ភេសជ្ជៈ",
-    category_parent_name_en: "Grocery",
-    category_parent_name_km: "គ្រឿងទេស",
+    category_name: "Drinks",
+    category_name_alt: "ភេសជ្ជៈ",
+    category_parent_name: "Grocery",
+    category_parent_name_alt: "គ្រឿងទេស",
   });
 
   it("matches every item on an empty query", () => {
@@ -228,8 +228,8 @@ describe("matchesItem", () => {
   });
 
   it("survives an item with nothing but a name", () => {
-    expect(matchesItem(entry({ name_en: "Bare" }), "bare")).toBe(true);
-    expect(matchesItem(entry({ name_en: "Bare" }), "angkor")).toBe(false);
+    expect(matchesItem(entry({ name: "Bare" }), "bare")).toBe(true);
+    expect(matchesItem(entry({ name: "Bare" }), "angkor")).toBe(false);
   });
 });
 
@@ -237,39 +237,39 @@ describe("groupByCategory", () => {
   const rows = [
     entry({
       id: "a",
-      name_en: "Water",
+      name: "Water",
       category_id: "drinks",
-      category_name_en: "Drinks",
+      category_name: "Drinks",
       category_parent_id: "grocery",
-      category_parent_name_en: "Grocery",
+      category_parent_name: "Grocery",
     }),
     entry({
       id: "b",
-      name_en: "Rice",
+      name: "Rice",
       category_id: "grocery",
-      category_name_en: "Grocery",
+      category_name: "Grocery",
     }),
-    entry({ id: "c", name_en: "Hammer", category_id: "tools", category_name_en: "Tools" }),
-    entry({ id: "d", name_en: "Odds and ends" }),
+    entry({ id: "c", name: "Hammer", category_id: "tools", category_name: "Tools" }),
+    entry({ id: "d", name: "Odds and ends" }),
   ];
 
   it("folds a sub-category into its parent's heading", () => {
     // Two levels of heading on a phone leaves no room for the items under them.
     const groups = groupByCategory(rows);
-    const grocery = groups.find((g) => g.nameEn === "Grocery");
+    const grocery = groups.find((g) => g.name === "Grocery");
     expect(grocery?.items.map((i) => i.id)).toEqual(["b", "a"]);
   });
 
   it("sorts items within a group by name", () => {
     const groups = groupByCategory(rows);
-    expect(groups.find((g) => g.nameEn === "Grocery")?.items.map((i) => i.name_en)).toEqual(
+    expect(groups.find((g) => g.name === "Grocery")?.items.map((i) => i.name)).toEqual(
       ["Rice", "Water"],
     );
   });
 
   it("puts what has no category last, whatever its name", () => {
     const groups = groupByCategory(rows);
-    expect(groups.at(-1)?.nameEn).toBe("No category");
+    expect(groups.at(-1)?.name).toBe("No category");
   });
 
   it("takes the Khmer heading from the level that supplied the English one", () => {
@@ -279,35 +279,35 @@ describe("groupByCategory", () => {
       entry({
         id: "a",
         category_id: "drinks",
-        category_name_en: "Drinks",
-        category_name_km: "ភេសជ្ជៈ",
+        category_name: "Drinks",
+        category_name_alt: "ភេសជ្ជៈ",
         category_parent_id: "grocery",
-        category_parent_name_en: "Grocery",
-        category_parent_name_km: "គ្រឿងទេស",
+        category_parent_name: "Grocery",
+        category_parent_name_alt: "គ្រឿងទេស",
       }),
     ]);
-    expect(groups[0].nameEn).toBe("Grocery");
-    expect(groups[0].nameKm).toBe("គ្រឿងទេស");
+    expect(groups[0].name).toBe("Grocery");
+    expect(groups[0].nameAlt).toBe("គ្រឿងទេស");
   });
 
   it("heads a top-level group with its own Khmer name", () => {
     const groups = groupByCategory([
-      entry({ id: "b", category_id: "tools", category_name_en: "Tools", category_name_km: "ឧបករណ៍" }),
+      entry({ id: "b", category_id: "tools", category_name: "Tools", category_name_alt: "ឧបករណ៍" }),
     ]);
-    expect(groups[0].nameEn).toBe("Tools");
-    expect(groups[0].nameKm).toBe("ឧបករណ៍");
+    expect(groups[0].name).toBe("Tools");
+    expect(groups[0].nameAlt).toBe("ឧបករណ៍");
   });
 
   it("has no Khmer heading for what has no category", () => {
     const groups = groupByCategory([entry({ id: "c" })]);
-    expect(groups[0].nameEn).toBe("No category");
-    expect(groups[0].nameKm).toBeNull();
+    expect(groups[0].name).toBe("No category");
+    expect(groups[0].nameAlt).toBeNull();
   });
 
   it("filters across the groups rather than flattening them", () => {
     const groups = groupByCategory(rows, "water");
     expect(groups).toHaveLength(1);
-    expect(groups[0].nameEn).toBe("Grocery");
+    expect(groups[0].name).toBe("Grocery");
     expect(countItems(groups)).toBe(1);
   });
 
@@ -319,10 +319,10 @@ describe("groupByCategory", () => {
 
 describe("categoryOptions", () => {
   const categories = [
-    category({ id: "tools", name_en: "Tools", sort_order: 2 }),
-    category({ id: "grocery", name_en: "Grocery", sort_order: 1 }),
-    category({ id: "drinks", name_en: "Drinks", parent_id: "grocery" }),
-    category({ id: "snacks", name_en: "Snacks", parent_id: "grocery" }),
+    category({ id: "tools", name: "Tools", sort_order: 2 }),
+    category({ id: "grocery", name: "Grocery", sort_order: 1 }),
+    category({ id: "drinks", name: "Drinks", parent_id: "grocery" }),
+    category({ id: "snacks", name: "Snacks", parent_id: "grocery" }),
   ];
 
   it("lists a parent then its children, in sort order", () => {
@@ -336,7 +336,7 @@ describe("categoryOptions", () => {
 
   it("offers both names, so somebody can find a category in either language", () => {
     const options = categoryOptions([
-      category({ id: "grocery", name_en: "Grocery", name_km: "គ្រឿងទេស" }),
+      category({ id: "grocery", name: "Grocery", name_alt: "គ្រឿងទេស" }),
     ]);
     expect(options[0].label).toBe("Grocery — គ្រឿងទេស");
   });
@@ -353,7 +353,7 @@ describe("categoryOptions", () => {
 
   it("still offers a sub-category whose parent is not in the list", () => {
     // Otherwise every item filed under it would be unreachable from the form.
-    const options = categoryOptions([category({ id: "orphan", name_en: "Orphan", parent_id: "gone" })]);
+    const options = categoryOptions([category({ id: "orphan", name: "Orphan", parent_id: "gone" })]);
     expect(options).toEqual([{ value: "orphan", label: "Orphan" }]);
   });
 });
@@ -361,15 +361,15 @@ describe("categoryOptions", () => {
 describe("categoryTree", () => {
   it("hangs children off their parent", () => {
     const tree = categoryTree([
-      category({ id: "grocery", name_en: "Grocery" }),
-      category({ id: "drinks", name_en: "Drinks", parent_id: "grocery" }),
+      category({ id: "grocery", name: "Grocery" }),
+      category({ id: "drinks", name: "Drinks", parent_id: "grocery" }),
     ]);
     expect(tree).toHaveLength(1);
     expect(tree[0].children.map((c) => c.id)).toEqual(["drinks"]);
   });
 
   it("shows a parent with no children as itself", () => {
-    const tree = categoryTree([category({ id: "tools", name_en: "Tools" })]);
+    const tree = categoryTree([category({ id: "tools", name: "Tools" })]);
     expect(tree[0].children).toEqual([]);
   });
 });
@@ -505,8 +505,8 @@ describe("matchesActive", () => {
 describe("matchesCategory", () => {
   const drinks = category({
     id: "d",
-    name_en: "Drinks",
-    name_km: "ភេសជ្ជៈ",
+    name: "Drinks",
+    name_alt: "ភេសជ្ជៈ",
     description: "Bottled and canned",
   });
 
@@ -548,11 +548,11 @@ describe("matchesBrand / filterBrands", () => {
 
 describe("filterCategoryTree", () => {
   const tree = [
-    category({ id: "grocery", name_en: "Grocery", sort_order: 1 }),
-    category({ id: "drinks", name_en: "Drinks", parent_id: "grocery" }),
-    category({ id: "snacks", name_en: "Snacks", parent_id: "grocery", active: false }),
-    category({ id: "tools", name_en: "Tools", sort_order: 2 }),
-    category({ id: "old", name_en: "Discontinued", sort_order: 3, active: false }),
+    category({ id: "grocery", name: "Grocery", sort_order: 1 }),
+    category({ id: "drinks", name: "Drinks", parent_id: "grocery" }),
+    category({ id: "snacks", name: "Snacks", parent_id: "grocery", active: false }),
+    category({ id: "tools", name: "Tools", sort_order: 2 }),
+    category({ id: "old", name: "Discontinued", sort_order: 3, active: false }),
   ];
 
   it("returns the whole tree when nothing is asked of it", () => {
@@ -588,8 +588,8 @@ describe("filterCategoryTree", () => {
     // Hiding those children with it would make their items look uncategorised
     // when they are not.
     const withInactiveParent = [
-      category({ id: "p", name_en: "Winding Down", active: false }),
-      category({ id: "c", name_en: "Still Selling", parent_id: "p" }),
+      category({ id: "p", name: "Winding Down", active: false }),
+      category({ id: "c", name: "Still Selling", parent_id: "p" }),
     ];
     const branches = filterCategoryTree(withInactiveParent, "", "active");
     expect(branches).toHaveLength(1);

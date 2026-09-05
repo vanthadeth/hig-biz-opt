@@ -15,17 +15,17 @@ import { formatKhr, formatUsd } from "@/lib/inventory";
 export type CatalogItem = {
   id: string;
   code: string | null;
-  name_en: string;
-  name_km: string | null;
+  name: string;
+  name_alt: string | null;
   active: boolean;
   price_usd: number | null;
   price_khr: number | null;
   category_id: string | null;
-  category_name_en: string | null;
-  category_name_km: string | null;
+  category_name: string | null;
+  category_name_alt: string | null;
   category_parent_id: string | null;
-  category_parent_name_en: string | null;
-  category_parent_name_km: string | null;
+  category_parent_name: string | null;
+  category_parent_name_alt: string | null;
   brand_id: string | null;
   brand_name: string | null;
   photo_path: string | null;
@@ -39,7 +39,7 @@ export type CatalogItem = {
 // One literal, not a concatenation: supabase-js reads this string in the type
 // system to work out the row shape, and a joined expression widens to `string`.
 export const CATALOG_COLUMNS =
-  "id, code, name_en, name_km, active, price_usd, price_khr, category_id, category_name_en, category_name_km, category_parent_id, category_parent_name_en, category_parent_name_km, brand_id, brand_name, photo_path, description, stock_qty, low_stock_qty, qty_per_box, qty_per_carton";
+  "id, code, name, name_alt, active, price_usd, price_khr, category_id, category_name, category_name_alt, category_parent_id, category_parent_name, category_parent_name_alt, brand_id, brand_name, photo_path, description, stock_qty, low_stock_qty, qty_per_box, qty_per_carton";
 
 export const CART_COLUMNS = "id, item_id, quantity";
 
@@ -118,7 +118,7 @@ export function byCode(a: CatalogItem, b: CatalogItem): number {
   }
   if (left) return -1;
   if (right) return 1;
-  return a.name_en.localeCompare(b.name_en);
+  return a.name.localeCompare(b.name);
 }
 
 // Grouping -------------------------------------------------------------------------
@@ -154,12 +154,12 @@ export function catalogGroups(items: CatalogItem[]): CatalogGroup[] {
     // category's belong in its own.
     const groupKey = item.category_parent_id ?? item.category_id ?? UNCATEGORISED;
     const groupName =
-      item.category_parent_name_en ?? item.category_name_en ?? "No category";
+      item.category_parent_name ?? item.category_name ?? "No category";
 
     // Only a sub-category earns a sub-heading. Filed on the parent, there is
     // nothing narrower to say.
     const sectionKey = item.category_parent_id ? (item.category_id ?? "") : "";
-    const sectionName = item.category_parent_id ? item.category_name_en : null;
+    const sectionName = item.category_parent_id ? item.category_name : null;
 
     let group = groups.get(groupKey);
     if (!group) {
@@ -263,7 +263,7 @@ export function addableQty(item: CatalogItem, alreadyInCart: number): number {
 export function matchesCatalog(item: CatalogItem, query: string): boolean {
   const needle = query.toLowerCase().trim();
   if (needle === "") return true;
-  return [item.name_en, item.name_km, item.code, item.brand_name].some(
+  return [item.name, item.name_alt, item.code, item.brand_name].some(
     (field) => field != null && field.toLowerCase().includes(needle),
   );
 }

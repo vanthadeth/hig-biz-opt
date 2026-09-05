@@ -251,7 +251,7 @@ export function Catalog({
                           className="pressable flex w-full flex-col gap-2 rounded-2xl border border-line bg-surface p-2 text-left"
                         >
                           <StoredPhoto
-                            name={item.name_en}
+                            name={item.name}
                             path={item.photo_path}
                             bucket={INVENTORY_BUCKET}
                             fallback={<Icon name="box" className="size-6" />}
@@ -259,7 +259,7 @@ export function Catalog({
                           />
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-medium">
-                              {item.name_en}
+                              {item.name}
                             </span>
                             {item.code && (
                               <span className="block truncate text-xs tabular-nums text-muted">
@@ -302,7 +302,7 @@ export function Catalog({
               ).map((picture) => (
                 <li key={picture.key} className="shrink-0">
                   <StoredPhoto
-                    name={open.name_en}
+                    name={open.name}
                     path={picture.path}
                     bucket={INVENTORY_BUCKET}
                     fallback={<Icon name="box" className="size-7" />}
@@ -375,7 +375,7 @@ export function Catalog({
                 {entries.map(({ line, item }) => (
                   <li key={line.id} className="flex items-center gap-3 py-3">
                     <StoredPhoto
-                      name={item.name_en}
+                      name={item.name}
                       path={item.photo_path}
                       bucket={INVENTORY_BUCKET}
                       fallback={<Icon name="box" className="size-4" />}
@@ -383,7 +383,7 @@ export function Catalog({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">
-                        {item.name_en}
+                        {item.name}
                       </span>
                       <span className="block truncate text-xs text-muted">
                         {priceLine(item)}
@@ -396,7 +396,7 @@ export function Catalog({
                       disabled={busy}
                       compact
                       onChange={(next) => setLineQty(line, next)}
-                      label={`Quantity of ${item.name_en}`}
+                      label={`Quantity of ${item.name}`}
                     />
                   </li>
                 ))}

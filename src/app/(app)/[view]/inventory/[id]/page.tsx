@@ -27,11 +27,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const supabase = await createClient();
   const { data } = await supabase
     .from("items")
-    .select("name_en")
+    .select("name")
     .eq("id", id)
     .maybeSingle();
 
-  return { title: (data?.name_en as string) ?? "Item" };
+  return { title: (data?.name as string) ?? "Item" };
 }
 
 export default async function Page({
@@ -73,7 +73,7 @@ export default async function Page({
     item.category_id
       ? supabase
           .from("item_categories")
-          .select("name_en, name_km, parent_id")
+          .select("name, name_alt, parent_id")
           .eq("id", item.category_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -85,18 +85,18 @@ export default async function Page({
   const parent = category.data?.parent_id
     ? await supabase
         .from("item_categories")
-        .select("name_en")
+        .select("name")
         .eq("id", category.data.parent_id as string)
         .maybeSingle()
     : { data: null };
 
   const path = categoryPath({
-    category_name_en: (category.data?.name_en as string) ?? null,
-    category_parent_name_en: (parent.data?.name_en as string) ?? null,
+    category_name: (category.data?.name as string) ?? null,
+    category_parent_name: (parent.data?.name as string) ?? null,
   });
   // The breadcrumb chip stays English so it fits; the category's own Khmer
   // name goes on its own chip beside it, where there is room for it.
-  const categoryKm = (category.data?.name_km as string) ?? null;
+  const categoryKm = (category.data?.name_alt as string) ?? null;
 
   // One item, one price. There is nothing to take a span across any more.
   const summary = bothPrices(item);
@@ -119,15 +119,15 @@ export default async function Page({
       <Card className="p-4">
         <div className="flex items-start gap-4">
           <StoredPhoto
-            name={item.name_en}
+            name={item.name}
             path={lead}
             bucket={INVENTORY_BUCKET}
             fallback={<Icon name="box" className="size-7" />}
             className="size-20 rounded-2xl"
           />
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold tracking-tight">{item.name_en}</h1>
-            {item.name_km && <p className="text-sm text-muted">{item.name_km}</p>}
+            <h1 className="text-xl font-semibold tracking-tight">{item.name}</h1>
+            {item.name_alt && <p className="text-sm text-muted">{item.name_alt}</p>}
             {item.code && <p className="text-xs text-muted">{item.code}</p>}
             <p className="mt-1 text-sm">{summary}</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -205,7 +205,7 @@ export default async function Page({
 
       <ItemStatusControls
         itemId={item.id}
-        name={item.name_en}
+        name={item.name}
         active={item.active}
         canEdit={canEdit}
       />

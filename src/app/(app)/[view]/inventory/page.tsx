@@ -12,7 +12,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   // path, a brand name and a price range per row, and doing those joins here
   // costs one request instead of four.
   const [catalogue, mine] = await Promise.all([
-    supabase.from("item_catalogue").select(CATALOGUE_COLUMNS).order("name_en"),
+    supabase.from("item_catalogue").select(CATALOGUE_COLUMNS).order("name"),
     getMyPermissions(),
   ]);
 

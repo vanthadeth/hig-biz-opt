@@ -119,9 +119,9 @@ begin
   perform pg_temp.new_user(v_rep2, 'cx.rep2@example.test', 'Cart Rep 2', 'sales');
   update public.users set is_super_admin = true where id = v_sa;
 
-  insert into public.items (name_en, code, price_usd, price_khr, stock_qty)
+  insert into public.items (name, code, price_usd, price_khr, stock_qty)
     values ('CX Water', 'CX-001', 0.50, 2000, 10) returning id into v_itm;
-  insert into public.items (name_en, code, price_usd, stock_qty)
+  insert into public.items (name, code, price_usd, stock_qty)
     values ('CX Rice', 'CX-002', 12, 4) returning id into v_alt;
 
   ----------------------------------------------------------------------------

@@ -135,7 +135,7 @@ describe("buildRows", () => {
   const headers = ["Code", "Name", "Price", "Notes"];
   const maps = [
     map("Code", "code", "text", 0),
-    map("Name", "name_en", "text", 1),
+    map("Name", "name", "text", 1),
     map("Price", "price_usd", "number", 2),
     map("Notes", null, "text", 3),
   ];
@@ -148,7 +148,7 @@ describe("buildRows", () => {
       "code",
     );
     expect(built.records).toEqual([
-      { code: "HIG-1", name_en: "Water", price_usd: 0.5 },
+      { code: "HIG-1", name: "Water", price_usd: 0.5 },
     ]);
   });
 
@@ -203,7 +203,7 @@ describe("buildRows", () => {
     const built = buildRows(
       ["Code", "Code", "Name"],
       [["first", "second", "Water"]],
-      [map("Code", "code"), map("Name", "name_en")],
+      [map("Code", "code"), map("Name", "name")],
       "code",
     );
     expect(built.records[0].code).toBe("first");
@@ -273,7 +273,7 @@ describe("isDue", () => {
 });
 
 describe("syncProblems", () => {
-  const maps = [map("Code", "code"), map("Name", "name_en")];
+  const maps = [map("Code", "code"), map("Name", "name")];
 
   it("is happy with a mapping that includes the key", () => {
     expect(syncProblems({ trigger_kind: "interval", interval_minutes: 60 }, maps, "code"))
@@ -294,7 +294,7 @@ describe("syncProblems", () => {
     // one failure that quietly doubles a table every night.
     const problems = syncProblems(
       { trigger_kind: "change", interval_minutes: null },
-      [map("Name", "name_en")],
+      [map("Name", "name")],
       "code",
     );
     expect(problems.some((p) => p.includes("code"))).toBe(true);
@@ -312,7 +312,7 @@ describe("syncProblems", () => {
 
 describe("reading a sync back", () => {
   it("counts what is mapped against what the sheet has", () => {
-    expect(mappingLabel([map("A", "code"), map("B", null), map("C", "name_en")]))
+    expect(mappingLabel([map("A", "code"), map("B", null), map("C", "name")]))
       .toBe("2 of 3 columns");
     expect(mappingLabel([])).toBe("Nothing mapped yet");
   });
@@ -369,7 +369,7 @@ describe("sheet IDs and references", () => {
     const built = buildRows(
       ["ID", "Name"],
       [["I-1", "Water"], ["", "Orphan"]],
-      [map("ID", "sheet_id"), map("Name", "name_en", "text", 1)],
+      [map("ID", "sheet_id"), map("Name", "name", "text", 1)],
       "sheet_id",
     );
     expect(built.records).toHaveLength(1);
@@ -379,7 +379,7 @@ describe("sheet IDs and references", () => {
   it("wants something feeding the key it matches on", () => {
     const problems = syncProblems(
       { trigger_kind: "change", interval_minutes: null },
-      [map("Name", "name_en")],
+      [map("Name", "name")],
       "sheet_id",
     );
     expect(problems.some((p) => p.includes("sheet_id"))).toBe(true);

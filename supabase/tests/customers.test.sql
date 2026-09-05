@@ -136,19 +136,19 @@ begin
   perform pg_temp.eq('all 25 provinces are seeded',
     (select count(*)::text from public.geo_provinces), '25');
   perform pg_temp.eq('Phnom Penh carries its official code',
-    (select name_en from public.geo_provinces where code = '12'), 'Phnom Penh');
+    (select name from public.geo_provinces where code = '12'), 'Phnom Penh');
   perform pg_temp.eq('Tboung Khmum is present, as the newest province',
-    (select name_en from public.geo_provinces where code = '25'), 'Tboung Khmum');
+    (select name from public.geo_provinces where code = '25'), 'Tboung Khmum');
   -- Guessed place names are worse than absent ones, and these are the rows every
   -- address in the country hangs off.
   perform pg_temp.eq('Khmer names are left absent rather than guessed at',
-    (select count(*)::text from public.geo_provinces where name_km is not null), '0');
+    (select count(*)::text from public.geo_provinces where name_alt is not null), '0');
 
-  insert into public.geo_districts (code, province_code, name_en)
+  insert into public.geo_districts (code, province_code, name)
     values ('1201', '12', 'Chamkar Mon') returning code into v_dist;
-  insert into public.geo_communes (code, district_code, name_en)
+  insert into public.geo_communes (code, district_code, name)
     values ('120101', '1201', 'Tonle Bassac') returning code into v_comm;
-  insert into public.geo_districts (code, province_code, name_en)
+  insert into public.geo_districts (code, province_code, name)
     values ('0801', '08', 'Kandal Stueng');
 
   ----------------------------------------------------------------------------

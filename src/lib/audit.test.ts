@@ -31,8 +31,8 @@ const entry = (over: Partial<AuditEntry> = {}): AuditEntry => ({
   record_id: "i1",
   action: "update",
   changed: ["price_usd"],
-  old_row: { id: "i1", name_en: "Drinking Water", price_usd: 0.5 },
-  new_row: { id: "i1", name_en: "Drinking Water", price_usd: 0.6 },
+  old_row: { id: "i1", name: "Drinking Water", price_usd: 0.5 },
+  new_row: { id: "i1", name: "Drinking Water", price_usd: 0.6 },
   ...over,
 });
 
@@ -52,7 +52,7 @@ describe("tableLabel", () => {
 
 describe("columnLabel", () => {
   it("spells out the ones a person would not recognise", () => {
-    expect(columnLabel("name_km")).toBe("Name (Khmer)");
+    expect(columnLabel("name_alt")).toBe("Alternative name");
     expect(columnLabel("is_primary")).toBe("Main");
     expect(columnLabel("photo_path")).toBe("Picture");
   });
@@ -111,7 +111,7 @@ describe("recordTitle", () => {
   it("finds the name on a deletion, where only the old row still has it", () => {
     expect(
       recordTitle(
-        entry({ action: "delete", new_row: null, old_row: { name_en: "Old Stock" } }),
+        entry({ action: "delete", new_row: null, old_row: { name: "Old Stock" } }),
       ),
     ).toBe("Old Stock");
   });
@@ -125,7 +125,7 @@ describe("recordTitle", () => {
   });
 
   it("ignores a name that is only whitespace", () => {
-    expect(recordTitle(entry({ new_row: { name_en: "  ", id: "i1" } }))).toBe("i1");
+    expect(recordTitle(entry({ new_row: { name: "  ", id: "i1" } }))).toBe("i1");
   });
 });
 
@@ -175,11 +175,11 @@ describe("changeRows", () => {
         action: "insert",
         changed: [],
         old_row: null,
-        new_row: { id: "i1", name_en: "Water", price_usd: 0.5, name_km: null },
+        new_row: { id: "i1", name: "Water", price_usd: 0.5, name_alt: null },
       }),
     );
-    expect(rows.map((r) => r.column)).toEqual(["name_en", "price_usd"]);
-    expect(rows[0]).toEqual({ column: "name_en", label: "Name (English)", from: "", to: "Water" });
+    expect(rows.map((r) => r.column)).toEqual(["name", "price_usd"]);
+    expect(rows[0]).toEqual({ column: "name", label: "Name", from: "", to: "Water" });
   });
 
   it("lists what a removed record held, on the leaving side", () => {
@@ -188,11 +188,11 @@ describe("changeRows", () => {
         action: "delete",
         changed: [],
         new_row: null,
-        old_row: { id: "i1", name_en: "Water" },
+        old_row: { id: "i1", name: "Water" },
       }),
     );
     expect(rows).toEqual([
-      { column: "name_en", label: "Name (English)", from: "Water", to: "" },
+      { column: "name", label: "Name", from: "Water", to: "" },
     ]);
   });
 
@@ -203,10 +203,10 @@ describe("changeRows", () => {
       entry({
         action: "insert",
         old_row: null,
-        new_row: { id: "i1", created_at: "x", updated_at: "y", name_en: "Water" },
+        new_row: { id: "i1", created_at: "x", updated_at: "y", name: "Water" },
       }),
     );
-    expect(rows.map((r) => r.column)).toEqual(["name_en"]);
+    expect(rows.map((r) => r.column)).toEqual(["name"]);
   });
 
   it("leaves them out of an update too", () => {

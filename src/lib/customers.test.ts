@@ -209,9 +209,9 @@ describe("groupByProvince", () => {
 
 describe("districtsIn / communesIn", () => {
   const districts = [
-    { code: "1201", province_code: "12", name_en: "Chamkar Mon", name_km: null },
-    { code: "1202", province_code: "12", name_en: "Doun Penh", name_km: null },
-    { code: "0801", province_code: "08", name_en: "Kandal Stueng", name_km: null },
+    { code: "1201", province_code: "12", name: "Chamkar Mon", name_alt: null },
+    { code: "1202", province_code: "12", name: "Doun Penh", name_alt: null },
+    { code: "0801", province_code: "08", name: "Kandal Stueng", name_alt: null },
   ];
 
   it("offers only the districts of the chosen province", () => {
@@ -224,8 +224,8 @@ describe("districtsIn / communesIn", () => {
 
   it("does the same for communes under a district", () => {
     const communes = [
-      { code: "120101", district_code: "1201", name_en: "Tonle Bassac", name_km: null },
-      { code: "120201", district_code: "1202", name_en: "Chey Chumneas", name_km: null },
+      { code: "120101", district_code: "1201", name: "Tonle Bassac", name_alt: null },
+      { code: "120201", district_code: "1202", name: "Chey Chumneas", name_alt: null },
     ];
     expect(communesIn(communes, "1201").map((c) => c.code)).toEqual(["120101"]);
   });

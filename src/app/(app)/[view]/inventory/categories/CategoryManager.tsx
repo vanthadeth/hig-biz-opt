@@ -24,8 +24,8 @@ import { ListToolbar, statusChip } from "../ListToolbar";
 type Draft = {
   id: string | null;
   parent_id: string;
-  name_en: string;
-  name_km: string;
+  name: string;
+  name_alt: string;
   description: string;
   photo_path: string | null;
   active: boolean;
@@ -35,8 +35,8 @@ function draftFrom(category: Category | null, parentId: string): Draft {
   return {
     id: category?.id ?? null,
     parent_id: category?.parent_id ?? parentId,
-    name_en: category?.name_en ?? "",
-    name_km: category?.name_km ?? "",
+    name: category?.name ?? "",
+    name_alt: category?.name_alt ?? "",
     description: category?.description ?? "",
     photo_path: category?.photo_path ?? null,
     active: category?.active ?? true,
@@ -99,15 +99,15 @@ export function CategoryManager({
     setError(null);
   }
 
-  const trimmed = draft?.name_en.trim() ?? "";
+  const trimmed = draft?.name.trim() ?? "";
   // The two partial unique indexes are what actually hold; catching it here
-  // just saves a round trip to be told so. They key on the English name — the
+  // just saves a round trip to be told so. They key on the name — the
   // one every category is guaranteed to have — so this does too.
   const duplicate = categories.some(
     (c) =>
       c.id !== draft?.id &&
       (c.parent_id ?? "") === (draft?.parent_id ?? "") &&
-      c.name_en.toLowerCase() === trimmed.toLowerCase(),
+      c.name.toLowerCase() === trimmed.toLowerCase(),
   );
   const valid = trimmed !== "" && !duplicate;
 
@@ -121,8 +121,8 @@ export function CategoryManager({
     try {
       const row = {
         parent_id: draft.parent_id === "" ? null : draft.parent_id,
-        name_en: trimmed,
-        name_km: draft.name_km.trim() === "" ? null : draft.name_km.trim(),
+        name: trimmed,
+        name_alt: draft.name_alt.trim() === "" ? null : draft.name_alt.trim(),
         description: draft.description.trim() === "" ? null : draft.description.trim(),
         active: draft.active,
       };
@@ -328,9 +328,9 @@ export function CategoryManager({
         {draft && (
           <div className="space-y-4 px-3 pb-4 pt-1">
             <Field
-              label="Name (English)"
-              value={draft.name_en}
-              onChange={(v) => setDraft({ ...draft, name_en: v })}
+              label="Name"
+              value={draft.name}
+              onChange={(v) => setDraft({ ...draft, name: v })}
               placeholder="Grocery"
               error={
                 duplicate ? `A category called “${trimmed}” already sits here.` : null
@@ -338,10 +338,10 @@ export function CategoryManager({
             />
 
             <Field
-              label="Name (Khmer)"
+              label="Alternative name"
               optional
-              value={draft.name_km}
-              onChange={(v) => setDraft({ ...draft, name_km: v })}
+              value={draft.name_alt}
+              onChange={(v) => setDraft({ ...draft, name_alt: v })}
               placeholder="គ្រឿងទេស"
             />
 
@@ -367,7 +367,7 @@ export function CategoryManager({
 
             <ImageField
               label="Picture"
-              alt={draft.name_en || "Category"}
+              alt={draft.name || "Category"}
               path={draft.photo_path}
               file={file}
               onChange={setFile}
@@ -448,16 +448,16 @@ function Row({
   const body = (
     <>
       <StoredPhoto
-        name={category.name_en}
+        name={category.name}
         path={category.photo_path}
         bucket={INVENTORY_BUCKET}
         fallback={<Icon name="grid" className="size-4" />}
         className="size-10 rounded-lg"
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{category.name_en}</span>
-        {category.name_km && (
-          <span className="block truncate text-xs text-muted">{category.name_km}</span>
+        <span className="block truncate text-sm font-medium">{category.name}</span>
+        {category.name_alt && (
+          <span className="block truncate text-xs text-muted">{category.name_alt}</span>
         )}
         {category.description && (
           <span className="block truncate text-xs text-muted">
@@ -477,7 +477,7 @@ function Row({
       type="button"
       onClick={onToggle}
       aria-expanded={!collapsed}
-      aria-label={`${collapsed ? "Expand" : "Collapse"} ${category.name_en}`}
+      aria-label={`${collapsed ? "Expand" : "Collapse"} ${category.name}`}
       className="pressable flex size-9 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-subtle hover:text-fg"
     >
       <Icon

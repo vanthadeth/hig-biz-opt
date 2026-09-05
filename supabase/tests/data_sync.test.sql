@@ -17,7 +17,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  DATA SYNC OK - 58 assertions passed (rls: ran)
+--     ERROR:  DATA SYNC OK - 63 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 create or replace function pg_temp.bump() returns void language plpgsql as $f$
@@ -110,6 +110,8 @@ declare
   v_cat_sync uuid;
   v_ref_sync uuid;
   v_n    integer;
+  v_held uuid;
+  v_msg  text;
   v_rls  text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -418,25 +420,56 @@ begin
 
   perform pg_temp.act_as(v_rep);
   perform pg_temp.refused('a rep may not clear a table',
-    'select public.sync_clear(''brands'', true)');
+    'select public.sync_clear(''brands'', true, ''all'')');
 
   perform pg_temp.act_as(v_sa);
   perform pg_temp.rejects('nor may anyone clear a table no sync writes to',
-    'select public.sync_clear(''users'', true)');
+    'select public.sync_clear(''users'', true, ''all'')');
 
   -- Counting is not deleting: the number somebody confirms has to be the number
   -- that goes, so both come from the same predicate.
   perform pg_temp.ok('counting finds what came from a sheet',
-    public.sync_clear('brands', false) >= 2);
+    public.sync_clear('brands', false, 'imported') >= 2);
   perform pg_temp.eq('and deletes nothing while it counts',
     (select count(*)::text from public.brands where sheet_id in ('B-1', 'B-2')), '2');
 
-  v_n := public.sync_clear('brands', true);
+  -- The wider scope sees more than the careful one, which is the whole point of
+  -- there being two.
+  perform pg_temp.ok('emptying the table would take more than that',
+    public.sync_clear('brands', false, 'all')
+      > public.sync_clear('brands', false, 'imported'));
+
+  v_n := public.sync_clear('brands', true, 'imported');
   perform pg_temp.eq('clearing removes what a sync imported',
     (select count(*)::text from public.brands where sheet_id in ('B-1', 'B-2')), '0');
   -- The whole reason sheet_id is worth having beyond resolving references.
   perform pg_temp.eq('and leaves what somebody entered by hand',
     (select count(*)::text from public.brands where name = 'DX By Hand'), '1');
+
+  -- 0039. The rows written before a sheet's ID column was mapped carry no
+  -- sheet_id, so `imported` cannot see them and the next run cannot match them.
+  -- Emptying the table is what unsticks that, and it has to be reachable.
+  insert into public.departments (name) values ('DX Before Mapping');
+  insert into public.departments (name, sheet_id) values ('DX After Mapping', 'DD-1');
+  perform pg_temp.ok('a table can be emptied outright',
+    public.sync_clear('departments', true, 'all') >= 2);
+  perform pg_temp.eq('and then there is nothing left in it',
+    (select count(*)::text from public.departments), '0');
+
+  -- Emptying a table something still points at refuses, and says which table to
+  -- clear first rather than naming a constraint at somebody.
+  insert into public.brands (name) values ('DX Held') returning id into v_held;
+  insert into public.items (name_en, brand_id) values ('DX Holder', v_held);
+  begin
+    perform public.sync_clear('brands', true, 'all');
+    v_msg := 'NOT REFUSED';
+  exception when foreign_key_violation then
+    v_msg := SQLERRM;
+  end;
+  perform pg_temp.ok('and names what is still holding on',
+    v_msg like '%rows in items still refer to brands%');
+  perform pg_temp.eq('while deleting nothing',
+    (select count(*)::text from public.brands where name = 'DX Held'), '1');
 
   raise exception 'DATA SYNC OK - % assertions passed (rls: %)',
     current_setting('higtest.checks'), v_rls;

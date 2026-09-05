@@ -199,9 +199,22 @@ right the first time.
 ### Clearing what a sync imported
 
 Mapping somebody else's spreadsheet is a guess, and the second guess is better.
-**Clear imported data**, on a sync's own page, deletes rows in the target table
-whose `sheet_id` is not null — everything a sync put there, and nothing this app
-created itself. That is the other reason `sheet_id` earns its place.
+**Clear**, on a sync's own page, offers two scopes:
+
+- **Rows that came from a sheet** — those whose `sheet_id` is not null. Anything
+  entered by hand is left alone.
+- **Empty the table completely** — everything in it.
+
+The second exists because the first fails in exactly the case this feature is
+for. The runs with the mapping wrong are the *first* ones, and a common way to
+have it wrong is not to have mapped the sheet's ID column yet. Those rows land
+with a null `sheet_id`, which makes them invisible to the careful scope **and**
+unmatchable by the next run — so the sync starts failing on some other unique
+column, and clearing reports nothing to clear. Emptying the table is what
+unsticks it.
+
+If something still points at the rows, nothing is deleted and the message names
+the table to clear first rather than quoting a constraint at you.
 
 It is per **table**, not per sync: anything else writing into that table is
 cleared too. It shows the count first and asks you to type the table name, and
@@ -213,9 +226,8 @@ from the sheet.
 guarded merely by a button that happens not to be rendered. Every deleted row
 still goes through the audit trigger, stamped with who did it.
 
-A sync matching on a natural key does not fill `sheet_id`, so what it wrote
-cannot be told apart from what people entered — clearing reports nothing to do,
-and says why.
+A sync matching on a natural key does not fill `sheet_id` either, so the same
+applies: use the wider scope.
 
 ### Matching and merging
 
@@ -432,7 +444,7 @@ ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
 psql "$DATABASE_URL" -f supabase/tests/data_sync.test.sql
 ```
 
-58 assertions. Most of them answer one question: what stops somebody who may
+63 assertions. Most of them answer one question: what stops somebody who may
 define a sync from defining one into `public.users` that maps a sheet column
 onto `is_super_admin`. The answer is in three places and all three are asserted
 — the target must be in a seeded registry, every mapped column must survive an
@@ -446,7 +458,7 @@ sheet IDs the sheets link to each other by, and a reference that resolves only
 once its parent table has been synced.
 
 ```
-ERROR:  DATA SYNC OK - 58 assertions passed (rls: ran)
+ERROR:  DATA SYNC OK - 63 assertions passed (rls: ran)
 ```
 
 ### Customer tests

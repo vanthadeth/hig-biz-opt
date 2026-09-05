@@ -25,6 +25,14 @@ import {
  * history, the notifier is an instruction for a different application, and
  * deleting is not editing.
  */
+/**
+ * `imported` is the careful one. `all` exists because the runs with the mapping
+ * wrong are the first ones, and a common way to have it wrong is not to have
+ * mapped the sheet's ID yet — which leaves rows with no sheet_id that
+ * `imported` cannot see and the next run cannot match.
+ */
+type ClearScope = "imported" | "all";
+
 export function SyncSidecar({
   sync,
   runs,
@@ -49,13 +57,18 @@ export function SyncSidecar({
   const [clearCount, setClearCount] = useState<number | null>(null);
   const [clearTyped, setClearTyped] = useState("");
   const [cleared, setCleared] = useState<number | null>(null);
+  const [scope, setScope] = useState<ClearScope>("imported");
 
-  async function countClearable() {
+  async function count(next: ClearScope) {
     haptic("tap");
     setError(null);
     setCleared(null);
-    const { data, error: e } = await createClient()
-      .rpc("sync_clear", { p_table: sync.target_table, p_commit: false });
+    setScope(next);
+    const { data, error: e } = await createClient().rpc("sync_clear", {
+      p_table: sync.target_table,
+      p_commit: false,
+      p_scope: next,
+    });
     if (e) {
       setError(e.message);
       return;
@@ -67,8 +80,11 @@ export function SyncSidecar({
     setBusy(true);
     setError(null);
     try {
-      const { data, error: e } = await createClient()
-        .rpc("sync_clear", { p_table: sync.target_table, p_commit: true });
+      const { data, error: e } = await createClient().rpc("sync_clear", {
+        p_table: sync.target_table,
+        p_commit: true,
+        p_scope: scope,
+      });
       if (e) throw new Error(e.message);
       haptic("success");
       setCleared((data as number) ?? 0);
@@ -224,10 +240,9 @@ function onSheetChange() {
           />
 
           <p className="text-sm text-muted">
-            Deletes rows in <strong>{sync.target_table}</strong> that came from a
-            sheet. Rows entered in this app are left alone. This is the table,
-            not this sync — anything else writing into {sync.target_table} is
-            cleared too.
+            This is the table, not this sync — anything else writing into{" "}
+            <strong>{sync.target_table}</strong> is cleared too. Both choices
+            show what they would delete before doing it.
           </p>
 
           {cleared !== null && (
@@ -238,27 +253,63 @@ function onSheetChange() {
           )}
 
           {clearCount === null ? (
-            <button
-              type="button"
-              onClick={countClearable}
-              disabled={busy}
-              className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium text-danger disabled:opacity-60"
-            >
-              <Icon name="trash" className="size-4" />
-              Clear imported data
-            </button>
+            <div className="grid gap-2">
+              <button
+                type="button"
+                onClick={() => count("imported")}
+                disabled={busy}
+                className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium text-danger disabled:opacity-60"
+              >
+                <Icon name="trash" className="size-4" />
+                Clear rows that came from a sheet
+              </button>
+              <button
+                type="button"
+                onClick={() => count("all")}
+                disabled={busy}
+                className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-danger text-sm font-medium text-danger disabled:opacity-60"
+              >
+                <Icon name="trash" className="size-4" />
+                Empty {sync.target_table} completely
+              </button>
+            </div>
           ) : clearCount === 0 ? (
-            <p className="text-sm text-muted">
-              Nothing here came from a sheet, so there is nothing to clear.
-              {sync.match_on === "natural" &&
-                " This sync matches on a natural key and does not fill sheet_id, so what it wrote cannot be told apart from what people entered."}
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-muted">
+                {scope === "all"
+                  ? `${sync.target_table} is already empty.`
+                  : "Nothing here carries a sheet ID, so there is nothing this can pick out."}
+              </p>
+              {/* The case that actually happens: the first runs went in before
+                  the sheet's ID column was mapped, so those rows have no
+                  sheet_id — invisible to this, and unmatchable by the next run,
+                  which is why it now fails on some other unique column. */}
+              {scope === "imported" && (
+                <p className="text-xs text-muted">
+                  If a sync has written rows here already, they went in before
+                  the sheet&rsquo;s ID column was mapped. Those rows carry no
+                  sheet ID, so they cannot be picked out — and the next run
+                  cannot match them either. Empty the table and run the sync
+                  again.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => setClearCount(null)}
+                className="pressable min-h-11 w-full rounded-xl border border-line text-sm font-medium"
+              >
+                Back
+              </button>
+            </div>
           ) : (
             <div className="space-y-2">
               <p className="text-sm">
                 This will delete <strong>{clearCount}</strong>{" "}
-                {clearCount === 1 ? "row" : "rows"} from {sync.target_table}, and
-                whatever hangs off them. It cannot be undone from here.
+                {clearCount === 1 ? "row" : "rows"} from {sync.target_table}
+                {scope === "all"
+                  ? " — everything in it, including anything entered by hand"
+                  : " that came from a sheet"}
+                , and whatever hangs off them. It cannot be undone from here.
               </p>
               {/* Typing the name is the friction. A second button is not: the
                   hand that pressed the first one is already moving. */}

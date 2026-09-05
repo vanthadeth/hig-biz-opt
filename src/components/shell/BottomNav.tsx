@@ -53,15 +53,23 @@ export function BottomNav() {
     const href = `/${view.key}/${entry.href}`;
     const active = pathname === href;
     return (
-      <li key={entry.key} className="flex-1">
+      // `min-w-0` is what makes the columns equal. A flex item defaults to
+      // `min-width: auto`, which refuses to shrink below its content, so one
+      // long module name would widen its slot and steal the difference from
+      // every other. Zeroing it lets all five share the width evenly and hands
+      // the overflow to the label, which truncates.
+      <li key={entry.key} className="min-w-0 flex-1">
         <Link
           href={href}
           onClick={() => haptic("tap")}
           aria-current={active ? "page" : undefined}
-          className="flex min-h-16 flex-col items-center justify-center gap-1.5 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
+          className="flex min-h-16 w-full flex-col items-center justify-center gap-1.5 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
         >
           <Icon name={entry.icon} className="size-6" />
-          <span className="max-w-full truncate text-[11px] font-medium leading-none">
+          {/* `w-full` rather than `max-w-full`: an ellipsis needs a definite
+              width to be placed against, and a centred flex child would
+              otherwise size itself to the text it is meant to be cutting. */}
+          <span className="w-full truncate text-center text-[11px] font-medium leading-none">
             {entry.name}
           </span>
         </Link>
@@ -102,7 +110,8 @@ export function BottomNav() {
 
           {right.map(item)}
 
-          <li className="flex-1">
+          {/* Same shape as a nav item, so the five columns stay identical. */}
+          <li className="min-w-0 flex-1">
             <button
               type="button"
               onClick={() => {
@@ -115,7 +124,9 @@ export function BottomNav() {
               className="flex min-h-16 w-full flex-col items-center justify-center gap-1.5 px-1 py-2 text-muted transition-colors aria-[current=page]:text-brand"
             >
               <Icon name="menu" className="size-6" />
-              <span className="text-[11px] font-medium leading-none">Menu</span>
+              <span className="w-full truncate text-center text-[11px] font-medium leading-none">
+                Menu
+              </span>
             </button>
           </li>
         </ul>

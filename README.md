@@ -275,6 +275,7 @@ migration — add a new one.
 0034_my_modules.sql           everything a person can reach, for the Menu page
 0035_catalog_and_cart.sql     packing, stock, and a cart that is yours alone
 0036_data_sync.sql            Google Sheets in, one way, through an allow-list
+0036b_sync_apply_wrapper      the writer's doorway, open to the service role
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only

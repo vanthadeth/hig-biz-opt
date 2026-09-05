@@ -19,6 +19,14 @@ npm run dev
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase dashboard → Project Settings → Data API |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | same page, the publishable (`sb_publishable_…`) key |
 
+Data Sync needs three more. Without them the app runs; only syncing is inert.
+
+| Variable | What it is |
+| --- | --- |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | The service account key, as JSON or base64 of it. See **Data sync** below. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API. Server-side only — never `NEXT_PUBLIC_`. |
+| `SYNC_TICK_SECRET` | Any long random string you invent. The scheduler presents it to start due syncs. On Vercel, set `CRON_SECRET` instead — the endpoint accepts either. |
+
 ## How the app is put together
 
 ### Views
@@ -116,6 +124,98 @@ Until the real artwork lands, both files hold a placeholder "HIG" wordmark.
 It is deliberately a wordmark rather than an approximation of the mark, so it
 never reads as a bad copy of the real thing.
 
+## Data sync
+
+HIG's real database is a spreadsheet people update every day, and this app is
+not ready to replace it. So the sheet stays authoritative and the app follows
+it, one way, until the day that can be switched off.
+
+**Nothing here can write to a sheet.** Not by policy — by credential. The
+service account is granted `spreadsheets.readonly` and that scope is a constant
+in `src/lib/google/sheets.ts`, not a setting. A request that tried to write
+would be refused by Google before it reached the file.
+
+### Setting up the Google side, once
+
+1. In the [Google Cloud console](https://console.cloud.google.com), create a
+   project and enable the **Google Sheets API**.
+2. Create a **service account**. It needs no roles — it is not accessing Google
+   Cloud, only files people share with it.
+3. Create a **JSON key** for it and download the file.
+4. Put that file in `GOOGLE_SERVICE_ACCOUNT_JSON`, either as-is or base64
+   encoded. Prefer base64 on a hosting provider: a PEM private key is full of
+   newlines, and a newline pasted into an environment box is the commonest way
+   this credential arrives broken.
+
+   ```bash
+   base64 -w0 service-account.json
+   ```
+
+5. **Share each spreadsheet with the service account's email address as a
+   Viewer.** This is the step people forget, and it is the one that cannot be
+   done from inside this app. The address is shown at the top of the Data Sync
+   page so nobody has to go looking for it.
+
+### Defining a sync
+
+Data Sync lives in the admin view. A sync is one tab into one table:
+
+- **The sheet** — paste the address bar; the file id is taken out of it. Then
+  *Read the sheet*, which lists the tabs and, once one is chosen, its headings.
+- **The table** — one of the targets in `public.sync_targets`. Not a free text
+  box: a sync that could name any table could name `public.users` and map a
+  column onto `is_super_admin`.
+- **Column pairing** — every heading in the sheet, with the table column it
+  feeds and how to read it. Leave one on *Skip* to ignore it. Sample values from
+  the first rows are shown beside each heading, because "Price" next to
+  "1,250.50" is obvious and "Price" alone is a guess.
+- **When it runs** — every so often, or when the sheet changes.
+
+Rows are matched on the target's key column (`code` for items and customers,
+`name` for brands). A row whose key is already there is **updated**; one that is
+not is **added**. Nothing is ever deleted: a row that disappears from the sheet
+stays in the table, because a sheet row deleted by accident must not empty the
+catalogue. Columns the mapping does not name are left alone — a sheet is not the
+whole truth about an item.
+
+Rows with no value in the key column are skipped and counted, as are duplicate
+keys within one sheet. The run log says how many and why.
+
+### Making it run on a schedule
+
+The app exposes `POST /api/sync/tick`, which runs every interval sync that is
+due. It needs `Authorization: Bearer $SYNC_TICK_SECRET`. Point any scheduler at
+it. On Vercel, `vercel.json` already does:
+
+```json
+{ "crons": [{ "path": "/api/sync/tick", "schedule": "0 * * * *" }] }
+```
+
+Vercel Cron sends `Authorization: Bearer $CRON_SECRET`, so on Vercel set
+`CRON_SECRET` and nothing else — the endpoint accepts either name. Any other
+scheduler should send `SYNC_TICK_SECRET`. With neither set the endpoint refuses
+everything, so an unset variable cannot leave it open.
+
+A sync set to "every 15 minutes" still only runs as often as the scheduler calls
+the endpoint. The interval says when a sync is *due*, not how often anything is
+checked, so set the cron to the shortest interval any sync uses.
+
+### Making a sheet notify the app
+
+A sync set to *When the sheet changes* shows a short Apps Script on its page.
+Paste it into that spreadsheet (Extensions → Apps Script), then add an
+installable trigger: **onSheetChange**, from spreadsheet, on change.
+
+The script sends no data — only word that something changed. The app then reads
+the sheet itself, with the same read-only credential as always.
+
+### What is deliberately not here
+
+- **Two-way sync.** Asked for explicitly, and refused by the credential.
+- **Deletion.** See above.
+- **Arbitrary target tables.** `public.sync_targets` is seeded by migration.
+  Adding one is a migration, which is a review, which is the point.
+
 ## Pages start blank
 
 Every module page is deliberately empty:
@@ -166,6 +266,15 @@ migration — add a new one.
 0025_customers.sql            shops, their contacts, pictures and address
 0026_variant_code_and_barcode the variant becomes the sellable unit
 0027_order_catalogue_codes    a stable order for the collected codes
+0028_item_code_and_price      code and price belong to the item, not the variant
+0029_item_pictures.sql        several pictures per item, one of them primary
+0030_audit_log.sql            who changed what, append-only by construction
+0031_customer_soft_delete     a retired contact is hidden, never destroyed
+0032_credit_limit_permission  $500 by default, and who may move it
+0033_module_groups.sql        a module says which menu heading it belongs under
+0034_my_modules.sql           everything a person can reach, for the Menu page
+0035_catalog_and_cart.sql     packing, stock, and a cart that is yours alone
+0036_data_sync.sql            Google Sheets in, one way, through an allow-list
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only
@@ -243,6 +352,27 @@ the fact that not even a super admin can see or change another person's.
 
 ```
 ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
+```
+
+### Data sync tests
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/data_sync.test.sql
+```
+
+42 assertions. Most of them answer one question: what stops somebody who may
+define a sync from defining one into `public.users` that maps a sheet column
+onto `is_super_admin`. The answer is in three places and all three are asserted
+— the target must be in a seeded registry, every mapped column must survive an
+allow-list checked by a trigger, and the only function that writes re-checks
+both before composing a statement. A table outside the registry offers no
+columns at all, so there is nothing a mapping could even name.
+
+The rest is the failure that would cost real money: a sync that cannot tell an
+edited row from a new one doubles the catalogue every night.
+
+```
+ERROR:  DATA SYNC OK - 42 assertions passed (rls: ran)
 ```
 
 ### Customer tests

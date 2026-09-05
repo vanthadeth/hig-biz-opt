@@ -1,8 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-/** Routes reachable without a session. */
-const PUBLIC_PATHS = ["/login", "/auth"];
+/**
+ * Routes reachable without a session.
+ *
+ * The two sync endpoints are here because nobody is signed in when a cron fires
+ * at 3am or a spreadsheet reports a change. They are not unprotected: the tick
+ * checks a shared secret and the hook's whole path is a random token. Sending
+ * them to /login would turn both into a redirect nothing follows.
+ */
+const PUBLIC_PATHS = ["/login", "/auth", "/api/sync/tick", "/api/sync/hook"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });

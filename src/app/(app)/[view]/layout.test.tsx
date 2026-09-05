@@ -3,9 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requireViewer = vi.fn();
 const getMyViews = vi.fn();
 const getMyNav = vi.fn();
+const getMyModules = vi.fn();
 const getMyPermissions = vi.fn();
 
-vi.mock("@/lib/access", () => ({ requireViewer, getMyViews, getMyNav, getMyPermissions }));
+vi.mock("@/lib/access", () => ({
+  requireViewer,
+  getMyViews,
+  getMyNav,
+  getMyModules,
+  getMyPermissions,
+}));
 vi.mock("@/components/shell/AppShell", () => ({
   AppShell: ({ data }: { data: { view: { key: string } } }) => (
     <div data-testid="shell" data-view={data.view.key} />
@@ -51,6 +58,7 @@ beforeEach(() => {
   requireViewer.mockReset().mockResolvedValue(viewer);
   getMyViews.mockReset();
   getMyNav.mockReset().mockResolvedValue([]);
+  getMyModules.mockReset().mockResolvedValue([]);
   getMyPermissions.mockReset().mockResolvedValue([]);
 });
 
@@ -62,6 +70,8 @@ describe("ViewLayout entitlement", () => {
     expect(redirectedTo).toBeNull();
     expect(element).not.toBeNull();
     expect(getMyNav).toHaveBeenCalledWith("sales");
+    // The menu sheet needs everything they can reach, not just this view.
+    expect(getMyModules).toHaveBeenCalledWith("sales");
   });
 
   it("turns away a view the user does not hold", async () => {
@@ -72,6 +82,7 @@ describe("ViewLayout entitlement", () => {
 
     expect(redirectedTo).toBe("/select-view");
     expect(getMyNav).not.toHaveBeenCalled();
+    expect(getMyModules).not.toHaveBeenCalled();
   });
 
   it("sends a single-view user back into their own view", async () => {

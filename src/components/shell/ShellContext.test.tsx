@@ -31,6 +31,18 @@ const data: ShellData = {
       group_name: "Selling",
     },
   ],
+  modules: [
+    {
+      module_key: "customer",
+      name: "Customer",
+      icon: "building",
+      href: "customers",
+      sort_order: 1,
+      group_name: "Selling",
+      view_key: "sales",
+      view_name: "Sale",
+    },
+  ],
   permissions: [],
 };
 

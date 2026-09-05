@@ -1,13 +1,21 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { NavItem, Permission, Viewer, ViewSummary } from "@/lib/access";
+import type { Permission, Viewer, ViewSummary } from "@/lib/access";
+import type { MenuModule, NavItem } from "@/lib/nav";
 
 export type ShellData = {
   viewer: Viewer;
   view: ViewSummary;
   views: ViewSummary[];
+  /** What this view offers. Drives the bars. */
   nav: NavItem[];
+  /**
+   * Everything this person can reach, wherever it is filed. Drives the menu
+   * sheet, which is a different question from the bar: somebody holding the
+   * Audit Log while standing in Sale still has to be able to find it.
+   */
+  modules: MenuModule[];
   permissions: Permission[];
 };
 

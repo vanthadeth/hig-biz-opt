@@ -403,19 +403,30 @@ export function SyncForm({
         />
 
         {triggerKind === "interval" ? (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Every" value={every} onChange={setEvery} inputMode="numeric" />
-            <SelectField
-              label="Unit"
-              value={unit}
-              onChange={(value) => setUnit(value as IntervalUnit)}
-              options={[
-                { value: "minutes", label: "Minutes" },
-                { value: "hours", label: "Hours" },
-                { value: "days", label: "Days" },
-              ]}
-            />
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Every" value={every} onChange={setEvery} inputMode="numeric" />
+              <SelectField
+                label="Unit"
+                value={unit}
+                onChange={(value) => setUnit(value as IntervalUnit)}
+                options={[
+                  { value: "minutes", label: "Minutes" },
+                  { value: "hours", label: "Hours" },
+                  { value: "days", label: "Days" },
+                ]}
+              />
+            </div>
+            {/* Said here because the alternative is somebody setting fifteen
+                minutes, believing it, and finding out a week later that the
+                scheduler only calls once a day. */}
+            <p className="text-xs text-muted">
+              This says when the sync is <em>due</em>, not how often anything
+              checks. It runs no more often than the scheduler calls the app —
+              once a day by default. See Data sync in the README to run it more
+              often than that.
+            </p>
+          </>
         ) : (
           <p className="text-xs text-muted">
             The sheet has to tell us. Save this sync, then follow the short

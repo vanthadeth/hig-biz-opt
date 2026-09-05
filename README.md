@@ -188,8 +188,13 @@ due. It needs `Authorization: Bearer $SYNC_TICK_SECRET`. Point any scheduler at
 it. On Vercel, `vercel.json` already does:
 
 ```json
-{ "crons": [{ "path": "/api/sync/tick", "schedule": "0 * * * *" }] }
+{ "crons": [{ "path": "/api/sync/tick", "schedule": "0 2 * * *" }] }
 ```
+
+**Daily, deliberately.** Vercel's Hobby plan rejects any cron more frequent than
+once a day, and it rejects it by failing the whole deployment — so an hourly
+entry here does not give you hourly syncing, it gives you a site stuck on its
+last successful build. Raise it only if you know the plan allows it.
 
 Vercel Cron sends `Authorization: Bearer $CRON_SECRET`, so on Vercel set
 `CRON_SECRET` and nothing else — the endpoint accepts either name. Any other
@@ -198,7 +203,25 @@ everything, so an unset variable cannot leave it open.
 
 A sync set to "every 15 minutes" still only runs as often as the scheduler calls
 the endpoint. The interval says when a sync is *due*, not how often anything is
-checked, so set the cron to the shortest interval any sync uses.
+checked. With the daily cron above, every sync is effectively daily whatever its
+interval says.
+
+For anything shorter without a paid plan, drive it from outside Vercel. A
+time-driven Apps Script trigger in the spreadsheet itself works and costs
+nothing:
+
+```js
+function tickHigSync() {
+  UrlFetchApp.fetch('https://YOUR-APP/api/sync/tick', {
+    method: 'post',
+    headers: { Authorization: 'Bearer YOUR_SYNC_TICK_SECRET' },
+    muteHttpExceptions: true,
+  });
+}
+```
+
+Add it under Triggers → time-driven, at whatever interval you want. Any external
+cron service that can send a header works the same way.
 
 ### Making a sheet notify the app
 

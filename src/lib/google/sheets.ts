@@ -59,6 +59,19 @@ function serviceAccount(): ServiceAccount {
     ? raw
     : Buffer.from(raw, "base64").toString("utf8");
 
+  // Named specifically because it is the mistake this variable invites: a
+  // Google account is an address you sign in with, a service account key is a
+  // file. Telling somebody their value "is not valid JSON" when they have put
+  // their email in it explains nothing.
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+    throw new GoogleSheetsError(
+      "GOOGLE_SERVICE_ACCOUNT_JSON holds an email address. It needs the service "
+        + "account's whole JSON key file (or the base64 of it), not an address — "
+        + "and a service account is not the Google account you sign in with.",
+      "bad_credential",
+    );
+  }
+
   let parsed: Partial<ServiceAccount>;
   try {
     parsed = JSON.parse(text);

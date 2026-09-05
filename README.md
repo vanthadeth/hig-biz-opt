@@ -24,7 +24,7 @@ Data Sync needs three more. Without them the app runs; only syncing is inert.
 | Variable | What it is |
 | --- | --- |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | The service account key, as JSON or base64 of it. See **Data sync** below. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API. Server-side only — never `NEXT_PUBLIC_`. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API Keys. Either a secret key (`sb_secret_…`) or the legacy `service_role` JWT; `SUPABASE_SECRET_KEY` is accepted as an alias. Server-side only — never `NEXT_PUBLIC_`. **Every** sync needs it, including Run now. |
 | `SYNC_TICK_SECRET` | Any long random string you invent. The scheduler presents it to start due syncs. On Vercel, set `CRON_SECRET` instead — the endpoint accepts either. |
 
 ## How the app is put together

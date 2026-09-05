@@ -45,7 +45,11 @@ export function SyncList({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [check, setCheck] = useState<{ ok: boolean; message: string } | null>(null);
+  const [check, setCheck] = useState<{
+    ok: boolean;
+    message: string;
+    supabase?: { ok: boolean; message: string };
+  } | null>(null);
   const [checking, setChecking] = useState(false);
 
   /**
@@ -61,8 +65,12 @@ export function SyncList({
     try {
       const response = await fetch("/api/sync/check", { method: "POST" });
       const body = await response.json();
-      setCheck({ ok: Boolean(body.ok), message: body.message ?? body.error ?? "No answer." });
-      haptic(body.ok ? "success" : "error");
+      setCheck({
+        ok: Boolean(body.ok),
+        message: body.message ?? body.error ?? "No answer.",
+        supabase: body.supabase,
+      });
+      haptic(body.ok && body.supabase?.ok ? "success" : "error");
     } catch {
       haptic("error");
       setCheck({ ok: false, message: "The check could not be run." });
@@ -142,13 +150,23 @@ export function SyncList({
           {checking ? "Asking Google…" : "Test the Google connection"}
         </button>
 
+        {/* Two lines, because they fail independently: a sync needs Google to
+            read the sheet and the Supabase server key to write the table, and
+            being told about the second only after fixing the first wastes a
+            deploy. */}
         {check && (
-          <p
-            role="status"
-            className={`text-xs ${check.ok ? "text-muted" : "text-danger"}`}
-          >
-            {check.message}
-          </p>
+          <div role="status" className="space-y-1">
+            <p className={`text-xs ${check.ok ? "text-muted" : "text-danger"}`}>
+              Google: {check.message}
+            </p>
+            {check.supabase && (
+              <p
+                className={`text-xs ${check.supabase.ok ? "text-muted" : "text-danger"}`}
+              >
+                Supabase: {check.supabase.message}
+              </p>
+            )}
+          </div>
         )}
       </Card>
 

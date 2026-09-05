@@ -4,6 +4,7 @@ import {
   a1Range,
   buildRows,
   isDue,
+  matchColumn,
   nextRunAt,
   skipMessage,
   SYNC_COLUMN_MAP_COLUMNS,
@@ -96,13 +97,17 @@ export async function runSync(
         .order("sort_order"),
       supabase
         .from("sync_targets")
-        .select("key_column")
+        .select("key_column, pk_column")
         .eq("table_name", sync.target_table)
         .single(),
     ]);
 
     const mapping = (maps ?? []) as SyncColumnMap[];
-    const keyColumn = target?.key_column as string;
+    // What a row is matched on: the sheet's own ID, or the target's natural key
+    // for a sheet that has none.
+    const keyColumn = matchColumn(sync, {
+      key_column: (target?.key_column as string) ?? "",
+    });
 
     // Checked here as well as in the screen that saved it, because a mapping
     // can be broken after it was saved — a column dropped, a target blocked.

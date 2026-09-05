@@ -17,7 +17,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  DATA SYNC OK - 42 assertions passed (rls: ran)
+--     ERROR:  DATA SYNC OK - 52 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 create or replace function pg_temp.bump() returns void language plpgsql as $f$
@@ -107,6 +107,8 @@ declare
   v_sa   uuid := '00000000-0000-4000-8000-0000000d0001';  -- super admin
   v_rep  uuid := '00000000-0000-4000-8000-0000000d0002';  -- sales, no data_sync
   v_sync uuid;
+  v_cat_sync uuid;
+  v_ref_sync uuid;
   v_n    integer;
   v_rls  text := 'skipped (cannot assume the authenticated role)';
 begin
@@ -119,8 +121,14 @@ begin
   ----------------------------------------------------------------------------
   -- The registry
   ----------------------------------------------------------------------------
-  perform pg_temp.eq('three targets are seeded',
-    (select count(*)::text from public.sync_targets), '3');
+  -- Eleven, and adding a twelfth is a migration, which is a review. That is
+  -- the whole reason the target list is a table rather than a text box.
+  perform pg_temp.eq('the seeded targets are all there',
+    (select count(*)::text from public.sync_targets), '11');
+  perform pg_temp.eq('and none of them is a table nobody should sync into',
+    (select count(*)::text from public.sync_targets
+      where table_name in ('users', 'roles', 'role_permissions', 'audit_log',
+                           'user_permission_overrides', 'sync_definitions')), '0');
   perform pg_temp.eq('items are matched on their code',
     (select key_column from public.sync_targets where table_name = 'items'), 'code');
   -- The index is on an expression, and inferring the wrong one silently turns
@@ -154,9 +162,11 @@ begin
   ----------------------------------------------------------------------------
   -- A sync
   ----------------------------------------------------------------------------
+  -- Natural-key matching, which is what a sheet with no ID column uses. The
+  -- sheet_id path gets its own section below.
   insert into public.sync_definitions
-    (name, spreadsheet_id, tab_name, target_table, trigger_kind, interval_minutes)
-    values ('DX Items', 'sheet-abc', 'Items', 'items', 'interval', 60)
+    (name, spreadsheet_id, tab_name, target_table, trigger_kind, interval_minutes, match_on)
+    values ('DX Items', 'sheet-abc', 'Items', 'items', 'interval', 60, 'natural')
     returning id into v_sync;
 
   perform pg_temp.ok('a sync gets a hook token of its own',
@@ -320,6 +330,77 @@ begin
   perform pg_temp.eq('but customers without one do not collide',
     (select count(*)::text from public.customers
       where code is null and shop_name like 'DX No Code%'), '2');
+
+  ----------------------------------------------------------------------------
+  -- Sheet IDs, and the links between sheets
+  --
+  -- The sheets reference each other by an ID column, and until everything has
+  -- moved across those IDs are the only thing saying which item belongs to
+  -- which category. A mapping may declare a column to be one, and the writer
+  -- resolves it to our own key.
+  ----------------------------------------------------------------------------
+  insert into public.sync_definitions
+    (name, spreadsheet_id, tab_name, target_table, trigger_kind, interval_minutes)
+    values ('DX Categories', 's', 'Cat', 'item_categories', 'interval', 60)
+    returning id into v_cat_sync;
+  perform pg_temp.eq('a new sync matches on the sheet''s own ID',
+    (select match_on::text from public.sync_definitions where id = v_cat_sync), 'sheet_id');
+
+  insert into public.sync_column_maps (sync_id, sheet_column, target_column, sort_order)
+    values (v_cat_sync, 'ID', 'sheet_id', 1),
+           (v_cat_sync, 'Name', 'name_en', 2);
+
+  insert into public.sync_definitions
+    (name, spreadsheet_id, tab_name, target_table, trigger_kind, interval_minutes)
+    values ('DX Ref Items', 's', 'Itm', 'items', 'interval', 60)
+    returning id into v_ref_sync;
+  insert into public.sync_column_maps
+    (sync_id, sheet_column, target_column, reference_table, sort_order)
+    values (v_ref_sync, 'ID', 'sheet_id', null, 1),
+           (v_ref_sync, 'Name', 'name_en', null, 2),
+           (v_ref_sync, 'Category', 'category_id', 'item_categories', 3);
+
+  -- The child first, deliberately. The parent has not been synced, and a
+  -- reference that finds nothing must write null rather than fail: getting the
+  -- order right the first time is not something anybody should have to do.
+  v_n := app.sync_apply(v_ref_sync,
+    '[{"sheet_id":"I-1","name_en":"DX Ref Water","category_id":"C-9"}]'::jsonb);
+  perform pg_temp.eq('a reference to a row that is not there yet writes null',
+    (select coalesce(category_id::text, 'null') from public.items where sheet_id = 'I-1'),
+    'null');
+  perform pg_temp.eq('and the row itself is still written',
+    (select name_en from public.items where sheet_id = 'I-1'), 'DX Ref Water');
+
+  perform app.sync_apply(v_cat_sync, '[{"sheet_id":"C-9","name_en":"DX Ref Drinks"}]'::jsonb);
+  perform app.sync_apply(v_ref_sync,
+    '[{"sheet_id":"I-1","name_en":"DX Ref Water","category_id":"C-9"}]'::jsonb);
+
+  perform pg_temp.eq('running it again once the parent is there links them up',
+    (select i.category_id::text from public.items i where i.sheet_id = 'I-1'),
+    (select c.id::text from public.item_categories c where c.sheet_id = 'C-9'));
+  -- And the second run updated rather than adding: matching on sheet_id is what
+  -- stops a nightly sync doubling the catalogue.
+  perform pg_temp.eq('and does not make a second row',
+    (select count(*)::text from public.items where sheet_id = 'I-1'), '1');
+
+  -- A geo table is keyed by its official code, so a reference into one has to
+  -- store that rather than a uuid it does not have.
+  perform pg_temp.eq('a code-keyed target resolves to its code',
+    (select pk_column from public.sync_targets where table_name = 'geo_provinces'), 'code');
+
+  perform pg_temp.ok('sheet_id is offered as something to map onto',
+    exists (select 1 from app.sync_columns('items') where column_name = 'sheet_id'));
+
+  -- Two rows may not claim the same sheet ID: it is an identifier or it is
+  -- nothing.
+  perform pg_temp.rejects('two rows may not share a sheet ID',
+    'insert into public.item_categories (name_en, sheet_id) values (''DX Clash'', ''C-9'')');
+  -- But the rows this app created itself have none, and must not collide.
+  insert into public.item_categories (name_en) values ('DX No Sheet One');
+  insert into public.item_categories (name_en) values ('DX No Sheet Two');
+  perform pg_temp.eq('rows the app made itself do not collide on an absent one',
+    (select count(*)::text from public.item_categories
+      where sheet_id is null and name_en like 'DX No Sheet%'), '2');
 
   raise exception 'DATA SYNC OK - % assertions passed (rls: %)',
     current_setting('higtest.checks'), v_rls;

@@ -10,6 +10,7 @@ import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
   fromMinutes,
+  matchColumn,
   kindForType,
   spreadsheetIdFrom,
   syncProblems,
@@ -19,12 +20,18 @@ import {
   type SyncColumnMap,
   type SyncDefinition,
   type SyncTarget,
+  type SyncMatch,
   type SyncTrigger,
   type SyncValueKind,
   type TargetColumn,
 } from "@/lib/sync";
 
-type Pairing = { target: string; kind: SyncValueKind };
+/**
+ * `reference` is set instead of `kind` when the column holds another table's
+ * sheet ID. One control offers both, because to somebody filling this in they
+ * are the same question — what is in this column?
+ */
+type Pairing = { target: string; kind: SyncValueKind; reference: string | null };
 
 /**
  * Defining a sync: which tab, which table, and which column feeds which.
@@ -62,6 +69,7 @@ export function SyncForm({
   const [every, setEvery] = useState(String(initialInterval.every));
   const [unit, setUnit] = useState<IntervalUnit>(initialInterval.unit);
   const [active, setActive] = useState(sync?.active ?? true);
+  const [matchOn, setMatchOn] = useState<SyncMatch>(sync?.match_on ?? "sheet_id");
 
   const [tabs, setTabs] = useState<string[]>([]);
   const [headers, setHeaders] = useState<string[]>(maps.map((m) => m.sheet_column));
@@ -70,7 +78,10 @@ export function SyncForm({
 
   const [pairs, setPairs] = useState<Record<string, Pairing>>(() =>
     Object.fromEntries(
-      maps.map((m) => [m.sheet_column, { target: m.target_column ?? "", kind: m.value_kind }]),
+      maps.map((m) => [
+        m.sheet_column,
+        { target: m.target_column ?? "", kind: m.value_kind, reference: m.reference_table },
+      ]),
     ),
   );
 
@@ -140,7 +151,7 @@ export function SyncForm({
       setPairs((current) => {
         const next: Record<string, Pairing> = {};
         for (const header of found) {
-          next[header] = current[header] ?? { target: "", kind: "text" };
+          next[header] = current[header] ?? { target: "", kind: "text", reference: null };
         }
         return next;
       });
@@ -157,7 +168,10 @@ export function SyncForm({
   function pair(header: string, patch: Partial<Pairing>) {
     setPairs((current) => ({
       ...current,
-      [header]: { ...(current[header] ?? { target: "", kind: "text" }), ...patch },
+      [header]: {
+        ...(current[header] ?? { target: "", kind: "text", reference: null }),
+        ...patch,
+      },
     }));
   }
 
@@ -167,6 +181,7 @@ export function SyncForm({
     pair(header, {
       target: column,
       kind: type ? kindForType(type.data_type) : "text",
+      reference: null,
     });
   }
 
@@ -181,14 +196,21 @@ export function SyncForm({
     sheet_column: header,
     target_column: pairs[header]?.target || null,
     value_kind: pairs[header]?.kind ?? "text",
+    reference_table: pairs[header]?.reference ?? null,
     sort_order: i,
   }));
 
   const intervalMinutes =
     triggerKind === "interval" ? toMinutes(Number(every) || 1, unit) : null;
 
+  const keyColumn = target ? matchColumn({ match_on: matchOn }, target) : "";
+
   const problems = target
-    ? syncProblems({ trigger_kind: triggerKind, interval_minutes: intervalMinutes }, asMaps, target.key_column)
+    ? syncProblems(
+        { trigger_kind: triggerKind, interval_minutes: intervalMinutes },
+        asMaps,
+        keyColumn,
+      )
     : [];
 
   async function save() {
@@ -216,6 +238,7 @@ export function SyncForm({
       target_table: targetTable,
       trigger_kind: triggerKind,
       interval_minutes: intervalMinutes,
+      match_on: matchOn,
       active,
     };
 
@@ -250,6 +273,7 @@ export function SyncForm({
           sheet_column: header,
           target_column: pairs[header]?.target || null,
           value_kind: pairs[header]?.kind ?? "text",
+          reference_table: pairs[header]?.reference ?? null,
           sort_order: i,
         })),
       );
@@ -328,12 +352,30 @@ export function SyncForm({
           value={targetTable}
           onChange={setTargetTable}
           options={targets.map((t) => ({ value: t.table_name, label: t.label }))}
+        />
+
+        <SelectField
+          label="Match rows on"
+          value={matchOn}
+          onChange={(value) => setMatchOn(value as SyncMatch)}
+          options={[
+            { value: "sheet_id", label: "The sheet's own ID" },
+            { value: "natural", label: target ? `The ${target.key_column}` : "The natural key" },
+          ]}
           hint={
             target
-              ? `Rows are matched on ${target.key_column}. A row whose ${target.key_column} is already there is updated; one that is not is added.`
+              ? `A row whose ${keyColumn} is already here is updated; one that is not is added.`
               : undefined
           }
         />
+
+        {matchOn === "sheet_id" && (
+          <p className="text-xs text-muted">
+            Map the sheet&rsquo;s ID column to <code>sheet_id</code> below. It is
+            kept beside our own key, so the sheets can go on linking to each
+            other by ID until everything has moved across.
+          </p>
+        )}
       </Card>
 
       {headers.length > 0 && (
@@ -379,12 +421,30 @@ export function SyncForm({
                     {chosen && (
                       <SelectField
                         label="Read as"
-                        value={pairs[header]?.kind ?? "text"}
-                        onChange={(value) => pair(header, { kind: value as SyncValueKind })}
-                        options={Object.entries(VALUE_KIND_LABELS).map(([value, label]) => ({
-                          value,
-                          label,
-                        }))}
+                        value={
+                          pairs[header]?.reference
+                            ? `ref:${pairs[header]!.reference}`
+                            : (pairs[header]?.kind ?? "text")
+                        }
+                        onChange={(value) =>
+                          value.startsWith("ref:")
+                            ? pair(header, { reference: value.slice(4), kind: "text" })
+                            : pair(header, { reference: null, kind: value as SyncValueKind })
+                        }
+                        options={[
+                          ...Object.entries(VALUE_KIND_LABELS).map(([value, label]) => ({
+                            value,
+                            label,
+                          })),
+                          // The sheets link to each other by ID, so a column can
+                          // hold another table's ID rather than a value. Offered
+                          // in the same control because to somebody filling this
+                          // in it is the same question: what is in this column?
+                          ...targets.map((t) => ({
+                            value: `ref:${t.table_name}`,
+                            label: `↳ An ID from ${t.label}`,
+                          })),
+                        ]}
                       />
                     )}
                   </div>

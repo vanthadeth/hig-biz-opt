@@ -3,6 +3,7 @@ import { PageTitle } from "@/components/PageTitle";
 import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import {
+  SYNC_TARGET_COLUMNS,
   SYNC_COLUMN_MAP_COLUMNS,
   SYNC_DEFINITION_COLUMNS,
   SYNC_RUN_COLUMNS,
@@ -36,7 +37,7 @@ export default async function Page({
         .order("sort_order"),
       supabase
         .from("sync_targets")
-        .select("table_name, label, key_column, sort_order")
+        .select(SYNC_TARGET_COLUMNS)
         .order("sort_order"),
       supabase
         .from("sync_runs")

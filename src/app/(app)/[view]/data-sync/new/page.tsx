@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { PageTitle } from "@/components/PageTitle";
 import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import type { SyncTarget } from "@/lib/sync";
+import { SYNC_TARGET_COLUMNS, type SyncTarget } from "@/lib/sync";
 import { SyncForm } from "../SyncForm";
 
 export default async function Page({ params }: { params: Promise<{ view: string }> }) {
@@ -14,7 +14,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   const supabase = await createClient();
   const { data } = await supabase
     .from("sync_targets")
-    .select("table_name, label, key_column, sort_order")
+    .select(SYNC_TARGET_COLUMNS)
     .order("sort_order");
 
   return (

@@ -162,17 +162,44 @@ Data Sync lives in the admin view. A sync is one tab into one table:
 
 - **The sheet** — paste the address bar; the file id is taken out of it. Then
   *Read the sheet*, which lists the tabs and, once one is chosen, its headings.
-- **The table** — one of the targets in `public.sync_targets`. Not a free text
-  box: a sync that could name any table could name `public.users` and map a
-  column onto `is_super_admin`.
+- **The table** — one of the eleven targets in `public.sync_targets`: items,
+  brands, item categories, item variants, customers, customer contacts,
+  provinces, districts, communes, departments, positions. Not a free text box:
+  a sync that could name any table could name `public.users` and map a column
+  onto `is_super_admin`. Adding a twelfth is a migration, which is a review.
 - **Column pairing** — every heading in the sheet, with the table column it
   feeds and how to read it. Leave one on *Skip* to ignore it. Sample values from
   the first rows are shown beside each heading, because "Price" next to
   "1,250.50" is obvious and "Price" alone is a guess.
 - **When it runs** — every so often, or when the sheet changes.
 
-Rows are matched on the target's key column (`code` for items and customers,
-`name` for brands). A row whose key is already there is **updated**; one that is
+### Sheet IDs, and the links between sheets
+
+The sheets reference each other by an ID column, and until everything has moved
+across those IDs are the only thing saying which item belongs to which category.
+So every syncable table carries a `sheet_id`, unique when present, kept *beside*
+our own key rather than instead of it. When the sheet is finally switched off,
+those columns can be dropped and nothing else changes.
+
+Map the sheet's ID column to `sheet_id`, and leave **Match rows on** at *The
+sheet's own ID*. A sheet with no ID column can match on the target's natural key
+instead.
+
+A column that holds *another* table's ID is marked as such in the same control
+that picks how to read a value — "↳ An ID from Item Categories". The writer then
+looks that row up by its `sheet_id` and stores our own key in the real foreign
+key column, so the app gets working relationships rather than a pile of text to
+reconcile later.
+
+**A reference that finds nothing writes null rather than failing.** The parent
+may simply not be synced yet. Run the parent's sync, run the child's again, and
+the link appears — which is why the order syncs run in does not have to be got
+right the first time.
+
+### Matching and merging
+
+Rows are matched on the sheet's ID by default, or on the target's key column
+(`code` for items and customers, `name` for brands) when the sync says so. A row whose key is already there is **updated**; one that is
 not is **added**. Nothing is ever deleted: a row that disappears from the sheet
 stays in the table, because a sheet row deleted by accident must not empty the
 catalogue. Columns the mapping does not name are left alone — a sheet is not the
@@ -384,7 +411,7 @@ ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
 psql "$DATABASE_URL" -f supabase/tests/data_sync.test.sql
 ```
 
-42 assertions. Most of them answer one question: what stops somebody who may
+52 assertions. Most of them answer one question: what stops somebody who may
 define a sync from defining one into `public.users` that maps a sheet column
 onto `is_super_admin`. The answer is in three places and all three are asserted
 — the target must be in a seeded registry, every mapped column must survive an
@@ -393,10 +420,12 @@ both before composing a statement. A table outside the registry offers no
 columns at all, so there is nothing a mapping could even name.
 
 The rest is the failure that would cost real money: a sync that cannot tell an
-edited row from a new one doubles the catalogue every night.
+edited row from a new one doubles the catalogue every night — including the
+sheet IDs the sheets link to each other by, and a reference that resolves only
+once its parent table has been synced.
 
 ```
-ERROR:  DATA SYNC OK - 42 assertions passed (rls: ran)
+ERROR:  DATA SYNC OK - 52 assertions passed (rls: ran)
 ```
 
 ### Customer tests

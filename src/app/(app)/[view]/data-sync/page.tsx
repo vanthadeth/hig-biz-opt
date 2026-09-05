@@ -3,6 +3,7 @@ import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { serviceAccountStatus } from "@/lib/google/sheets";
 import {
+  SYNC_TARGET_COLUMNS,
   SYNC_DEFINITION_COLUMNS,
   SYNC_RUN_COLUMNS,
   type SyncDefinition,
@@ -27,7 +28,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
       .from("sync_definitions")
       .select(SYNC_DEFINITION_COLUMNS)
       .order("name"),
-    supabase.from("sync_targets").select("table_name, label, key_column, sort_order").order("sort_order"),
+    supabase.from("sync_targets").select(SYNC_TARGET_COLUMNS).order("sort_order"),
     // The most recent runs across every sync; the list picks the newest per
     // sync from these rather than making one request each.
     supabase

@@ -14,6 +14,7 @@ import {
   spreadsheetIdFrom,
   syncProblems,
   toMinutes,
+  matchColumn,
   type SyncColumnMap,
   type SyncDefinition,
 } from "./sync";
@@ -23,12 +24,14 @@ const map = (
   target_column: string | null,
   value_kind: SyncColumnMap["value_kind"] = "text",
   sort_order = 0,
+  reference_table: string | null = null,
 ): SyncColumnMap => ({
   id: `m-${sheet_column}`,
   sync_id: "s",
   sheet_column,
   target_column,
   value_kind,
+  reference_table,
   sort_order,
 });
 
@@ -41,6 +44,7 @@ const sync = (over: Partial<SyncDefinition> = {}): SyncDefinition => ({
   target_table: "items",
   trigger_kind: "interval",
   interval_minutes: 60,
+  match_on: "sheet_id",
   hook_token: "t",
   active: true,
   last_run_at: null,
@@ -320,5 +324,64 @@ describe("reading a sync back", () => {
     expect(kindForType("date")).toBe("date");
     expect(kindForType("timestamp with time zone")).toBe("timestamp");
     expect(kindForType("text")).toBe("text");
+  });
+});
+
+describe("sheet IDs and references", () => {
+  const target = { key_column: "code" };
+
+  it("matches on the sheet's own ID by default", () => {
+    // What the sheets link to each other by, and stable across a rename.
+    expect(matchColumn({ match_on: "sheet_id" }, target)).toBe("sheet_id");
+  });
+
+  it("falls back to the natural key for a sheet with no ID column", () => {
+    expect(matchColumn({ match_on: "natural" }, target)).toBe("code");
+  });
+
+  it("keeps a reference as the text the other sheet uses", () => {
+    // The column it lands in holds a uuid, but what the sheet carries is that
+    // row's ID. Coercing to the column's type here would turn an ID into null
+    // before the database ever got to look it up.
+    const built = buildRows(
+      ["ID", "Category"],
+      [["I-1", "C-9"]],
+      [
+        map("ID", "sheet_id", "text", 0),
+        map("Category", "category_id", "integer", 1, "item_categories"),
+      ],
+      "sheet_id",
+    );
+    expect(built.records[0]).toEqual({ sheet_id: "I-1", category_id: "C-9" });
+  });
+
+  it("passes a reference through even when it looks like a number", () => {
+    const built = buildRows(
+      ["ID", "Cat"],
+      [["I-1", 1042]],
+      [map("ID", "sheet_id"), map("Cat", "category_id", "text", 1, "item_categories")],
+      "sheet_id",
+    );
+    expect(built.records[0].category_id).toBe("1042");
+  });
+
+  it("skips a row with no sheet ID rather than inventing one", () => {
+    const built = buildRows(
+      ["ID", "Name"],
+      [["I-1", "Water"], ["", "Orphan"]],
+      [map("ID", "sheet_id"), map("Name", "name_en", "text", 1)],
+      "sheet_id",
+    );
+    expect(built.records).toHaveLength(1);
+    expect(skipMessage(built)).toBe("1 with no sheet_id");
+  });
+
+  it("wants something feeding the key it matches on", () => {
+    const problems = syncProblems(
+      { trigger_kind: "change", interval_minutes: null },
+      [map("Name", "name_en")],
+      "sheet_id",
+    );
+    expect(problems.some((p) => p.includes("sheet_id"))).toBe(true);
   });
 });

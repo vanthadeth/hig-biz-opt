@@ -18,6 +18,7 @@ export type SyncValueKind =
   | "timestamp";
 
 export type SyncTrigger = "change" | "interval";
+export type SyncMatch = "sheet_id" | "natural";
 export type SyncStatus = "running" | "ok" | "failed";
 export type SyncSource = "manual" | "schedule" | "change";
 
@@ -25,6 +26,8 @@ export type SyncTarget = {
   table_name: string;
   label: string;
   key_column: string;
+  /** Ours, not the sheet's: `id` everywhere except the geo tables, keyed by code. */
+  pk_column: string;
   sort_order: number;
 };
 
@@ -37,6 +40,7 @@ export type SyncDefinition = {
   target_table: string;
   trigger_kind: SyncTrigger;
   interval_minutes: number | null;
+  match_on: SyncMatch;
   hook_token: string;
   active: boolean;
   last_run_at: string | null;
@@ -49,6 +53,11 @@ export type SyncColumnMap = {
   sheet_column: string;
   target_column: string | null;
   value_kind: SyncValueKind;
+  /**
+   * When set, this column holds a sheet ID belonging to that table rather than a
+   * value. The database resolves it to our own key at write time.
+   */
+  reference_table: string | null;
   sort_order: number;
 };
 
@@ -72,10 +81,12 @@ export type TargetColumn = {
 };
 
 export const SYNC_DEFINITION_COLUMNS =
-  "id, name, spreadsheet_id, tab_name, header_row, target_table, trigger_kind, interval_minutes, hook_token, active, last_run_at, next_run_at";
+  "id, name, spreadsheet_id, tab_name, header_row, target_table, trigger_kind, interval_minutes, match_on, hook_token, active, last_run_at, next_run_at";
 
 export const SYNC_COLUMN_MAP_COLUMNS =
-  "id, sync_id, sheet_column, target_column, value_kind, sort_order";
+  "id, sync_id, sheet_column, target_column, value_kind, reference_table, sort_order";
+
+export const SYNC_TARGET_COLUMNS = "table_name, label, key_column, pk_column, sort_order";
 
 export const SYNC_RUN_COLUMNS =
   "id, sync_id, source, status, started_at, finished_at, rows_read, rows_written, rows_skipped, message";
@@ -264,9 +275,12 @@ export function buildRows(
     const record: Record<string, unknown> = {};
     for (const [header, map] of byHeader) {
       const at = index.get(header);
-      record[map.target_column!] = at === undefined
-        ? null
-        : coerceValue(row[at], map.value_kind);
+      // A reference carries the other sheet's ID, which is text whatever the
+      // column it will eventually land in holds. Coercing it to the target
+      // column's type here would turn an ID into null before the database ever
+      // got the chance to look it up.
+      const kind = map.reference_table ? "text" : map.value_kind;
+      record[map.target_column!] = at === undefined ? null : coerceValue(row[at], kind);
     }
 
     const key = record[keyColumn];
@@ -385,6 +399,20 @@ export function mappingLabel(maps: SyncColumnMap[]): string {
  * Returned rather than thrown: the edit screen shows all of them at once, and a
  * sync missing two things should not have to be saved twice to learn the second.
  */
+/**
+ * The column a sync matches rows on.
+ *
+ * The sheet's own ID by default, because that is what the sheets link to each
+ * other by and it survives a rename. A sheet with no ID column falls back to
+ * the target's natural key.
+ */
+export function matchColumn(
+  sync: Pick<SyncDefinition, "match_on">,
+  target: Pick<SyncTarget, "key_column">,
+): string {
+  return sync.match_on === "sheet_id" ? "sheet_id" : target.key_column;
+}
+
 export function syncProblems(
   sync: Pick<SyncDefinition, "trigger_kind" | "interval_minutes">,
   maps: SyncColumnMap[],

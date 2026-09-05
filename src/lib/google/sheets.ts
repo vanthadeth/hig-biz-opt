@@ -157,6 +157,43 @@ export function serviceAccountEmail(): string | null {
   }
 }
 
+export type ServiceAccountStatus =
+  | { state: "missing" }
+  | { state: "unreadable"; reason: string }
+  | { state: "ready"; email: string };
+
+/**
+ * What the server can actually see, told apart.
+ *
+ * `serviceAccountEmail` returns null for every failure, which made a key that
+ * was set but mangled report itself as "not configured" — sending somebody off
+ * to set a variable they had already set. The three states need three different
+ * answers, so they are three states.
+ */
+export function serviceAccountStatus(): ServiceAccountStatus {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) return { state: "missing" };
+  try {
+    return { state: "ready", email: serviceAccount().client_email };
+  } catch (e) {
+    return {
+      state: "unreadable",
+      reason: e instanceof Error ? e.message : "The key could not be read.",
+    };
+  }
+}
+
+/**
+ * Ask Google for a token and throw away the answer.
+ *
+ * The only check that proves the whole chain: the variable is present, the key
+ * parses, it signs, and Google accepts the account. Everything short of this
+ * can pass while syncing still fails.
+ */
+export async function checkCredential(): Promise<{ ok: true; email: string }> {
+  await accessToken();
+  return { ok: true, email: serviceAccount().client_email };
+}
+
 export type SheetValues = { headers: string[]; rows: unknown[][] };
 
 /**

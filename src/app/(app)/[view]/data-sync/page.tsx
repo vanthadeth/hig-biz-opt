@@ -1,7 +1,7 @@
 import { PageTitle } from "@/components/PageTitle";
 import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import { serviceAccountEmail } from "@/lib/google/sheets";
+import { serviceAccountStatus } from "@/lib/google/sheets";
 import {
   SYNC_DEFINITION_COLUMNS,
   SYNC_RUN_COLUMNS,
@@ -47,7 +47,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         runs={(runs.data ?? []) as unknown as SyncRun[]}
         canAdd={can(mine, "data_sync", "add")}
         canRun={can(mine, "data_sync", "edit")}
-        serviceAccount={serviceAccountEmail()}
+        google={serviceAccountStatus()}
         viewKey={view}
       />
     </div>

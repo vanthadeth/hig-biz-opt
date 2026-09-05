@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { haptic } from "@/lib/haptics";
+import type { ServiceAccountStatus } from "@/lib/google/sheets";
 import {
   scheduleLabel,
   STATUS_LABELS,
@@ -30,7 +31,7 @@ export function SyncList({
   runs,
   canAdd,
   canRun,
-  serviceAccount,
+  google,
   viewKey,
 }: {
   syncs: SyncDefinition[];
@@ -38,12 +39,37 @@ export function SyncList({
   runs: SyncRun[];
   canAdd: boolean;
   canRun: boolean;
-  serviceAccount: string | null;
+  google: ServiceAccountStatus;
   viewKey: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [check, setCheck] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  /**
+   * Everything else about the credential is indirect: reading a sheet fails for
+   * the key or for the sharing, and one red sentence cannot say which. This
+   * asks Google for a token and nothing else, so a pass means anything still
+   * failing is about the sheet.
+   */
+  async function testConnection() {
+    haptic("tap");
+    setChecking(true);
+    setCheck(null);
+    try {
+      const response = await fetch("/api/sync/check", { method: "POST" });
+      const body = await response.json();
+      setCheck({ ok: Boolean(body.ok), message: body.message ?? body.error ?? "No answer." });
+      haptic(body.ok ? "success" : "error");
+    } catch {
+      haptic("error");
+      setCheck({ ok: false, message: "The check could not be run." });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   const targetLabel = (table: string) =>
     targets.find((t) => t.table_name === table)?.label ?? table;
@@ -81,18 +107,47 @@ export function SyncList({
           a sheet: the credential this app holds is read-only, so Google would
           refuse it.
         </p>
-        {serviceAccount ? (
+        {google.state === "ready" && (
           <p className="text-xs text-muted">
             Share each sheet as a <strong>Viewer</strong> with{" "}
-            <span className="break-all font-medium text-fg">{serviceAccount}</span>
+            <span className="break-all font-medium text-fg">{google.email}</span>
           </p>
-        ) : (
+        )}
+
+        {/* Told apart, because they need different answers. A key that is set
+            but mangled used to report itself as missing, which sent people off
+            to set a variable they had already set. */}
+        {google.state === "missing" && (
           <p className="text-xs text-danger">
-            No Google service account is configured, so nothing can be read yet.
-            Set <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> where the app is hosted
-            and redeploy — a new environment variable does not reach a build
-            that is already running. The steps are under &ldquo;Data
-            sync&rdquo; in the README.
+            The server sees no <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>. If you
+            have set it, check it is set for <strong>this environment</strong>{" "}
+            (production and preview are separate) and that the app has been
+            redeployed since — a new variable does not reach a build already
+            running.
+          </p>
+        )}
+
+        {google.state === "unreadable" && (
+          <p className="text-xs text-danger">
+            The key is set but cannot be read: {google.reason}
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={testConnection}
+          disabled={checking}
+          className="pressable min-h-11 w-full rounded-xl border border-line text-sm font-medium disabled:opacity-60"
+        >
+          {checking ? "Asking Google…" : "Test the Google connection"}
+        </button>
+
+        {check && (
+          <p
+            role="status"
+            className={`text-xs ${check.ok ? "text-muted" : "text-danger"}`}
+          >
+            {check.message}
           </p>
         )}
       </Card>

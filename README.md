@@ -220,12 +220,29 @@ read:
 psql "$DATABASE_URL" -f supabase/tests/inventory.test.sql
 ```
 
-71 assertions over the one-level category rule, the sibling-name indexes, the
-variant constraints, the `item_catalogue` view, and who may read, create, change
-and destroy the catalogue.
+97 assertions over the one-level category rule, the sibling-name indexes, the
+variant constraints, the packing and stock columns, the `item_catalogue` view,
+and who may read, create, change and destroy the catalogue.
 
 ```
-ERROR:  INVENTORY OK - 71 assertions passed (rls: ran)
+ERROR:  INVENTORY OK - 97 assertions passed (rls: ran)
+```
+
+### Cart tests
+
+The cart is the one table in the schema whose rows belong to a person rather
+than to a module, so the question is never "may you" but "is it yours":
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/catalog.test.sql
+```
+
+23 assertions over the one-line-per-item index, the quantity constraint, the
+`user_id` default that stops a client writing into somebody else's cart, and
+the fact that not even a super admin can see or change another person's.
+
+```
+ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
 ```
 
 ### Customer tests

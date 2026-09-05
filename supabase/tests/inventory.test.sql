@@ -12,7 +12,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  INVENTORY OK - 84 assertions passed (rls: ran)
+--     ERROR:  INVENTORY OK - 97 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -142,6 +142,12 @@ begin
   perform pg_temp.eq('accountant: no delete',      app.effective_scope(v_acc, 'inventory', 'delete')::text, null);
   perform pg_temp.eq('super admin: inventory.delete', app.effective_scope(v_sa, 'inventory', 'delete')::text, 'any');
   perform pg_temp.eq('sales: no inventory at all', app.effective_scope(v_rep, 'inventory', 'view')::text,   null);
+  -- Which is the whole reason 0035 had to widen the item select policies: a rep
+  -- holds product.view and nothing here, and every item table keyed on
+  -- inventory.view, so the catalogue was an empty page for exactly the people
+  -- it is for.
+  perform pg_temp.eq('but sales does hold product.view',
+    app.effective_scope(v_rep, 'product', 'view')::text, 'any');
 
   ----------------------------------------------------------------------------
   -- Categories go exactly one level deep
@@ -260,6 +266,42 @@ begin
 
   -- A brand is optional; a category is optional.
   insert into public.items (name_en) values ('IX Unbranded') returning id into v_pln;
+
+  ----------------------------------------------------------------------------
+  -- Packing and stock
+  --
+  -- 0035. A single on-hand figure and a level below which it counts as low —
+  -- not a ledger, not per warehouse, not per variant. It exists to colour a
+  -- badge on the catalogue and to stop a rep promising forty of something
+  -- there are six of. When real stock movements arrive they replace this
+  -- column rather than build on it.
+  ----------------------------------------------------------------------------
+  update public.items
+     set qty_per_box = 12, qty_per_carton = 144, stock_qty = 12, low_stock_qty = 5
+   where id = v_itm;
+
+  perform pg_temp.eq('an item starts with nothing in stock',
+    (select stock_qty::text from public.items where id = v_pln), '0');
+  -- Zero means "never call this low", which is the right default for an item
+  -- nobody has thought about yet: a warning that fires on everything is a
+  -- warning nobody reads.
+  perform pg_temp.eq('and with no level at which to warn',
+    (select low_stock_qty::text from public.items where id = v_pln), '0');
+  perform pg_temp.eq('and with its packing unrecorded',
+    (select coalesce(qty_per_box::text, 'none') from public.items where id = v_pln), 'none');
+
+  -- A count that has gone below zero is a count that is wrong, and carrying it
+  -- forward hides the mistake.
+  perform pg_temp.rejects('stock may not go negative',
+    format('update public.items set stock_qty = -1 where id = %L', v_pln));
+  perform pg_temp.rejects('nor may the low-stock level',
+    format('update public.items set low_stock_qty = -1 where id = %L', v_pln));
+  -- A box of nothing is not a box. Null is how "we have not measured it" is
+  -- said; zero would be a measurement, and a false one.
+  perform pg_temp.rejects('a box holds at least one',
+    format('update public.items set qty_per_box = 0 where id = %L', v_pln));
+  perform pg_temp.rejects('and so does a carton',
+    format('update public.items set qty_per_carton = 0 where id = %L', v_pln));
 
   ----------------------------------------------------------------------------
   -- Variants describe: the size, the colour, the picture
@@ -389,6 +431,19 @@ begin
   perform pg_temp.eq('an item with no brand still appears',
     (select name_en from public.item_catalogue where id = v_pln), 'IX Unbranded');
 
+  -- What the catalogue screen needs on top of what the inventory list needed:
+  -- enough to say available / low / none, what the item comes packed in, and
+  -- the words somebody wrote about it.
+  perform pg_temp.eq('the catalogue carries the stock figure and its level',
+    (select stock_qty || '/' || low_stock_qty from public.item_catalogue where id = v_itm),
+    '12/5');
+  perform pg_temp.eq('and the packing',
+    (select qty_per_box || ' / ' || qty_per_carton from public.item_catalogue where id = v_itm),
+    '12 / 144');
+  update public.items set description = 'Bottled at source.' where id = v_itm;
+  perform pg_temp.eq('and the description',
+    (select description from public.item_catalogue where id = v_itm), 'Bottled at source.');
+
   -- A deactivated variant drops out of the count and takes its barcode with it,
   -- because nothing is being sold under it any more.
   update public.item_variants set active = false
@@ -425,16 +480,27 @@ begin
     execute 'set local role authenticated';
 
     perform pg_temp.act_as(v_rep);
-    perform pg_temp.eq('a sales rep sees no items at all',
-      (select count(*)::text from public.items), '0');
-    perform pg_temp.eq('nor any brands',
-      (select count(*)::text from public.brands), '0');
-    perform pg_temp.eq('nor the catalogue',
-      (select count(*)::text from public.item_catalogue), '0');
-    perform pg_temp.eq('nor any pictures of stock',
-      (select count(*)::text from public.item_pictures), '0');
-    perform pg_temp.refused('and may not create an item',
+    -- 0035 widened these five select policies from inventory.view alone to
+    -- inventory.view or product.view, which is what lets a rep — who holds no
+    -- inventory permission at all — read the shelf they sell from.
+    perform pg_temp.ok('a sales rep can read the items',
+      (select count(*) from public.items) >= 4);
+    perform pg_temp.ok('and the brands behind them',
+      (select count(*) from public.brands where id = v_brd) = 1);
+    perform pg_temp.ok('and the catalogue itself',
+      (select count(*) from public.item_catalogue where id = v_itm) = 1);
+    perform pg_temp.ok('and the pictures that go on the shelf',
+      (select count(*) from public.item_pictures where item_id = v_itm) = 2);
+    -- Reading is all it buys. Everything that changes stock still keys on the
+    -- inventory permissions, which the rep does not hold.
+    perform pg_temp.refused('but may not create an item',
       'insert into public.items (name_en) values (''IX Sneaked In'')');
+    update public.items set price_usd = 0.01 where id = v_itm;
+    perform pg_temp.eq('nor reprice one',
+      (select price_usd::text from public.items where id = v_itm), '0.50');
+    update public.items set stock_qty = 999 where id = v_itm;
+    perform pg_temp.eq('nor rewrite what is in stock',
+      (select stock_qty::text from public.items where id = v_itm), '12');
 
     perform pg_temp.act_as(v_acc);
     perform pg_temp.ok('an accountant sees the catalogue',

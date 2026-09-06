@@ -70,7 +70,7 @@ export default async function Page({
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block text-sm font-semibold tabular-nums">
+                    <span className="block text-sm font-semibold tabular-nums text-brand">
                       {totalIn({ usd: order.total_usd, khr: order.total_khr }, currency)}
                     </span>
                     {(order.discount_usd ?? 0) > 0 && (

@@ -197,7 +197,7 @@ export function AddToCart({
               {totalIn(before, currency)}
             </span>
           )}
-          <span className="block text-xl font-semibold tabular-nums">
+          <span className="block text-xl font-semibold tabular-nums text-brand">
             {totalIn(after, currency)}
           </span>
         </span>

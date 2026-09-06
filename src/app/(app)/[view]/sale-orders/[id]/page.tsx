@@ -93,7 +93,7 @@ export default async function Page({
                     </span>
                   )}
                 </span>
-                <span className="shrink-0 text-sm font-medium tabular-nums">
+                <span className="shrink-0 text-sm font-medium tabular-nums text-brand">
                   {totalIn({ usd: line.line_total_usd, khr: line.line_total_khr }, currency)}
                 </span>
               </div>
@@ -131,7 +131,7 @@ export default async function Page({
         )}
         <div className="flex items-baseline justify-between gap-3 pt-1">
           <span className="text-sm text-muted">Total</span>
-          <span className="text-2xl font-semibold tabular-nums">
+          <span className="text-2xl font-semibold tabular-nums text-brand">
             {totalIn({ usd: order.total_usd, khr: order.total_khr }, currency)}
           </span>
         </div>

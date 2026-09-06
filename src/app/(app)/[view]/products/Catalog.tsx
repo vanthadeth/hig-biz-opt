@@ -620,7 +620,7 @@ export function Catalog({
                           label={`Discount on ${item.name}`}
                         />
                       )}
-                      <span className="text-sm font-medium tabular-nums">
+                      <span className="text-sm font-medium tabular-nums text-brand">
                         {totalIn(lineTotals(item, line.quantity, lineDiscount(line)), currency)}
                       </span>
                     </div>
@@ -640,7 +640,7 @@ export function Catalog({
                 </div>
                 {/* Large on purpose: it is the number read out loud, and the
                     one thing on this screen somebody checks from arm's length. */}
-                <p className="text-right text-2xl font-semibold tabular-nums">
+                <p className="text-right text-2xl font-semibold tabular-nums text-brand">
                   {totalIn(totals, currency)}
                 </p>
               </div>

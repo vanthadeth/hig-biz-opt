@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   addableQty,
   byCode,
-  cartCount,
+  cartCountLine,
+  cartItemCount,
+  cartPieceCount,
+  cartSavings,
+  cleanDiscount,
+  customerWhere,
+  discountLabel,
+  distanceLabel,
+  distanceMetres,
+  lineTotal,
+  nearestCustomers,
   cartEntries,
   cartTotals,
   catalogGroups,
@@ -215,10 +225,11 @@ describe("catalogGroups", () => {
 describe("the cart", () => {
   const water = item({ id: "w", code: "HIG-001", price_usd: 0.5, price_khr: 2000, stock_qty: 10 });
   const rice = item({ id: "r", code: "HIG-002", price_usd: 12, price_khr: null, stock_qty: 4 });
-  const line = (item_id: string, quantity: number): CartLine => ({
+  const line = (item_id: string, quantity: number, discount_percent = 0): CartLine => ({
     id: `l-${item_id}`,
     item_id,
     quantity,
+    discount_percent,
   });
 
   it("pairs a line with what it is a line of", () => {
@@ -238,9 +249,25 @@ describe("the cart", () => {
     expect(entries.map((e) => e.item.code)).toEqual(["HIG-001", "HIG-002"]);
   });
 
-  it("counts pieces, not lines", () => {
-    expect(cartCount([line("w", 3), line("r", 2)])).toBe(5);
-    expect(cartCount([])).toBe(0);
+  it("counts items for the badge, not pieces", () => {
+    // What a rep glances at is "how long is this order". Twelve of one thing
+    // reads as a list of twelve to somebody who has not opened the cart.
+    expect(cartItemCount([line("w", 12)])).toBe(1);
+    expect(cartItemCount([line("w", 3), line("r", 2)])).toBe(2);
+    expect(cartItemCount([])).toBe(0);
+  });
+
+  it("counts pieces too, for inside the cart", () => {
+    expect(cartPieceCount([line("w", 3), line("r", 2)])).toBe(5);
+    expect(cartPieceCount([])).toBe(0);
+  });
+
+  it("says both numbers, unless they are the same number", () => {
+    expect(cartCountLine([line("w", 3), line("r", 2)])).toBe("2 items · 5 pieces");
+    // One of each: saying "2 items · 2 pieces" is saying it twice.
+    expect(cartCountLine([line("w", 1), line("r", 1)])).toBe("2 items");
+    expect(cartCountLine([line("w", 1)])).toBe("1 item");
+    expect(cartCountLine([line("w", 2)])).toBe("1 item · 2 pieces");
   });
 
   it("totals each currency on its own", () => {
@@ -248,6 +275,29 @@ describe("the cart", () => {
     const totals = cartTotals(cartEntries([line("w", 2), line("r", 1)], [water, rice]));
     expect(totals.usd).toBe(13);
     expect(totals.khr).toBe(4000);
+  });
+
+  it("takes each line's discount off before totalling", () => {
+    // 2 x 0.50 less a tenth is 0.90; 1 x 12.00 less a half is 6.00.
+    const totals = cartTotals(
+      cartEntries([line("w", 2, 10), line("r", 1, 50)], [water, rice]),
+    );
+    expect(totals.usd).toBe(6.9);
+    expect(totals.khr).toBe(3600);
+  });
+
+  it("says what the discounts came to", () => {
+    const savings = cartSavings(cartEntries([line("w", 2, 10)], [water, rice]));
+    expect(savings.usd).toBeCloseTo(0.1, 10);
+    expect(savings.khr).toBe(400);
+  });
+
+  it("says nothing when nothing was discounted", () => {
+    // Null, not zero: "0.00 off" on an undiscounted cart is a line of noise.
+    expect(cartSavings(cartEntries([line("w", 2)], [water, rice]))).toEqual({
+      usd: null,
+      khr: null,
+    });
   });
 
   it("leaves a currency null when nothing in the cart carries it", () => {
@@ -314,5 +364,106 @@ describe("matchesCatalog", () => {
 
   it("does not match something absent", () => {
     expect(matchesCatalog(water, "cement")).toBe(false);
+  });
+});
+
+describe("a discount", () => {
+  it("is a percent between none and all of it", () => {
+    expect(cleanDiscount(-5)).toBe(0);
+    expect(cleanDiscount(150)).toBe(100);
+    expect(cleanDiscount(12.5)).toBe(12.5);
+  });
+
+  it("keeps two places and no more", () => {
+    expect(cleanDiscount(12.345)).toBe(12.35);
+  });
+
+  it("reads a typo as no discount rather than as a wrong one", () => {
+    expect(cleanDiscount(Number.NaN)).toBe(0);
+    expect(cleanDiscount(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it("rounds the line, so the lines add up to the total", () => {
+    // Rounded here rather than at the total: the line is what gets read back
+    // to the shopkeeper, and a total that is not the lines added up is a
+    // total nobody trusts.
+    expect(lineTotal(0.5, 3, 10, 2)).toBe(1.35);
+    expect(lineTotal(2000, 3, 10, 0)).toBe(5400);
+  });
+
+  it("has no total for a price that does not exist", () => {
+    expect(lineTotal(null, 3, 10, 2)).toBeNull();
+  });
+
+  it("is only mentioned when there is one", () => {
+    expect(discountLabel(0)).toBeNull();
+    expect(discountLabel(10)).toBe("10% off");
+    // "12.50% off" is a machine talking.
+    expect(discountLabel(12.5)).toBe("12.5% off");
+  });
+});
+
+describe("choosing who the cart is for", () => {
+  const shop = (
+    id: string,
+    shop_name: string,
+    latitude: number | null = null,
+    longitude: number | null = null,
+  ) => ({
+    id,
+    shop_name,
+    street_address: null,
+    province_text: null,
+    district_text: null,
+    latitude,
+    longitude,
+  });
+
+  // Phnom Penh, roughly.
+  const here = { latitude: 11.5564, longitude: 104.9282 };
+  const near = shop("n", "Near Shop", 11.5574, 104.9282); // ~110 m north
+  const far = shop("f", "Far Shop", 11.6564, 104.9282); // ~11 km north
+  const unknown = shop("u", "Aardvark Hardware");
+
+  it("puts the shop you are standing in first", () => {
+    const order = nearestCustomers([far, near], here).map((c) => c.id);
+    expect(order).toEqual(["n", "f"]);
+  });
+
+  it("falls back to names when the phone does not know where it is", () => {
+    // A refusal, no signal, a browser that never asked: all the same answer.
+    const order = nearestCustomers([far, near, unknown], null).map((c) => c.id);
+    expect(order).toEqual(["u", "f", "n"]);
+  });
+
+  it("puts a shop with no coordinates after every shop that has them", () => {
+    // Unknown is not the same as far away, and must not sort as zero either.
+    const order = nearestCustomers([unknown, far, near], here).map((c) => c.id);
+    expect(order).toEqual(["n", "f", "u"]);
+  });
+
+  it("measures roughly the right distance", () => {
+    expect(distanceMetres(here, near)).toBeGreaterThan(90);
+    expect(distanceMetres(here, near)).toBeLessThan(130);
+    expect(distanceMetres(here, unknown)).toBeNull();
+  });
+
+  it("says the distance the way somebody would", () => {
+    expect(distanceLabel(110)).toBe("110 m");
+    expect(distanceLabel(4300)).toBe("4.3 km");
+    expect(distanceLabel(43_000)).toBe("43 km");
+    expect(distanceLabel(null)).toBeNull();
+  });
+
+  it("says where a shop is, skipping what nobody filled in", () => {
+    expect(
+      customerWhere({
+        ...near,
+        street_address: "12 Street 271",
+        district_text: "Chamkar Mon",
+        province_text: null,
+      }),
+    ).toBe("12 Street 271, Chamkar Mon");
+    expect(customerWhere(near)).toBeNull();
   });
 });

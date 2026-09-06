@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
@@ -10,11 +11,18 @@ import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
   addableQty,
-  cartCount,
+  CART_COLUMNS,
+  CART_HEADER_COLUMNS,
+  cartCountLine,
   cartEntries,
+  cartItemCount,
+  cartSavings,
   cartTotals,
   catalogGroups,
+  cleanDiscount,
   countCatalog,
+  discountLabel,
+  lineTotal,
   matchesCatalog,
   packingLine,
   priceLine,
@@ -22,9 +30,12 @@ import {
   STOCK_LABELS,
   STOCK_TONE,
   totalsLine,
+  type Cart,
+  type CartCustomer,
   type CartLine,
   type CatalogItem,
 } from "@/lib/catalog";
+import { CustomerPicker } from "./CustomerPicker";
 import {
   INVENTORY_BUCKET,
   ITEM_PICTURE_COLUMNS,
@@ -45,17 +56,26 @@ import {
 export function Catalog({
   items,
   lines: saved,
+  cart: savedCart,
+  customers,
+  viewKey,
 }: {
   items: CatalogItem[];
   lines: CartLine[];
+  cart: Cart | null;
+  customers: CartCustomer[];
+  viewKey: string;
 }) {
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState(saved);
+  const [cart, setCart] = useState(savedCart);
   const [openId, setOpenId] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [qty, setQty] = useState(1);
+  const [discount, setDiscount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [placed, setPlaced] = useState<string | null>(null);
 
   // Fetched when a sheet opens rather than with the page: a catalogue of a
   // hundred items would otherwise carry every picture of every one of them to
@@ -71,10 +91,26 @@ export function Catalog({
   const inCart = (itemId: string) =>
     lines.find((l) => l.item_id === itemId)?.quantity ?? 0;
 
+  /**
+   * The cart's id, making one if this is the first thing going into it.
+   *
+   * Not made when the catalogue opens: browsing is not starting an order, and
+   * a row for everybody who ever looked at a screen is rubbish nobody asked
+   * for.
+   */
+  async function cartId(): Promise<string> {
+    if (cart) return cart.id;
+    const { data, error } = await createClient().rpc("ensure_my_cart");
+    if (error || !data) throw error ?? new Error("Your cart could not be opened.");
+    setCart({ id: data as string, customer_id: null });
+    return data as string;
+  }
+
   async function openItem(item: CatalogItem) {
     haptic("tap");
     setError(null);
     setQty(1);
+    setDiscount(0);
     setOpenId(item.id);
 
     if (gallery[item.id]) return;
@@ -89,8 +125,15 @@ export function Catalog({
     }));
   }
 
-  /** Adds to the line if there is one, creates it if there is not. */
-  async function addToCart(item: CatalogItem, amount: number) {
+  /**
+   * Adds to the line if there is one, creates it if there is not.
+   *
+   * The discount comes with the item rather than being applied to the cart
+   * afterwards, because it is agreed while the two of them are looking at that
+   * item. Adding more of something already in the cart takes the newer
+   * discount: the last thing agreed is the thing that was agreed.
+   */
+  async function addToCart(item: CatalogItem, amount: number, percent: number) {
     const existing = lines.find((l) => l.item_id === item.id);
     setBusy(true);
     setError(null);
@@ -103,21 +146,25 @@ export function Catalog({
         // raises nothing at all.
         const { data, error } = await supabase
           .from("cart_lines")
-          .update({ quantity: next })
+          .update({ quantity: next, discount_percent: cleanDiscount(percent) })
           .eq("id", existing.id)
-          .select("id, item_id, quantity");
+          .select(CART_COLUMNS);
         if (error) throw error;
         if (!data?.length) throw new Error("That could not be added to your cart.");
         setLines((all) =>
           all.map((l) => (l.id === existing.id ? (data[0] as CartLine) : l)),
         );
       } else {
-        // No user_id: the column defaults to the caller, so a line cannot be
-        // written into somebody else's cart even by trying.
+        const id = await cartId();
         const { data, error } = await supabase
           .from("cart_lines")
-          .insert({ item_id: item.id, quantity: amount })
-          .select("id, item_id, quantity")
+          .insert({
+            cart_id: id,
+            item_id: item.id,
+            quantity: amount,
+            discount_percent: cleanDiscount(percent),
+          })
+          .select(CART_COLUMNS)
           .single();
         if (error || !data) throw error ?? new Error("That could not be added.");
         setLines((all) => [...all, data as CartLine]);
@@ -128,6 +175,78 @@ export function Catalog({
     } catch (e) {
       haptic("error");
       setError(e instanceof Error ? e.message : "That could not be added to your cart.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Changes a line's discount, once it is already in the cart. */
+  async function setLineDiscount(line: CartLine, percent: number) {
+    const clean = cleanDiscount(percent);
+    // Optimistic on this one alone: a number field that snaps back between
+    // keystrokes is unusable, and the write below corrects it either way.
+    setLines((all) =>
+      all.map((l) => (l.id === line.id ? { ...l, discount_percent: clean } : l)),
+    );
+
+    const { data, error } = await createClient()
+      .from("cart_lines")
+      .update({ discount_percent: clean })
+      .eq("id", line.id)
+      .select(CART_COLUMNS);
+
+    if (error || !data?.length) {
+      setError("That discount could not be saved.");
+      setLines((all) => all.map((l) => (l.id === line.id ? line : l)));
+    }
+  }
+
+  /** Who this cart is for. */
+  async function setCustomer(customerId: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await cartId();
+      const { data, error } = await createClient()
+        .from("carts")
+        .update({ customer_id: customerId })
+        .eq("id", id)
+        .select(CART_HEADER_COLUMNS);
+      if (error) throw error;
+      if (!data?.length) throw new Error("That customer could not be set.");
+      setCart(data[0] as Cart);
+      haptic("tap");
+    } catch (e) {
+      haptic("error");
+      setError(e instanceof Error ? e.message : "That customer could not be set.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * The cart becomes an order.
+   *
+   * Everything that matters happens in the database: the prices are copied
+   * there, the number is issued there, and the cart is emptied there, all in
+   * one transaction. A client that did this in four writes would eventually
+   * leave an order with no lines on a phone that lost signal halfway.
+   */
+  async function convertToOrder() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data, error } = await createClient().rpc("confirm_cart");
+      if (error) throw new Error(error.message);
+      const order = data as { order_no: string } | null;
+      if (!order) throw new Error("The order could not be created.");
+
+      haptic("success");
+      setLines([]);
+      setPlaced(order.order_no);
+    } catch (e) {
+      haptic("error");
+      setError(e instanceof Error ? e.message : "The order could not be created.");
     } finally {
       setBusy(false);
     }
@@ -154,7 +273,7 @@ export function Catalog({
           .from("cart_lines")
           .update({ quantity: next })
           .eq("id", line.id)
-          .select("id, item_id, quantity");
+          .select(CART_COLUMNS);
         if (error) throw error;
         if (!data?.length) throw new Error("That could not be changed.");
         setLines((all) => all.map((l) => (l.id === line.id ? (data[0] as CartLine) : l)));
@@ -168,7 +287,14 @@ export function Catalog({
     }
   }
 
-  const count = cartCount(lines);
+  const count = cartItemCount(lines);
+  const chosen = customers.find((c) => c.id === cart?.customer_id) ?? null;
+
+  // Said only when there were any: "0.00 off" is a line of noise on a cart
+  // nobody discounted.
+  const savings = cartSavings(entries);
+  const discountTotal =
+    savings.usd === null && savings.khr === null ? null : totalsLine(savings);
   const openStock = open ? stockState(open) : null;
   const openRoom = open ? addableQty(open, inCart(open.id)) : 0;
   const openPictures = open ? (gallery[open.id] ?? []) : [];
@@ -198,7 +324,10 @@ export function Catalog({
             setCartOpen(true);
           }}
           aria-haspopup="dialog"
-          aria-label={`Cart, ${count} ${count === 1 ? "piece" : "pieces"}`}
+          // The badge counts items, so the label must say items. A number that
+          // means one thing to the eye and another to a screen reader is worse
+          // than no label.
+          aria-label={`Cart, ${cartCountLine(lines)}`}
           className="pressable relative flex size-11 shrink-0 items-center justify-center rounded-xl border border-line text-muted"
         >
           <Icon name="cart" className="size-5" />
@@ -336,21 +465,52 @@ export function Catalog({
                   : "Your cart already holds everything in stock."}
               </p>
             ) : (
-              <div className="space-y-2">
-                <Stepper
-                  value={qty}
-                  min={1}
-                  max={openRoom}
-                  disabled={busy}
-                  onChange={setQty}
-                  label="Order quantity"
-                />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm">Quantity</span>
+                  <Stepper
+                    value={qty}
+                    min={1}
+                    max={openRoom}
+                    disabled={busy}
+                    onChange={setQty}
+                    label="Order quantity"
+                  />
+                </div>
                 <p className="text-xs text-muted">
                   {openRoom} available{inCart(open.id) > 0 && `, ${inCart(open.id)} already in your cart`}.
                 </p>
+
+                {/* Agreed here, while the two of them are looking at the item,
+                    rather than as a sum done to the basket afterwards. */}
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="discount" className="text-sm">
+                    Discount
+                  </label>
+                  <DiscountField
+                    id="discount"
+                    value={discount}
+                    disabled={busy}
+                    onChange={setDiscount}
+                    label={`Discount on ${open.name}`}
+                  />
+                </div>
+
+                <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
+                  <span className="text-sm text-muted">
+                    {discountLabel(discount) ?? "No discount"}
+                  </span>
+                  <span className="text-base font-semibold tabular-nums">
+                    {totalsLine({
+                      usd: lineTotal(open.price_usd, qty, discount, 2),
+                      khr: lineTotal(open.price_khr, qty, discount, 0),
+                    })}
+                  </span>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => addToCart(open, qty)}
+                  onClick={() => addToCart(open, qty, discount)}
                   disabled={busy}
                   className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg disabled:opacity-60"
                 >
@@ -365,56 +525,122 @@ export function Catalog({
 
       <Sheet open={cartOpen} onClose={() => setCartOpen(false)} title="Cart">
         <div className="max-h-[70vh] space-y-3 overflow-y-auto px-3 pb-4 pt-1">
-          {entries.length === 0 ? (
+          {placed ? (
+            /* The one thing worth saying after confirming: the number, because
+               it is what the shop and the warehouse will both quote back. */
+            <div className="space-y-4 py-4 text-center">
+              <p className="text-sm text-muted">Order placed</p>
+              <p className="text-3xl font-semibold tabular-nums">{placed}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlaced(null);
+                    setCartOpen(false);
+                  }}
+                  className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium"
+                >
+                  Keep selling
+                </button>
+                <Link
+                  href={`/${viewKey}/sale-orders`}
+                  onClick={() => haptic("tap")}
+                  className="pressable flex min-h-11 flex-1 items-center justify-center rounded-xl bg-brand text-sm font-medium text-brand-fg"
+                >
+                  See the order
+                </Link>
+              </div>
+            </div>
+          ) : entries.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted">
               Your cart is empty. Choose an item to start one.
             </p>
           ) : (
             <>
+              <CustomerPicker
+                customers={customers}
+                chosen={chosen}
+                busy={busy}
+                onChoose={setCustomer}
+              />
+
               <ul className="divide-y divide-line">
                 {entries.map(({ line, item }) => (
-                  <li key={line.id} className="flex items-center gap-3 py-3">
-                    <StoredPhoto
-                      name={item.name}
-                      path={item.photo_path}
-                      bucket={INVENTORY_BUCKET}
-                      fallback={<Icon name="box" className="size-4" />}
-                      className="size-12 shrink-0 rounded-lg"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {item.name}
+                  <li key={line.id} className="space-y-2 py-3">
+                    <div className="flex items-center gap-3">
+                      <StoredPhoto
+                        name={item.name}
+                        path={item.photo_path}
+                        bucket={INVENTORY_BUCKET}
+                        fallback={<Icon name="box" className="size-4" />}
+                        className="size-12 shrink-0 rounded-lg"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          {item.name}
+                        </span>
+                        <span className="block truncate text-xs text-muted">
+                          {priceLine(item)}
+                        </span>
                       </span>
-                      <span className="block truncate text-xs text-muted">
-                        {priceLine(item)}
+                      <Stepper
+                        value={line.quantity}
+                        min={0}
+                        max={item.stock_qty}
+                        disabled={busy}
+                        compact
+                        onChange={(next) => setLineQty(line, next)}
+                        label={`Quantity of ${item.name}`}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pl-15">
+                      <DiscountField
+                        value={line.discount_percent}
+                        disabled={busy}
+                        onChange={(percent) => setLineDiscount(line, percent)}
+                        label={`Discount on ${item.name}`}
+                      />
+                      <span className="text-sm font-medium tabular-nums">
+                        {totalsLine({
+                          usd: lineTotal(item.price_usd, line.quantity, line.discount_percent, 2),
+                          khr: lineTotal(item.price_khr, line.quantity, line.discount_percent, 0),
+                        })}
                       </span>
-                    </span>
-                    <Stepper
-                      value={line.quantity}
-                      min={0}
-                      max={item.stock_qty}
-                      disabled={busy}
-                      compact
-                      onChange={(next) => setLineQty(line, next)}
-                      label={`Quantity of ${item.name}`}
-                    />
+                    </div>
                   </li>
                 ))}
               </ul>
 
-              <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
-                <span className="text-sm text-muted">
-                  {count} {count === 1 ? "piece" : "pieces"}
-                </span>
-                <span className="text-base font-semibold">{totalsLine(totals)}</span>
+              <div className="space-y-1 border-t border-line pt-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-muted">{cartCountLine(lines)}</span>
+                  {discountTotal !== null && (
+                    <span className="text-xs text-muted">{discountTotal} off</span>
+                  )}
+                </div>
+                {/* Large on purpose: it is the number read out loud, and the
+                    one thing on this screen somebody checks from arm's length. */}
+                <p className="text-right text-2xl font-semibold tabular-nums">
+                  {totalsLine(totals)}
+                </p>
               </div>
 
-              {/* Said plainly rather than shown as a disabled button somebody
-                  keeps pressing: there is no order module behind it yet. */}
-              <p className="text-xs text-muted">
-                Turning a cart into an order is not built yet. What is here is
-                saved to your account and will still be here later.
-              </p>
+              <button
+                type="button"
+                onClick={convertToOrder}
+                disabled={busy || !cart?.customer_id}
+                className="pressable flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg disabled:opacity-60"
+              >
+                <Icon name="file" className="size-4" />
+                {busy ? "Placing…" : "Convert to sale order"}
+              </button>
+              {!cart?.customer_id && (
+                <p className="text-center text-xs text-muted">
+                  Choose a customer first. An order for nobody cannot be
+                  delivered or invoiced.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -492,5 +718,50 @@ function Stepper({
         +
       </button>
     </div>
+  );
+}
+
+/**
+ * A percent off, typed rather than stepped.
+ *
+ * A stepper is right for quantity, where the numbers are small and adjacent;
+ * a discount is a number somebody has in mind before they reach for the phone,
+ * and tapping + eleven times to reach 11% is not how that conversation goes.
+ */
+function DiscountField({
+  id,
+  value,
+  disabled,
+  onChange,
+  label,
+}: {
+  id?: string;
+  value: number;
+  disabled: boolean;
+  onChange: (next: number) => void;
+  label: string;
+}) {
+  return (
+    <span className="flex w-fit items-center gap-1 rounded-xl border border-line px-2 py-1">
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        aria-label={label}
+        disabled={disabled}
+        value={value === 0 ? "" : String(value)}
+        placeholder="0"
+        onChange={(e) => {
+          // Digits and one point. Typed on a phone, by somebody holding it out
+          // to a shopkeeper, so a value it will not accept is not worth an
+          // error message — it is worth not being typeable.
+          const cleaned = e.target.value.replace(/[^0-9.]/g, "");
+          const parsed = Number(cleaned);
+          onChange(cleaned === "" || Number.isNaN(parsed) ? 0 : cleanDiscount(parsed));
+        }}
+        className="w-12 bg-transparent text-right text-sm tabular-nums outline-none disabled:opacity-60"
+      />
+      <span className="text-sm text-muted">%</span>
+    </span>
   );
 }

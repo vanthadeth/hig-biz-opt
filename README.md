@@ -349,6 +349,48 @@ the app on its owner rather than handing it to a customer. A device that was
 locked before that rule existed can still leave: the unlock pad asks whether a
 PIN exists, and offers **Leave browsing** instead of a keypad when none does.
 
+## The cart, and what it becomes
+
+A cart is scratch. It reads prices live off the item, it belongs to one person,
+and no permission governs it — there is no version of this where one rep edits
+another's. It holds lines, and one thing that is not a line: the customer it is
+being built for.
+
+- **The badge counts items, not pieces.** Twelve of one padlock is one item. The
+  number a rep glances at is "how long is this order", and twelve reads as a
+  list of twelve to somebody who has not opened it.
+- **Discounts are per line, as a percent.** Agreed while the two of them are
+  looking at that item, not applied to the basket afterwards. A percent rather
+  than an amount because that is what gets said out loud, and because it
+  survives both currencies without being quoted twice. Adding more of something
+  already in the cart takes the newer discount: the last thing agreed is the
+  thing that was agreed.
+- **The customer is suggested, nearest first.** A rep picks one standing inside
+  the shop, so the phone sorts by distance from where it is. Location refused,
+  no signal, a shop whose coordinates were never recorded — each falls back to
+  alphabetical, and a shop with no coordinates sorts after every shop that has
+  them, because unknown is not the same as far away.
+
+**Convert to sale order** is the line between the two. Everything happens in
+`app.confirm_cart()`, in one transaction: the number is issued, the lines are
+copied, the totals are computed and the cart is emptied. A client doing that in
+four writes would eventually leave an order with no lines on a phone that lost
+signal halfway.
+
+The copy is the point. `sale_order_lines` holds the code, the name and both
+prices **as they were at that moment** — change an item's price tomorrow and the
+order still says what the shop agreed to pay. `item_id` is a convenience and is
+allowed to go null: withdrawing an item from the catalogue must not take the
+record of what was sold with it.
+
+An order needs a customer, and the function refuses without one — an order for
+nobody cannot be delivered, chased or invoiced. Unlike a cart, an order is
+governed by the module: `sale_order` at own / sub / any, keyed on the rep who
+sold it, exactly as a customer is keyed on its owner.
+
+One cart per person for now. `carts_one_per_person` is the only thing saying so,
+and lifting that index is what "multiple carts" will mean.
+
 ### Arranging the bottom bar
 
 Home and Menu are fixed; the two slots between them and the raised centre button
@@ -428,6 +470,8 @@ migration — add a new one.
 0040_name_and_name_alt.sql    name_en and name_km become name and name_alt
 0041_pin_lock.sql             a four-digit PIN, for handing the phone over
 0042_test_items.sql           ten made-up items, so the catalogue can be seen
+0043_cart_customer_discount_and_sale_orders.sql
+                              the cart gets a head, and orders start existing
 ```
 
 `0042` is the only one of these that is data rather than schema, and it is not
@@ -505,12 +549,28 @@ than to a module, so the question is never "may you" but "is it yours":
 psql "$DATABASE_URL" -f supabase/tests/catalog.test.sql
 ```
 
-23 assertions over the one-line-per-item index, the quantity constraint, the
-`user_id` default that stops a client writing into somebody else's cart, and
-the fact that not even a super admin can see or change another person's.
+37 assertions over the one-line-per-cart index, the quantity and discount
+constraints, the cart header and its one-per-person rule, and the fact that not
+even a super admin can see or change another person's cart.
 
 ```
-ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
+ERROR:  CATALOG OK - 37 assertions passed (rls: ran)
+```
+
+### Sale order tests
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/sale_orders.test.sql
+```
+
+26 assertions over turning a cart into an order. The one that matters moves an
+item's price, name and code after the order exists and insists the order does
+not move with it — without that, every historical order silently rewrites
+itself the next time somebody edits a price, and nobody finds out until a
+customer disputes an invoice.
+
+```
+ERROR:  SALE ORDERS OK - 26 assertions passed (rls: ran)
 ```
 
 ### Data sync tests

@@ -1,6 +1,6 @@
 -- catalog.test.sql
 --
--- The cart, which is the one thing 0035 added that is nobody's but yours.
+-- The cart, which is the one thing here that is nobody's but yours.
 --
 -- The item side of 0035 — packing, stock, the widened select policies — is
 -- covered in inventory.test.sql, where the items and the people who may not
@@ -16,7 +16,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CATALOG OK - 23 assertions passed (rls: ran)
+--     ERROR:  CATALOG OK - 37 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -109,6 +109,9 @@ declare
   v_rep2 uuid := '00000000-0000-4000-8000-0000000c0003';  -- another sales rep
   v_itm  uuid;   -- something to put in a cart
   v_alt  uuid;   -- something else
+  v_cart uuid;   -- the rep's cart
+  v_crt2 uuid;   -- the other rep's
+  v_cus  uuid;   -- somebody to sell to
   v_line uuid;   -- the rep's line
   v_rls  text := 'skipped (cannot assume the authenticated role)';
 begin
@@ -124,10 +127,16 @@ begin
   insert into public.items (name, code, price_usd, stock_qty)
     values ('CX Rice', 'CX-002', 12, 4) returning id into v_alt;
 
+  insert into public.customers (shop_name, owner_id) values ('CX Shop', v_rep)
+    returning id into v_cus;
+
+  insert into public.carts (user_id) values (v_rep)  returning id into v_cart;
+  insert into public.carts (user_id) values (v_rep2) returning id into v_crt2;
+
   ----------------------------------------------------------------------------
   -- The shape of a line
   ----------------------------------------------------------------------------
-  insert into public.cart_lines (user_id, item_id) values (v_rep, v_itm)
+  insert into public.cart_lines (cart_id, item_id) values (v_cart, v_itm)
     returning id into v_line;
 
   perform pg_temp.eq('a line starts at one',
@@ -143,16 +152,34 @@ begin
   -- Adding an item already in the cart must raise its quantity rather than
   -- make a second line, and the unique index is what makes that an upsert
   -- instead of a race between two taps.
-  perform pg_temp.rejects('one line per item per person',
-    format('insert into public.cart_lines (user_id, item_id) values (%L, %L)', v_rep, v_itm));
+  perform pg_temp.rejects('one line per item per cart',
+    format('insert into public.cart_lines (cart_id, item_id) values (%L, %L)', v_cart, v_itm));
   -- The same item in somebody else's cart is not a clash.
-  insert into public.cart_lines (user_id, item_id, quantity) values (v_rep2, v_itm, 5);
+  insert into public.cart_lines (cart_id, item_id, quantity) values (v_crt2, v_itm, 5);
   perform pg_temp.eq('but two people may each hold the same item',
     (select count(*)::text from public.cart_lines where item_id = v_itm), '2');
 
   perform pg_temp.rejects('a line must name an item that exists',
-    format('insert into public.cart_lines (user_id, item_id) values (%L, %L)',
-           v_rep, '00000000-0000-4000-8000-00000000dead'));
+    format('insert into public.cart_lines (cart_id, item_id) values (%L, %L)',
+           v_cart, '00000000-0000-4000-8000-00000000dead'));
+
+  ----------------------------------------------------------------------------
+  -- The discount
+  --
+  -- Per line rather than per cart: a rep discounts the slow-moving item, not
+  -- the whole basket. A percent, so it survives both currencies without being
+  -- quoted twice.
+  ----------------------------------------------------------------------------
+  perform pg_temp.eq('a line starts at no discount',
+    (select discount_percent::text from public.cart_lines where id = v_line), '0.00');
+  perform pg_temp.rejects('a discount above everything is not a discount',
+    format('update public.cart_lines set discount_percent = 101 where id = %L', v_line));
+  perform pg_temp.rejects('nor is a negative one',
+    format('update public.cart_lines set discount_percent = -5 where id = %L', v_line));
+  update public.cart_lines set discount_percent = 12.5 where id = v_line;
+  perform pg_temp.eq('and half a percent is a real discount',
+    (select discount_percent::text from public.cart_lines where id = v_line), '12.50');
+  update public.cart_lines set discount_percent = 0 where id = v_line;
 
   -- Backdated first, because now() is fixed for the whole transaction: left as
   -- it was, `updated_at > created_at` would be false however well the trigger
@@ -170,14 +197,30 @@ begin
   -- line pointing at a deleted item is a row nobody can render, and a cart
   -- belonging to a deleted account is a row nobody can claim.
   ----------------------------------------------------------------------------
-  insert into public.cart_lines (user_id, item_id, quantity) values (v_rep, v_alt, 2);
+  insert into public.cart_lines (cart_id, item_id, quantity) values (v_cart, v_alt, 2);
   delete from public.items where id = v_alt;
   perform pg_temp.eq('deleting an item takes it out of every cart',
     (select count(*)::text from public.cart_lines where item_id = v_alt), '0');
 
-  perform pg_temp.eq('there is no cart header to strand a line on',
-    (select count(*)::text from information_schema.tables
-      where table_schema = 'public' and table_name in ('carts', 'cart')), '0');
+  ----------------------------------------------------------------------------
+  -- The head
+  --
+  -- 0043 gave the cart one, because a customer is something a cart holds that
+  -- is not a line. One per person for now, and that index is the only thing
+  -- saying so.
+  ----------------------------------------------------------------------------
+  perform pg_temp.rejects('one open cart per person',
+    format('insert into public.carts (user_id) values (%L)', v_rep));
+  perform pg_temp.eq('a cart starts with nobody to sell to',
+    (select coalesce(customer_id::text, 'none') from public.carts where id = v_cart), 'none');
+  update public.carts set customer_id = v_cus where id = v_cart;
+  perform pg_temp.eq('a line hangs off the cart, not the person',
+    (select count(*)::text from information_schema.columns
+      where table_schema = 'public' and table_name = 'cart_lines'
+        and column_name = 'user_id'), '0');
+  perform pg_temp.eq('and goes when the cart does',
+    (select confdeltype::text from pg_constraint
+      where conname = 'cart_lines_cart_id_fkey'), 'c');
 
   ----------------------------------------------------------------------------
   -- Privileges
@@ -197,6 +240,11 @@ begin
       where table_schema = 'public' and table_name = 'cart_lines' and grantee = 'anon'), '0');
   perform pg_temp.ok('row level security is on',
     (select relrowsecurity from pg_class where oid = 'public.cart_lines'::regclass));
+  perform pg_temp.ok('and on the cart itself',
+    (select relrowsecurity from pg_class where oid = 'public.carts'::regclass));
+  perform pg_temp.eq('anon may do nothing to a cart',
+    (select count(*)::text from information_schema.role_table_grants
+      where table_schema = 'public' and table_name = 'carts' and grantee = 'anon'), '0');
 
   ----------------------------------------------------------------------------
   -- Row level security
@@ -213,43 +261,57 @@ begin
       (select count(*)::text from public.cart_lines where id = v_line), '1');
     perform pg_temp.eq('and only their own',
       (select count(*)::text from public.cart_lines), '1');
+    perform pg_temp.eq('and only their own cart',
+      (select count(*)::text from public.carts), '1');
 
-    -- The column defaults to the caller rather than being sent, so a client
-    -- cannot write a line into somebody else's cart even by naming them.
-    insert into public.cart_lines (item_id, quantity) values (v_itm, 2)
-      on conflict (user_id, item_id) do update set quantity = 9;
-    perform pg_temp.eq('an added line lands in the caller''s own cart',
+    -- The cart's owner defaults to the caller rather than being sent, so a
+    -- cart cannot be opened in somebody else's name even by naming them.
+    perform pg_temp.eq('ensure_my_cart hands back the one they have',
+      public.ensure_my_cart()::text, v_cart::text);
+
+    insert into public.cart_lines (cart_id, item_id, quantity) values (v_cart, v_itm, 2)
+      on conflict (cart_id, item_id) do update set quantity = 9;
+    perform pg_temp.eq('adding an item already there raises it',
       (select quantity::text from public.cart_lines where id = v_line), '9');
-    perform pg_temp.refused('and a line addressed to somebody else is refused outright',
-      format('insert into public.cart_lines (user_id, item_id, quantity)
-                values (%L, %L, 1)', v_rep2, v_itm));
+    perform pg_temp.refused('and a line put in somebody else''s cart is refused outright',
+      format('insert into public.cart_lines (cart_id, item_id, quantity)
+                values (%L, %L, 1)', v_crt2, v_itm));
 
     -- A refused update matches no rows and raises nothing at all, so the value
     -- afterwards is the only thing that proves it was refused.
-    update public.cart_lines set quantity = 99 where user_id = v_rep2;
+    update public.cart_lines set quantity = 99 where cart_id = v_crt2;
     perform pg_temp.act_as(v_rep2);
     perform pg_temp.eq('one rep may not change another''s quantities',
-      (select quantity::text from public.cart_lines where user_id = v_rep2), '5');
-    delete from public.cart_lines where user_id = v_rep;
+      (select quantity::text from public.cart_lines where cart_id = v_crt2), '5');
+    delete from public.cart_lines where cart_id = v_cart;
     perform pg_temp.act_as(v_rep);
     perform pg_temp.eq('nor empty their cart for them',
-      (select count(*)::text from public.cart_lines where user_id = v_rep), '1');
+      (select count(*)::text from public.cart_lines where cart_id = v_cart), '1');
+
+    -- Nor decide who they are selling to.
+    perform pg_temp.act_as(v_rep2);
+    update public.carts set customer_id = null where id = v_cart;
+    perform pg_temp.act_as(v_rep);
+    perform pg_temp.eq('nor take the customer off their cart',
+      (select customer_id::text from public.carts where id = v_cart), v_cus::text);
 
     -- Removing a line is how you take something out, and it is the one delete
     -- in this app that needs no permission at all.
     delete from public.cart_lines where id = v_line;
     perform pg_temp.eq('but you may empty your own',
-      (select count(*)::text from public.cart_lines where user_id = v_rep), '0');
+      (select count(*)::text from public.cart_lines where cart_id = v_cart), '0');
 
     -- Being an administrator is not being somebody else. There is no policy
     -- that reads a module here, so the super admin bypass has nothing to bypass.
     perform pg_temp.act_as(v_sa);
     perform pg_temp.eq('not even an administrator sees another person''s cart',
       (select count(*)::text from public.cart_lines), '0');
-    update public.cart_lines set quantity = 1 where user_id = v_rep2;
+    perform pg_temp.eq('nor the cart it hangs off',
+      (select count(*)::text from public.carts), '0');
+    update public.cart_lines set quantity = 1 where cart_id = v_crt2;
     perform pg_temp.act_as(v_rep2);
     perform pg_temp.eq('nor changes one',
-      (select quantity::text from public.cart_lines where user_id = v_rep2), '5');
+      (select quantity::text from public.cart_lines where cart_id = v_crt2), '5');
 
     execute 'reset role';
     v_rls := 'ran';
@@ -266,14 +328,16 @@ begin
   -- public.users rather than auth.users, because 0016 cut the two apart so an
   -- employee can exist without a login — a cart belongs to the employee.
   ----------------------------------------------------------------------------
-  perform pg_temp.eq('a cart line hangs off the employee record',
-    (select confdeltype::text from pg_constraint where conname = 'cart_lines_user_id_fkey'), 'c');
+  perform pg_temp.eq('a cart hangs off the employee record',
+    (select confdeltype::text from pg_constraint where conname = 'carts_user_id_fkey'), 'c');
   -- As the administrator, because 0030 stamps the actor on the delete and the
   -- audit row's actor may not be the row being deleted.
   perform pg_temp.act_as(v_sa);
   delete from public.users where id = v_rep2;
   perform pg_temp.eq('and a removed employee takes their cart with them',
-    (select count(*)::text from public.cart_lines where user_id = v_rep2), '0');
+    (select count(*)::text from public.carts where user_id = v_rep2), '0');
+  perform pg_temp.eq('and its lines with it',
+    (select count(*)::text from public.cart_lines where cart_id = v_crt2), '0');
 
   raise exception 'CATALOG OK - % assertions passed (rls: %)',
     current_setting('higtest.checks'), v_rls;

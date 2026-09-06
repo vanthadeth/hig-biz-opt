@@ -41,9 +41,34 @@ export type CatalogItem = {
 export const CATALOG_COLUMNS =
   "id, code, name, name_alt, active, price_usd, price_khr, category_id, category_name, category_name_alt, category_parent_id, category_parent_name, category_parent_name_alt, brand_id, brand_name, photo_path, description, stock_qty, low_stock_qty, qty_per_box, qty_per_carton";
 
-export const CART_COLUMNS = "id, item_id, quantity";
+export const CART_COLUMNS = "id, item_id, quantity, discount_percent";
 
-export type CartLine = { id: string; item_id: string; quantity: number };
+export type CartLine = {
+  id: string;
+  item_id: string;
+  quantity: number;
+  /** Per line, because a rep discounts the slow item rather than the basket. */
+  discount_percent: number;
+};
+
+/** The cart's head. Null customer while somebody is still building it. */
+export type Cart = { id: string; customer_id: string | null };
+
+export const CART_HEADER_COLUMNS = "id, customer_id";
+
+/** A customer, as the cart's picker needs to see one. */
+export type CartCustomer = {
+  id: string;
+  shop_name: string;
+  street_address: string | null;
+  province_text: string | null;
+  district_text: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export const CART_CUSTOMER_COLUMNS =
+  "id, shop_name, street_address, province_text, district_text, latitude, longitude";
 
 // Availability -------------------------------------------------------------------
 
@@ -216,8 +241,64 @@ export function cartEntries(lines: CartLine[], items: CatalogItem[]): CartEntry[
     .sort((a, b) => byCode(a.item, b.item));
 }
 
-export function cartCount(lines: CartLine[]): number {
+/**
+ * How many *things* are in the cart, which is what the badge counts.
+ *
+ * Not the pieces. A cart holding twelve of one item is one item on the badge:
+ * the number a rep glances at is "how long is this order", and twelve reads as
+ * a list of twelve to somebody who has not opened it yet.
+ */
+export function cartItemCount(lines: CartLine[]): number {
+  return lines.length;
+}
+
+/** How many pieces, which is a different question and asked in the cart. */
+export function cartPieceCount(lines: CartLine[]): number {
   return lines.reduce((total, line) => total + line.quantity, 0);
+}
+
+/** "3 items · 17 pieces", or just the items when they are the same number. */
+export function cartCountLine(lines: CartLine[]): string {
+  const items = cartItemCount(lines);
+  const pieces = cartPieceCount(lines);
+  const itemPart = `${items} ${items === 1 ? "item" : "items"}`;
+  if (pieces === items) return itemPart;
+  return `${itemPart} · ${pieces} ${pieces === 1 ? "piece" : "pieces"}`;
+}
+
+// Discounts ------------------------------------------------------------------------
+
+/** A percent off, clamped to something a price can survive. */
+export function cleanDiscount(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value * 100) / 100));
+}
+
+/**
+ * What a line comes to, in one currency, after its discount.
+ *
+ * Rounded at the line rather than at the total: the line is what somebody
+ * reads back to the shopkeeper, and a total that does not equal the lines
+ * added up is a total nobody trusts.
+ */
+export function lineTotal(
+  unitPrice: number | null,
+  quantity: number,
+  discountPercent: number,
+  decimals: number,
+): number | null {
+  if (unitPrice === null) return null;
+  const gross = unitPrice * quantity * (1 - cleanDiscount(discountPercent) / 100);
+  const factor = 10 ** decimals;
+  return Math.round(gross * factor) / factor;
+}
+
+/** "10% off" — said only when there is something to say. */
+export function discountLabel(discountPercent: number): string | null {
+  const clean = cleanDiscount(discountPercent);
+  if (clean === 0) return null;
+  // Trailing zeros dropped: "12.5% off", not "12.50% off".
+  return `${Number(clean.toFixed(2))}% off`;
 }
 
 /**
@@ -236,8 +317,39 @@ export function cartTotals(entries: CartEntry[]): {
   let khr: number | null = null;
 
   for (const { line, item } of entries) {
-    if (item.price_usd !== null) usd = (usd ?? 0) + item.price_usd * line.quantity;
-    if (item.price_khr !== null) khr = (khr ?? 0) + item.price_khr * line.quantity;
+    const inUsd = lineTotal(item.price_usd, line.quantity, line.discount_percent, 2);
+    const inKhr = lineTotal(item.price_khr, line.quantity, line.discount_percent, 0);
+    if (inUsd !== null) usd = (usd ?? 0) + inUsd;
+    if (inKhr !== null) khr = (khr ?? 0) + inKhr;
+  }
+
+  return { usd, khr };
+}
+
+/**
+ * What the discounts took off, in each currency.
+ *
+ * Null in a currency means nothing was discounted in it — which is different
+ * from zero, and reads differently: "0.00 off" on a cart nobody discounted is
+ * a line of noise.
+ */
+export function cartSavings(entries: CartEntry[]): {
+  usd: number | null;
+  khr: number | null;
+} {
+  let usd: number | null = null;
+  let khr: number | null = null;
+
+  for (const { line, item } of entries) {
+    if (cleanDiscount(line.discount_percent) === 0) continue;
+    if (item.price_usd !== null) {
+      const full = item.price_usd * line.quantity;
+      usd = (usd ?? 0) + full - (lineTotal(item.price_usd, line.quantity, line.discount_percent, 2) ?? full);
+    }
+    if (item.price_khr !== null) {
+      const full = item.price_khr * line.quantity;
+      khr = (khr ?? 0) + full - (lineTotal(item.price_khr, line.quantity, line.discount_percent, 0) ?? full);
+    }
   }
 
   return { usd, khr };
@@ -266,4 +378,71 @@ export function matchesCatalog(item: CatalogItem, query: string): boolean {
   return [item.name, item.name_alt, item.code, item.brand_name].some(
     (field) => field != null && field.toLowerCase().includes(needle),
   );
+}
+
+// Who the cart is for --------------------------------------------------------------
+
+/**
+ * The customers to offer, nearest first when the phone knows where it is.
+ *
+ * A rep opens the cart standing in the shop they are selling to, so the shop
+ * they want is almost always the one they are inside. Without a fix — no
+ * permission, no signal, a customer whose coordinates were never recorded —
+ * this falls back to alphabetical, which is at least predictable.
+ *
+ * Straight-line distance on a sphere. Cambodia is not large enough for the
+ * ellipsoid to matter, and this is choosing between shops in a district, not
+ * navigating between them.
+ */
+export function nearestCustomers(
+  customers: CartCustomer[],
+  from: { latitude: number; longitude: number } | null,
+): CartCustomer[] {
+  const byName = [...customers].sort((a, b) => a.shop_name.localeCompare(b.shop_name));
+  if (!from) return byName;
+
+  return byName
+    .map((customer) => ({ customer, metres: distanceMetres(from, customer) }))
+    .sort((a, b) => {
+      // A shop with no coordinates is not far away, it is unknown. Unknown
+      // sorts after everything known rather than to the top or the bottom of
+      // a distance it does not have.
+      if (a.metres === null && b.metres === null) return 0;
+      if (a.metres === null) return 1;
+      if (b.metres === null) return -1;
+      return a.metres - b.metres;
+    })
+    .map((entry) => entry.customer);
+}
+
+/** Metres between a point and a customer, or null if the customer has no fix. */
+export function distanceMetres(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number | null; longitude: number | null },
+): number | null {
+  if (to.latitude === null || to.longitude === null) return null;
+
+  const R = 6_371_000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(to.latitude - from.latitude);
+  const dLon = toRad(to.longitude - from.longitude);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(from.latitude)) * Math.cos(toRad(to.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** "120 m" or "4.3 km" — near enough for choosing between shops. */
+export function distanceLabel(metres: number | null): string | null {
+  if (metres === null) return null;
+  if (metres < 1000) return `${Math.round(metres)} m`;
+  return `${(metres / 1000).toFixed(metres < 10_000 ? 1 : 0)} km`;
+}
+
+/** The shop's address in one line, for telling two branches apart. */
+export function customerWhere(customer: CartCustomer): string | null {
+  const parts = [customer.street_address, customer.district_text, customer.province_text]
+    .map((part) => part?.trim())
+    .filter((part): part is string => !!part);
+  return parts.length ? parts.join(", ") : null;
 }

@@ -98,9 +98,6 @@ export function Catalog({
   // The cart line being changed. Editing replaces what the line says rather
   // than adding to it, so it reuses the add panel with the line already in it.
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Removing is asked about rather than done: a swipe is easy to make by
-  // accident, and a line put back is a line retyped.
-  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Fetched when a sheet opens rather than with the page: a catalogue of a
   // hundred items would otherwise carry every picture of every one of them to
@@ -338,7 +335,6 @@ export function Catalog({
   const count = cartItemCount(lines);
   const chosen = customers.find((c) => c.id === cart?.customer_id) ?? null;
   const editing = entries.find(({ line }) => line.id === editingId) ?? null;
-  const removing = entries.find(({ line }) => line.id === removingId) ?? null;
 
   // Said only when there were any: "0.00 off" is a line of noise on a cart
   // nobody discounted.
@@ -572,42 +568,6 @@ export function Catalog({
         )}
       </Sheet>
 
-      <Sheet
-        open={removing !== null}
-        onClose={() => setRemovingId(null)}
-        title="Remove from the cart?"
-      >
-        {removing && (
-          <div className="space-y-4 px-3 pb-4 pt-1">
-            <p className="text-sm text-muted">
-              <span className="font-medium text-fg">{removing.item.name}</span> comes
-              off this cart. Nothing else changes.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setRemovingId(null)}
-                className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium"
-              >
-                Keep it
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const line = removing.line;
-                  setRemovingId(null);
-                  void setLineQty(line, 0);
-                }}
-                disabled={busy}
-                className="pressable min-h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-danger-fg disabled:opacity-60"
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        )}
-      </Sheet>
-
       {/* Editing a line reuses the panel that made it, with the line already in
           it. One control for the four numbers, rather than a second, smaller
           set of them wedged into a list row. */}
@@ -634,6 +594,11 @@ export function Catalog({
             onAdd={(quantity, free, discount) =>
               saveLine(editing.line, quantity, free, discount)
             }
+            onRemove={() => {
+              const line = editing.line;
+              setEditingId(null);
+              void setLineQty(line, 0);
+            }}
           />
         )}
       </Sheet>
@@ -691,13 +656,12 @@ export function Catalog({
                     )}
                     disabled={busy}
                     onEdit={() => setEditingId(line.id)}
-                    onAskRemove={() => setRemovingId(line.id)}
                   />
                 ))}
               </ul>
 
               <p className="text-center text-xs text-muted">
-                Hold a line to change it. Swipe it left to remove it.
+                Hold a line to change it.
               </p>
 
               <div className="space-y-1 border-t border-line pt-3">

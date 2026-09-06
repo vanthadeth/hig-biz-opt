@@ -45,6 +45,7 @@ export function AddToCart({
   busy,
   editing,
   onAdd,
+  onRemove,
 }: {
   item: CatalogItem;
   /** Which of the two prices this organisation quotes in. */
@@ -60,6 +61,8 @@ export function AddToCart({
    */
   editing?: LineDraft;
   onAdd: (quantity: number, free: number, discount: Discount) => void;
+  /** Only when editing: the line can be taken off the cart from here. */
+  onRemove?: () => void;
 }) {
   const [quantity, setQuantity] = useState(editing?.quantity ?? 1);
   const [free, setFree] = useState(editing?.free ?? 0);
@@ -222,6 +225,20 @@ export function AddToCart({
         <Icon name="cart" className="size-4" />
         {busy ? "Saving…" : editing ? "Save the line" : "Add to cart"}
       </button>
+
+      {/* Deleting lives here rather than under a thumb on the list: getting to
+          it takes a deliberate hold and a deliberate press, which is what a
+          destructive button should cost. */}
+      {editing && onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy}
+          className="pressable min-h-11 w-full rounded-xl border border-line text-sm font-medium text-danger transition-colors hover:bg-danger/5 disabled:opacity-60"
+        >
+          Remove from cart
+        </button>
+      )}
     </div>
   );
 }

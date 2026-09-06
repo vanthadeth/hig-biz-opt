@@ -477,17 +477,15 @@ the first line disappears when it has nothing to say. A discount agreed in money
 stays money there: rewriting "two dollars off" as a percentage tells somebody
 they said something they did not.
 
-**Hold a line to change it, swipe it left to remove it.** Both gestures come off
-one pointer stream rather than two handlers fighting over it: the moment a finger
-moves far enough to be going somewhere the hold is off and the swipe is on, so
-there is no arrangement where both fire. `touch-action: pan-y` is what lets the
-swipe exist without stealing the list's scroll — the browser keeps the vertical
-axis and hands us the horizontal one. Removing asks first, because a swipe is
-easy to make by accident and a line put back is a line retyped.
+**Hold a line to change it.** Removing lives in the panel that opens, not under a
+thumb on the list: a row that could be deleted by moving a finger across it
+deleted things nobody meant to delete. Getting to it now takes a deliberate hold
+and a deliberate press, which is what a destructive button should cost.
 
-A gesture nobody can see is a gesture some people cannot use, so a row is also a
-focusable control: Enter opens it, Delete asks to remove it, and the line under
-the list says both out loud.
+The hold tolerates a little movement — a finger resting on a phone never stays
+still — and gives up as soon as the movement looks like a scroll. A gesture
+nobody can see is a gesture some people cannot use, so a row is also a focusable
+control: Enter opens it, and the line under the list says so.
 
 Changing a line reuses the panel that made it, with the line already in it, so
 there is one control for the four numbers rather than a second smaller set of

@@ -3,6 +3,7 @@ import { ShellProvider, type ShellData } from "./ShellContext";
 import { TitleBar } from "./TitleBar";
 import { BottomNav } from "./BottomNav";
 import { SideNav } from "./SideNav";
+import { KioskGuard } from "./KioskGuard";
 
 /**
  * The one place navigation is rendered. Phone gets an auto-hiding title bar and
@@ -12,9 +13,15 @@ import { SideNav } from "./SideNav";
 export function AppShell({
   data,
   locked = false,
+  lockNonce,
+  homeHref,
   children,
 }: {
   data: ShellData;
+  /** The browsing session the lock belongs to, when there is one. */
+  lockNonce?: string;
+  /** Where a lock from a finished session sends somebody instead. */
+  homeHref?: string;
   /**
    * Kiosk: the phone is in a customer's hands. No navigation is rendered — but
    * the context still is. Children reach for it (the page heading comes from
@@ -27,6 +34,9 @@ export function AppShell({
   if (locked) {
     return (
       <ShellProvider value={data}>
+        {lockNonce && homeHref && (
+          <KioskGuard nonce={lockNonce} homeHref={homeHref} />
+        )}
         <main className="mx-auto min-h-dvh w-full max-w-3xl px-4 py-4">{children}</main>
       </ShellProvider>
     );

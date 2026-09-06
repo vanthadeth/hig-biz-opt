@@ -4,7 +4,9 @@ import { Icon } from "@/components/Icon";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { createClient } from "@/lib/supabase/server";
-import { quantityLine, totalsLine } from "@/lib/catalog";
+import { quantityLine } from "@/lib/catalog";
+import { primaryCurrency } from "@/lib/money.server";
+import { totalIn } from "@/lib/money";
 import {
   ORDER_DETAIL_COLUMNS,
   orderCustomerWhere,
@@ -32,6 +34,7 @@ export default async function Page({
 }) {
   const { view, id } = await params;
   const supabase = await createClient();
+  const currency = await primaryCurrency();
 
   const { data } = await supabase
     .from("sale_orders")
@@ -91,7 +94,7 @@ export default async function Page({
                   )}
                 </span>
                 <span className="shrink-0 text-sm font-medium tabular-nums">
-                  {totalsLine({ usd: line.line_total_usd, khr: line.line_total_khr })}
+                  {totalIn({ usd: line.line_total_usd, khr: line.line_total_khr }, currency)}
                 </span>
               </div>
 
@@ -99,10 +102,10 @@ export default async function Page({
                 <span className="tabular-nums">
                   {quantityLine(line.quantity, line.free_quantity)}
                   {" × "}
-                  {totalsLine({
-                    usd: line.unit_price_usd,
-                    khr: line.unit_price_khr,
-                  })}
+                  {totalIn(
+                    { usd: line.unit_price_usd, khr: line.unit_price_khr },
+                    currency,
+                  )}
                 </span>
                 {discount && <span className="shrink-0">{discount}</span>}
               </div>
@@ -116,7 +119,7 @@ export default async function Page({
           <div className="flex items-baseline justify-between gap-3 text-sm text-muted">
             <span>Discount</span>
             <span className="tabular-nums">
-              {totalsLine({ usd: order.discount_usd, khr: order.discount_khr })}
+              {totalIn({ usd: order.discount_usd, khr: order.discount_khr }, currency)}
             </span>
           </div>
         ) : null}
@@ -129,7 +132,7 @@ export default async function Page({
         <div className="flex items-baseline justify-between gap-3 pt-1">
           <span className="text-sm text-muted">Total</span>
           <span className="text-2xl font-semibold tabular-nums">
-            {totalsLine({ usd: order.total_usd, khr: order.total_khr })}
+            {totalIn({ usd: order.total_usd, khr: order.total_khr }, currency)}
           </span>
         </div>
       </Card>

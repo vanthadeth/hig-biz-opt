@@ -16,8 +16,8 @@ vi.mock("@/lib/access", () => ({
 // The layout asks whether the device is locked to decide whether the shell
 // renders its navigation. Unlocked is the state every assertion below is
 // about, bar the one that names the lock.
-const lockedView = vi.fn(async () => null as string | null);
-vi.mock("@/lib/kiosk.server", () => ({ lockedView }));
+const kioskLock = vi.fn(async () => null as { view: string; nonce: string } | null);
+vi.mock("@/lib/kiosk.server", () => ({ kioskLock }));
 
 vi.mock("@/components/shell/AppShell", () => ({
   AppShell: ({ data, locked }: { data: { view: { key: string } }; locked?: boolean }) => (
@@ -61,7 +61,7 @@ async function enter(viewKey: string) {
 }
 
 beforeEach(() => {
-  lockedView.mockReset().mockResolvedValue(null);
+  kioskLock.mockReset().mockResolvedValue(null);
   requireViewer.mockReset().mockResolvedValue(viewer);
   getMyViews.mockReset();
   getMyNav.mockReset().mockResolvedValue([]);
@@ -126,7 +126,7 @@ describe("ViewLayout in kiosk mode", () => {
   it("still renders the shell, so the page keeps its context", async () => {
     // The regression this guards: returning children bare left `useShell` with
     // no provider, and the page heading threw rather than rendering.
-    lockedView.mockResolvedValue("sales");
+    kioskLock.mockResolvedValue({ view: "sales", nonce: "sess1" });
     getMyViews.mockResolvedValue([view("sales")]);
     const { element, redirectedTo } = await enter("sales");
 

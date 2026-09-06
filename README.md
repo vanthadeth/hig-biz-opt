@@ -322,26 +322,31 @@ The PIN is set on your profile, hashed with bcrypt in `public.user_pins` — a
 table with no RLS policies at all, reachable only through two `security definer`
 functions. Five wrong tries locks it for five minutes.
 
-**The app never starts locked.** Opening it always gives you the ordinary app,
-whatever happened yesterday — handing the phone to one customer is not an
-instruction to greet you with a catalogue the next morning.
+Two things have to be true at once, and they pull in opposite directions.
+**Refreshing the catalogue must not unlock the phone** — a rep pulls to refresh
+with a customer waiting, and a phone that goes to sleep mid-browse is still a
+phone in a customer's hand. And **the app must never start into a catalogue** —
+opening it tomorrow has nothing to do with a hand-over yesterday.
 
-That is not something a cookie can promise. "Until the browser closes" is a
-promise browsers break: a phone that restores its tabs restores its session
-cookies with them. So the cookie carries the moment the lock was last known to
-be alive, and an open catalogue says so about once a minute — only while it is
-on screen, since a phone in a pocket is not a hand-over in progress. Close the
-app and the saying stops; five minutes later the lock is dead, and the
-middleware sweeps the cookie up the next time it sees it. Nothing can revive an
-expired lock, which is why a restored tab cannot re-arm one on load; starting a
-new lock takes a tap on **Catalog**.
+A timer cannot do both, and an earlier version tried: a five-minute window that
+a sleeping phone ran straight through, so refreshing handed the customer the
+whole app. What actually separates the two cases is whether *this run of the
+app* is the one that started the lock — and `sessionStorage` is the one thing in
+a browser that means exactly that. It survives a reload of the same tab and dies
+when the app closes.
 
-Five minutes rather than instantly, because a lock that ended the moment the app
-closed could be escaped by closing the app — one gesture, for the customer
-holding the phone. It is long enough to survive the browser dropping a
-backgrounded tab, and no ordinary launch falls inside it. A rep who wants out
-now types their PIN, which ends the lock on the spot. The window is
-`KIOSK_GRACE_MS` in `src/lib/kiosk.ts`.
+So the cookie carries a nonce naming the browsing session, and the catalogue
+remembers it. A page that finds the same nonce is a refresh, and stays locked
+however long the phone was asleep. A page that finds a different one — or none —
+is looking at a lock left over from an app that has been closed: it hides itself
+before first paint, clears the lock, and goes home. Hidden rather than shown and
+then replaced, because what would flash is a customer-facing catalogue on
+somebody's own phone. `KIOSK_GRACE_MS` is now only the backstop underneath that,
+for a browser that restores the cookie *and* the session storage together: long
+enough that a day of selling never trips it, short enough to be dead by morning.
+
+The PIN still ends a lock on the spot, and is still the only thing that ends one
+while the browsing session is alive.
 
 **No PIN, no lock.** Catalog refuses to start if the account has no PIN, and
 says so, because the PIN is the only way back out — locking without one shuts
@@ -382,6 +387,25 @@ being built for.
   no signal, a shop whose coordinates were never recorded — each falls back to
   alphabetical, and a shop with no coordinates sorts after every shop that has
   them, because unknown is not the same as far away.
+
+### Which currency a price is in
+
+HIG prices in dollars and in riel, and the two are stored separately because
+there is no rate here and this app will not invent one. That is right for
+storage and wrong for a screen: a rep holding the phone out to a shopkeeper
+wants one number on it, not a pair with a dot between them for the customer to
+pick from.
+
+**Settings → Currency** chooses which of the two the catalogue, the cart and
+orders show. It converts nothing — it picks between two figures that already
+exist. An item priced in only the other currency still shows that price, with
+its own symbol in front of it, because a price nobody can see is a sale nobody
+can make.
+
+Organisation-wide, like the printers: what HIG quotes in is decided once, not
+per rep and then argued about at a counter. Everyone reads it; only the
+`settings` module changes it. The inventory screens still show both, because
+that is where prices are maintained rather than quoted.
 
 ### The add-to-cart panel
 
@@ -517,6 +541,7 @@ migration — add a new one.
                               the cart gets a head, and orders start existing
 0044_free_quantity_and_discount_modes.sql
                               give some away, or discount in money
+0045_primary_currency.sql     which of the two prices a screen shows
 ```
 
 `0042` is the only one of these that is data rather than schema, and it is not
@@ -617,6 +642,20 @@ customer disputes an invoice.
 
 ```
 ERROR:  SALE ORDERS OK - 39 assertions passed (rls: ran)
+```
+
+### Settings tests
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/settings.test.sql
+```
+
+9 assertions. Two questions: is it really one row, since a second row of
+settings is a second answer to every question in it; and can only the settings
+module change it, given that every screen showing a price has to read it.
+
+```
+ERROR:  SETTINGS OK - 9 assertions passed
 ```
 
 ### Data sync tests

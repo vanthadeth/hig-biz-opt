@@ -23,7 +23,9 @@ function request(pathname: string, cookies: Record<string, string> = {}) {
  * default is "just now", which is what an open catalogue keeps making true.
  */
 function locked(pathname: string, agoMs = 0) {
-  return request(pathname, { hig_kiosk: kioskCookieValue("sales", Date.now() - agoMs) });
+  return request(pathname, {
+    hig_kiosk: kioskCookieValue("sales", Date.now() - agoMs, "sess1"),
+  });
 }
 
 function signedIn() {
@@ -148,19 +150,27 @@ describe("updateSession, locked to the catalogue", () => {
   });
 });
 
-describe("updateSession, a lock nobody kept alive", () => {
+describe("updateSession, a lock past its backstop", () => {
   beforeEach(signedIn);
 
-  it("does not lock the app on a launch hours later", async () => {
-    // The promise: the app never starts into a customer-facing catalogue. A
-    // phone that restores its tabs restores its session cookies with them, so
-    // the cookie coming back is expected — it comes back dead.
+  // What ends a lock normally is the browsing session ending, which only the
+  // page can see — see KioskGuard. This is the fallback underneath it, for a
+  // browser that restores the cookie and the session storage together.
+
+  it("still locks through a day of selling", async () => {
+    // Deliberately: a phone asleep in a customer's hand for half an hour is
+    // still a phone in a customer's hand, and refreshing must not free it.
     const to = redirectedTo(await updateSession(locked("/sales/home", 6 * 60 * 60 * 1000)));
+    expect(to?.pathname).toBe("/sales/products");
+  });
+
+  it("but not past the backstop", async () => {
+    const to = redirectedTo(await updateSession(locked("/sales/home", KIOSK_GRACE_MS + 60_000)));
     expect(to).toBeNull();
   });
 
-  it("nor a minute past the grace", async () => {
-    const to = redirectedTo(await updateSession(locked("/sales/home", KIOSK_GRACE_MS + 60_000)));
+  it("and not the next morning", async () => {
+    const to = redirectedTo(await updateSession(locked("/sales/home", 20 * 60 * 60 * 1000)));
     expect(to).toBeNull();
   });
 
@@ -172,7 +182,7 @@ describe("updateSession, a lock nobody kept alive", () => {
   it("sweeps the dead cookie up", async () => {
     // Otherwise it is read again on every request for as long as the browser
     // keeps it, and the app carries a lock it is deliberately ignoring.
-    const response = await updateSession(locked("/sales/home", 24 * 60 * 60 * 1000));
+    const response = await updateSession(locked("/sales/home", 30 * 60 * 60 * 1000));
     expect(response.headers.get("set-cookie")).toMatch(/hig_kiosk=;[\s\S]*Max-Age=0/i);
   });
 
@@ -186,5 +196,9 @@ describe("updateSession, a lock nobody kept alive", () => {
     // moment attached, so it has never been kept alive, so it locks nothing.
     const to = redirectedTo(await updateSession(request("/sales/home", { hig_kiosk: "sales" })));
     expect(to).toBeNull();
+    const stamped = redirectedTo(
+      await updateSession(request("/sales/home", { hig_kiosk: `sales.${Date.now()}` })),
+    );
+    expect(stamped).toBeNull();
   });
 });

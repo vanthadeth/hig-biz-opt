@@ -5,6 +5,7 @@ import { Counter } from "@/components/ui/Counter";
 import { NumberField } from "@/components/ui/NumberField";
 import { Icon } from "@/components/Icon";
 import { haptic } from "@/lib/haptics";
+import { totalIn, type Currency } from "@/lib/money";
 import {
   cleanAmount,
   cleanDiscount,
@@ -13,7 +14,6 @@ import {
   lineBefore,
   lineTotals,
   packChoices,
-  totalsLine,
   type CatalogItem,
   type Discount,
   type DiscountMode,
@@ -38,10 +38,13 @@ export function AddToCart({
   item,
   room,
   alreadyInCart,
+  currency,
   busy,
   onAdd,
 }: {
   item: CatalogItem;
+  /** Which of the two prices this organisation quotes in. */
+  currency: Currency;
   /** How many more of this may be taken, free ones included. */
   room: number;
   alreadyInCart: number;
@@ -191,11 +194,11 @@ export function AddToCart({
         <span className="shrink-0 text-right">
           {share > 0 && (
             <span className="block text-xs text-muted line-through">
-              {totalsLine(before)}
+              {totalIn(before, currency)}
             </span>
           )}
           <span className="block text-xl font-semibold tabular-nums">
-            {totalsLine(after)}
+            {totalIn(after, currency)}
           </span>
         </span>
       </div>

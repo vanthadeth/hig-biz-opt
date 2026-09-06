@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
+import { KIOSK_SESSION_KEY } from "@/lib/kiosk";
 import { quickActionsFor } from "@/lib/quickActions";
 import { can } from "@/lib/permissions";
 import { useShell } from "./ShellContext";
@@ -44,6 +45,18 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not lock the app.");
+
+      // Remembered before leaving, so the catalogue that loads next recognises
+      // the lock as its own. Without this it would read as a leftover from a
+      // session that ended, and undo itself on arrival.
+      try {
+        sessionStorage.setItem(KIOSK_SESSION_KEY, body.nonce);
+      } catch {
+        // Private mode, or storage refused. The lock still holds — the grace
+        // window is what covers this — it just will not survive the app being
+        // closed, which is the safer way for it to fail.
+      }
+
       onClose();
       // A full load rather than a client navigation: the shell is rendered on
       // the server and has to come back knowing it is locked.

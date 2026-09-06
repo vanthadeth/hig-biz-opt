@@ -12,6 +12,7 @@ const { KIOSK_GRACE_MS, kioskCookieValue } = await import("@/lib/kiosk");
 const { POST: enter } = await import("./enter/route");
 const { POST: exit } = await import("./exit/route");
 const { POST: keep } = await import("./keep/route");
+const { POST: abandon } = await import("./abandon/route");
 const { GET: state } = await import("./state/route");
 
 /** The Set-Cookie line for the lock, or null when the response sets none. */
@@ -44,7 +45,7 @@ function carrying(agoMs: number | null) {
   cookieStore.get.mockReturnValue(
     agoMs === null
       ? undefined
-      : { value: kioskCookieValue("sales", Date.now() - agoMs) },
+      : { value: kioskCookieValue("sales", Date.now() - agoMs, "sess1") },
   );
 }
 
@@ -85,6 +86,20 @@ describe("entering kiosk mode", () => {
 
     expect(cookie).not.toMatch(/Max-Age/i);
     expect(cookie).not.toMatch(/Expires/i);
+  });
+
+  it("issues a browsing session, and hands it back to be remembered", async () => {
+    // The page that loads next has to recognise the lock as its own. Without
+    // this it would read as a leftover from an app that has been closed, and
+    // undo itself on arrival.
+    pin({ isSet: true });
+    const response = await enter(post({ view: "sales" }));
+    const body = await response.json();
+
+    expect(typeof body.nonce).toBe("string");
+    expect(body.nonce.length).toBeGreaterThan(7);
+    expect(lockCookie(response)).toContain(`hig_kiosk=sales.`);
+    expect(lockCookie(response)).toContain(body.nonce);
   });
 
   it("stamps the lock with the moment it started", async () => {
@@ -201,9 +216,39 @@ describe("keeping a lock alive", () => {
     expect(lockCookie(await keep())).toContain("hig_kiosk=sales.");
   });
 
+  it("and the browsing session it belongs to", async () => {
+    // Keeping a lock alive must not quietly move it into a new session: the
+    // page holding the old nonce would then undo itself.
+    carrying(1_000);
+    expect(lockCookie(await keep())).toContain("sess1");
+  });
+
   it("refuses a caller who is not signed in", async () => {
     getViewer.mockResolvedValue(null);
     carrying(1_000);
     expect((await keep()).status).toBe(401);
+  });
+});
+
+describe("a lock left over from a session that ended", () => {
+  it("is cleared, so the app does not open into a catalogue", async () => {
+    // The app was closed and opened again; the browser restored the tab and
+    // the cookie with it. That is not a hand-over in progress.
+    carrying(60_000);
+    const response = await abandon();
+
+    expect(await response.json()).toMatchObject({ ok: true, wasLocked: true });
+    expect(lockCookie(response)).toMatch(/Max-Age=0/i);
+  });
+
+  it("says so plainly when there was nothing to clear", async () => {
+    carrying(null);
+    expect(await (await abandon()).json()).toMatchObject({ wasLocked: false });
+  });
+
+  it("refuses a caller who is not signed in", async () => {
+    getViewer.mockResolvedValue(null);
+    carrying(60_000);
+    expect((await abandon()).status).toBe(401);
   });
 });

@@ -9,7 +9,6 @@
  */
 
 import type { ChipTone } from "@/components/ui/Chip";
-import { formatKhr, formatUsd } from "@/lib/inventory";
 
 /** One row of public.item_catalogue, as the catalogue screen reads it. */
 export type CatalogItem = {
@@ -154,14 +153,12 @@ export function packingLine(item: {
   return parts.length ? parts.join(" · ") : null;
 }
 
-/** Both currencies on one line, or whichever of them is priced. */
-export function priceLine(item: {
-  price_usd: number | null;
-  price_khr: number | null;
-}): string {
-  const both = [formatUsd(item.price_usd), formatKhr(item.price_khr)].filter(Boolean);
-  return both.join(" · ") || "No price yet";
-}
+/*
+ * Prices are written by `priceIn` and `totalIn` in `money.ts`, which take the
+ * currency the organisation quotes in. There is deliberately nothing here that
+ * writes both at once: a screen showing two figures for one price makes the
+ * customer choose which they are being asked for.
+ */
 
 // Ordering -------------------------------------------------------------------------
 
@@ -454,11 +451,6 @@ export function cartSavings(entries: CartEntry[]): {
   }
 
   return { usd, khr };
-}
-
-export function totalsLine(totals: { usd: number | null; khr: number | null }): string {
-  const both = [formatUsd(totals.usd), formatKhr(totals.khr)].filter(Boolean);
-  return both.join(" · ") || "—";
 }
 
 /**

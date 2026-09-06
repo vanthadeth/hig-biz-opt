@@ -17,39 +17,50 @@
  */
 
 /**
- * Its value is the view that was locked and the moment the lock was last known
- * to be alive: `sales.1738900000000`. The view is there so unlocking returns
- * somebody where they were rather than to a chooser; the stamp is there so the
- * lock cannot outlive the hand-over that started it.
+ * Its value is the view that was locked, the moment the lock was last known to
+ * be alive, and the browsing session it belongs to:
+ * `sales.1738900000000.a1b2c3`. The view is there so unlocking returns somebody
+ * where they were; the stamp and the session are the two halves of "is this
+ * lock still real".
  */
 export const KIOSK_COOKIE = "hig_kiosk";
 
 /**
- * How long a lock survives with nobody keeping it alive.
+ * Where the page remembers which lock it is inside.
  *
- * The app must never start into a customer-facing catalogue: opening it the
- * next morning has nothing to do with a phone handed over yesterday. A cookie
- * cannot express that on its own — "until the browser closes" is a promise
- * browsers break, since a phone that restores its tabs restores its session
- * cookies with them.
+ * `sessionStorage`, not `localStorage`, and that is the whole idea: it survives
+ * a reload of the same tab and dies when the app is closed. Reloading the
+ * catalogue is something a rep does with a customer waiting, and it must not
+ * unlock the phone; opening the app tomorrow is a different thing entirely and
+ * must not open into a customer's catalogue.
  *
- * So a lock is only honoured while an open catalogue keeps saying it is still
- * there. Close the app and the saying stops, and the lock is dead within
- * minutes whatever the browser chose to restore.
- *
- * Why minutes rather than instantly: a lock that ended the moment the app was
- * closed could be escaped by closing the app, which a customer holding the
- * phone can do with one gesture. Five minutes is long enough to survive the
- * browser dropping a backgrounded tab and the customer coming back to it, and
- * short enough that no ordinary launch is inside it — and a rep who wants out
- * now types their PIN, which ends it on the spot.
+ * The value is the nonce from the cookie. A page that finds a different one —
+ * or none — is looking at a lock from a browsing session that has ended.
  */
-export const KIOSK_GRACE_MS = 5 * 60 * 1000;
+export const KIOSK_SESSION_KEY = "hig.kiosk.session";
 
-/** The cookie for a lock alive at `atMs`. */
-export function kioskCookieValue(viewKey: string, atMs: number): string {
-  return `${viewKey}.${atMs}`;
+/**
+ * The backstop: how long a lock can survive with nothing keeping it alive.
+ *
+ * This used to be the whole mechanism, at five minutes, and it was wrong in
+ * the way that matters. A phone in a customer's hand goes to sleep; the page
+ * stops saying it is there; five minutes later the lock was gone, so pulling
+ * the catalogue down to refresh it handed the customer the whole app.
+ *
+ * The browsing session decides now — see KIOSK_SESSION_KEY — and this is only
+ * the fallback for the case that check cannot cover: a browser that restores
+ * the cookie *and* the session storage on relaunch. Long enough that a day of
+ * selling never trips it, short enough that it is dead by the next morning.
+ */
+export const KIOSK_GRACE_MS = 12 * 60 * 60 * 1000;
+
+/** The cookie for a lock alive at `atMs`, belonging to one browsing session. */
+export function kioskCookieValue(viewKey: string, atMs: number, nonce: string): string {
+  return `${viewKey}.${atMs}.${nonce}`;
 }
+
+/** What a lock is, once the cookie has been read. */
+export type KioskLock = { view: string; nonce: string };
 
 /**
  * The view a cookie locks the device to, or null when it locks nothing.
@@ -60,23 +71,27 @@ export function kioskCookieValue(viewKey: string, atMs: number): string {
 export function readKioskCookie(
   value: string | undefined,
   nowMs: number,
-): string | null {
+): KioskLock | null {
   if (!value) return null;
 
-  // From the last dot: a view key could contain one, a timestamp cannot.
-  const cut = value.lastIndexOf(".");
-  if (cut <= 0) return null;
+  // Read from the right: the nonce and the stamp have no dots in them, and a
+  // view key might.
+  const parts = value.split(".");
+  if (parts.length < 3) return null;
 
-  const viewKey = value.slice(0, cut);
-  const stamp = Number(value.slice(cut + 1));
-  if (!Number.isFinite(stamp)) return null;
+  const nonce = parts[parts.length - 1];
+  const stamp = Number(parts[parts.length - 2]);
+  const view = parts.slice(0, -2).join(".");
+  if (view === "" || nonce === "" || !Number.isFinite(stamp)) return null;
 
   // A stamp from the future is a clock that moved, not a hand-over. Treated as
   // dead rather than eternal: the failure that leaves the app usable is the one
   // to prefer when the alternative is a phone locked by arithmetic.
-  if (stamp > nowMs) return nowMs - stamp > -KIOSK_GRACE_MS ? viewKey : null;
+  if (stamp > nowMs) {
+    return nowMs - stamp > -KIOSK_GRACE_MS ? { view, nonce } : null;
+  }
 
-  return nowMs - stamp <= KIOSK_GRACE_MS ? viewKey : null;
+  return nowMs - stamp <= KIOSK_GRACE_MS ? { view, nonce } : null;
 }
 
 /** Where a locked device is allowed to be. */

@@ -64,7 +64,7 @@ export async function updateSession(request: NextRequest) {
   // buttons, because a hidden button is not a lock — the address bar is right
   // there, and so is the back gesture.
   const lock = request.cookies.get(KIOSK_COOKIE)?.value;
-  const lockedView = readKioskCookie(lock, Date.now());
+  const lockedView = readKioskCookie(lock, Date.now())?.view ?? null;
   if (user && lockedView && !kioskAllows(pathname, lockedView)) {
     const url = request.nextUrl.clone();
     url.pathname = kioskLandingPath(lockedView);

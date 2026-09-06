@@ -11,6 +11,7 @@ import {
   type CatalogItem,
 } from "@/lib/catalog";
 import { lockedView } from "@/lib/kiosk.server";
+import { primaryCurrency } from "@/lib/money.server";
 import { Catalog } from "./Catalog";
 import { KioskBar } from "./KioskBar";
 
@@ -36,7 +37,7 @@ export default async function Page({
   // the shell would otherwise have no idea it is locked.
   const locked = (await lockedView()) !== null;
 
-  const [catalogue, lines, cart, customers] = await Promise.all([
+  const [catalogue, lines, cart, customers, currency] = await Promise.all([
     supabase
       .from("item_catalogue")
       .select(CATALOG_COLUMNS)
@@ -53,6 +54,9 @@ export default async function Page({
     // query. Fetched with the page because the picker has to sort them by how
     // far away they are, which cannot be done a page at a time.
     supabase.from("customers").select(CART_CUSTOMER_COLUMNS).order("shop_name"),
+    // Which of the two stored prices to show. Chosen once, in Settings, and
+    // never a conversion — see money.ts.
+    primaryCurrency(),
   ]);
 
   return (
@@ -64,6 +68,7 @@ export default async function Page({
         lines={(lines.data ?? []) as unknown as CartLine[]}
         cart={(cart.data ?? null) as unknown as Cart | null}
         customers={(customers.data ?? []) as unknown as CartCustomer[]}
+        currency={currency}
         viewKey={view}
       />
     </div>

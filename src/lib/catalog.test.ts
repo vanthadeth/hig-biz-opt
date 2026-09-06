@@ -28,10 +28,8 @@ import {
   countCatalog,
   matchesCatalog,
   packingLine,
-  priceLine,
   stockState,
   STOCK_LABELS,
-  totalsLine,
   type CartLine,
   type CatalogItem,
 } from "./catalog";
@@ -103,20 +101,6 @@ describe("packingLine", () => {
 
   it("says nothing about an item nobody has measured", () => {
     expect(packingLine({ qty_per_box: null, qty_per_carton: null })).toBeNull();
-  });
-});
-
-describe("priceLine", () => {
-  it("shows both currencies", () => {
-    expect(priceLine({ price_usd: 0.5, price_khr: 2000 })).toBe("$0.50 · ៛2,000");
-  });
-
-  it("shows whichever was filled in", () => {
-    expect(priceLine({ price_usd: null, price_khr: 2000 })).toBe("៛2,000");
-  });
-
-  it("says so plainly when nothing is priced", () => {
-    expect(priceLine({ price_usd: null, price_khr: null })).toBe("No price yet");
   });
 });
 
@@ -326,11 +310,6 @@ describe("the cart", () => {
 
   it("reads an empty cart as nothing rather than as zero", () => {
     expect(cartTotals([])).toEqual({ usd: null, khr: null });
-    expect(totalsLine({ usd: null, khr: null })).toBe("—");
-  });
-
-  it("writes the total in both currencies", () => {
-    expect(totalsLine({ usd: 13, khr: 4000 })).toBe("$13.00 · ៛4,000");
   });
 });
 

@@ -296,3 +296,14 @@ button,
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * A locked catalogue whose browsing session has ended.
+ *
+ * Set before first paint by KioskGuard's blocking script, cleared by leaving
+ * the page. Hidden rather than shown-then-replaced, because what would flash is
+ * a customer-facing catalogue on somebody's own phone.
+ */
+[data-kiosk-orphan] body {
+  visibility: hidden;
+}

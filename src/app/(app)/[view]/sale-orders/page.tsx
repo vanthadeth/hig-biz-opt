@@ -4,7 +4,8 @@ import { PageTitle } from "@/components/PageTitle";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { createClient } from "@/lib/supabase/server";
-import { totalsLine } from "@/lib/catalog";
+import { primaryCurrency } from "@/lib/money.server";
+import { totalIn } from "@/lib/money";
 import { ORDER_COLUMNS, orderDate, type SaleOrderRow } from "@/lib/saleOrders";
 
 /**
@@ -25,6 +26,7 @@ export default async function Page({
 }) {
   const { view } = await params;
   const supabase = await createClient();
+  const currency = await primaryCurrency();
   const { data } = await supabase
     .from("sale_orders")
     .select(ORDER_COLUMNS)
@@ -69,14 +71,14 @@ export default async function Page({
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block text-sm font-semibold tabular-nums">
-                      {totalsLine({ usd: order.total_usd, khr: order.total_khr })}
+                      {totalIn({ usd: order.total_usd, khr: order.total_khr }, currency)}
                     </span>
                     {(order.discount_usd ?? 0) > 0 && (
                       <span className="block text-xs tabular-nums text-muted">
-                        {totalsLine({
-                          usd: order.discount_usd,
-                          khr: order.discount_khr,
-                        })}{" "}
+                        {totalIn(
+                          { usd: order.discount_usd, khr: order.discount_khr },
+                          currency,
+                        )}{" "}
                         off
                       </span>
                     )}

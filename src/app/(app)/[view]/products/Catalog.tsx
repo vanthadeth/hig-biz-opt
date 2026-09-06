@@ -29,11 +29,9 @@ import {
   lineTotals,
   matchesCatalog,
   packingLine,
-  priceLine,
   stockState,
   STOCK_LABELS,
   STOCK_TONE,
-  totalsLine,
   type Cart,
   type CartCustomer,
   type CartLine,
@@ -41,6 +39,7 @@ import {
   type Discount,
 } from "@/lib/catalog";
 import { Counter } from "@/components/ui/Counter";
+import { priceIn, totalIn, type Currency } from "@/lib/money";
 import { AddToCart } from "./AddToCart";
 import { CustomerPicker } from "./CustomerPicker";
 import {
@@ -65,12 +64,15 @@ export function Catalog({
   lines: saved,
   cart: savedCart,
   customers,
+  currency,
   viewKey,
 }: {
   items: CatalogItem[];
   lines: CartLine[];
   cart: Cart | null;
   customers: CartCustomer[];
+  /** Which of the two prices to show. Chosen once, in Settings. */
+  currency: Currency;
   viewKey: string;
 }) {
   const [query, setQuery] = useState("");
@@ -317,7 +319,7 @@ export function Catalog({
   const savings = cartSavings(entries);
   const freeTotal = lines.reduce((n, line) => n + line.free_quantity, 0);
   const discountTotal =
-    savings.usd === null && savings.khr === null ? null : totalsLine(savings);
+    savings.usd === null && savings.khr === null ? null : totalIn(savings, currency);
   const openStock = open ? stockState(open) : null;
   const openRoom = open ? addableQty(open, inCart(open.id)) : 0;
   const openPictures = open ? (gallery[open.id] ?? []) : [];
@@ -419,7 +421,7 @@ export function Catalog({
                               </span>
                             )}
                             <span className="mt-1 block truncate text-xs font-medium">
-                              {priceLine(item)}
+                              {priceIn(item, currency)}
                             </span>
                           </span>
                           {/* `self-start` because a Chip in a flex column
@@ -474,7 +476,7 @@ export function Catalog({
                 {open.brand_name && <Chip tone="brand">{open.brand_name}</Chip>}
               </div>
 
-              <p className="text-base font-semibold">{priceLine(open)}</p>
+              <p className="text-base font-semibold">{priceIn(open, currency)}</p>
 
               {open.description && (
                 <p className="whitespace-pre-wrap text-sm text-muted">
@@ -508,6 +510,7 @@ export function Catalog({
                 key={open.id}
                 item={open}
                 room={openRoom}
+                currency={currency}
                 alreadyInCart={inCart(open.id)}
                 busy={busy}
                 onAdd={(quantity, free, discount) =>
@@ -576,7 +579,7 @@ export function Catalog({
                           {item.name}
                         </span>
                         <span className="block truncate text-xs text-muted">
-                          {priceLine(item)}
+                          {priceIn(item, currency)}
                         </span>
                         {line.free_quantity > 0 && (
                           /* Said on the line rather than folded into the
@@ -618,7 +621,7 @@ export function Catalog({
                         />
                       )}
                       <span className="text-sm font-medium tabular-nums">
-                        {totalsLine(lineTotals(item, line.quantity, lineDiscount(line)))}
+                        {totalIn(lineTotals(item, line.quantity, lineDiscount(line)), currency)}
                       </span>
                     </div>
                   </li>
@@ -638,7 +641,7 @@ export function Catalog({
                 {/* Large on purpose: it is the number read out loud, and the
                     one thing on this screen somebody checks from arm's length. */}
                 <p className="text-right text-2xl font-semibold tabular-nums">
-                  {totalsLine(totals)}
+                  {totalIn(totals, currency)}
                 </p>
               </div>
 

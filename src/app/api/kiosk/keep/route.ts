@@ -20,18 +20,20 @@ export async function POST() {
   const viewer = await getViewer();
   if (!viewer) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const view = readKioskCookie(
+  const lock = readKioskCookie(
     (await cookies()).get(KIOSK_COOKIE)?.value,
     Date.now(),
   );
-  if (!view) {
+  if (!lock) {
     // Gone. The page saying this is looking at a catalogue that is no longer
     // locked, and needs to reload into the ordinary app.
     return NextResponse.json({ ok: false, stale: true }, { status: 409 });
   }
 
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(KIOSK_COOKIE, kioskCookieValue(view, Date.now()), {
+  // The same session, re-stamped. Keeping somebody's lock alive must not
+  // quietly move it into a new browsing session.
+  response.cookies.set(KIOSK_COOKIE, kioskCookieValue(lock.view, Date.now(), lock.nonce), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

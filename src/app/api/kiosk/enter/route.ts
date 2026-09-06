@@ -34,8 +34,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = NextResponse.json({ ok: true, to: kioskLandingPath(view) });
-  response.cookies.set(KIOSK_COOKIE, kioskCookieValue(view, Date.now()), {
+  // The browsing session this lock belongs to. Handed back so the page can
+  // remember it: a page that later finds a different one — or none — is
+  // looking at a lock left over from an app that has since been closed.
+  const nonce = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+
+  const response = NextResponse.json({
+    ok: true,
+    to: kioskLandingPath(view),
+    nonce,
+  });
+  response.cookies.set(KIOSK_COOKIE, kioskCookieValue(view, Date.now(), nonce), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

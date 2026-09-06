@@ -146,6 +146,7 @@ export function AddToCart({
             onChange={setGiven}
             label="Free quantity"
             compact
+            full
           />
         </div>
 
@@ -154,7 +155,7 @@ export function AddToCart({
           <div className="flex items-center gap-1">
             {/* Two buttons rather than a dropdown: there are two answers, and
                 switching clears the other so only one can ever be applied. */}
-            <span className="flex shrink-0 rounded-lg border border-line p-0.5">
+            <span className="flex shrink-0 rounded-xl border border-line p-1">
               {(["percent", "amount"] as DiscountMode[]).map((option) => {
                 const enabled = option === "percent" || canUseAmount;
                 return (
@@ -169,7 +170,7 @@ export function AddToCart({
                       if (option === "percent") setAmount(0);
                       else setPercent(0);
                     }}
-                    className={`min-h-8 w-8 rounded-md text-xs font-medium disabled:opacity-40 ${
+                    className={`size-9 rounded-lg text-sm font-medium disabled:opacity-40 ${
                       mode === option ? "bg-brand text-brand-fg" : "text-muted"
                     }`}
                   >

@@ -31,7 +31,9 @@ export function NumberField({
         onChange(cleaned === "" ? 0 : Number(cleaned));
       }}
       onBlur={() => setDraft(null)}
-      className="min-h-9 w-full min-w-0 rounded-lg border border-line px-2 text-sm tabular-nums outline-none focus:border-brand disabled:opacity-60"
+      // 44px, which is what a compact Counter comes to: a 36px button inside
+      // 4px of padding. The two sit side by side and have to match.
+      className="min-h-11 w-full min-w-0 rounded-xl border border-line px-2 text-sm tabular-nums outline-none focus:border-brand disabled:opacity-60"
     />
   );
 }

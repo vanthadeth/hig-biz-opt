@@ -16,6 +16,7 @@ export function Counter({
   max,
   disabled,
   compact,
+  full,
   onChange,
   label,
 }: {
@@ -24,6 +25,8 @@ export function Counter({
   max: number;
   disabled: boolean;
   compact?: boolean;
+  /** Fills its column and spreads, for sitting level with another control. */
+  full?: boolean;
   onChange: (next: number) => void;
   label: string;
 }) {
@@ -36,7 +39,9 @@ export function Counter({
     <span
       role="group"
       aria-label={label}
-      className="flex w-fit shrink-0 items-center rounded-xl border border-line p-1"
+      className={`flex items-center rounded-xl border border-line p-1 ${
+        full ? "w-full justify-between" : "w-fit shrink-0"
+      }`}
     >
       <button
         type="button"

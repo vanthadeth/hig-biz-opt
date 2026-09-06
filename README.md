@@ -325,8 +325,9 @@ not fussiness: a password that arrives wrong twice gets replaced by something
 like "hig1234", which is the real failure. Sixteen characters from the remaining
 alphabet is about 89 bits, far more than symbols would have added.
 
-**Anyone changes their own** from their profile, in the page, without an email
-round trip — the common case is a rep who was handed a temporary password an
+**Anyone changes their own** from their profile — a button that opens a sheet,
+rather than a form sitting open on a page that is read far more often than it is
+edited — without an email round trip — the common case is a rep who was handed a temporary password an
 hour ago. The reset-by-email link is still there beside it for somebody who is
 locked out and cannot reach the page at all.
 

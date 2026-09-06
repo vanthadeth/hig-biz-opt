@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/Field";
-import { SectionHeader } from "@/components/ui/SectionHeader";
 import { haptic } from "@/lib/haptics";
 import { isPinShaped } from "@/lib/kiosk";
 import { createClient } from "@/lib/supabase/client";
@@ -14,8 +12,11 @@ import { createClient } from "@/lib/supabase/client";
  * Typed twice, because a PIN nobody can remember is not recoverable from here:
  * the hash is all the database keeps, and getting it wrong means being stuck
  * behind the lock until somebody sets a new one.
+ *
+ * A form and not a card: the sheet that opens it carries the heading, and two
+ * headings for one thing is one too many.
  */
-export function PinCard({ isSet }: { isSet: boolean }) {
+export function PinForm({ isSet }: { isSet: boolean }) {
   const [pin, setPin] = useState("");
   const [again, setAgain] = useState("");
   const [saving, setSaving] = useState(false);
@@ -50,12 +51,7 @@ export function PinCard({ isSet }: { isSet: boolean }) {
   }
 
   return (
-    <Card className="space-y-3 p-4">
-      <SectionHeader
-        title="Unlock PIN"
-        caption="Ends catalogue browsing when you hand your phone to a customer."
-      />
-
+    <div className="space-y-3">
       <p className="text-sm text-muted">
         {done
           ? "Saved. Use it to unlock after handing the phone over."
@@ -103,6 +99,6 @@ export function PinCard({ isSet }: { isSet: boolean }) {
       >
         {saving ? "Saving…" : isSet ? "Replace PIN" : "Set PIN"}
       </button>
-    </Card>
+    </div>
   );
 }

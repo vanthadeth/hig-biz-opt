@@ -16,14 +16,13 @@ import {
   cartCountLine,
   cartEntries,
   cartItemCount,
+  cartLineDetail,
   cartSavings,
   cartTotals,
   catalogGroups,
   cleanAmount,
   cleanDiscount,
   countCatalog,
-  discountLabel,
-  discountShare,
   lineDiscount,
   lineOffShelf,
   lineTotals,
@@ -38,7 +37,6 @@ import {
   type CatalogItem,
   type Discount,
 } from "@/lib/catalog";
-import { Counter } from "@/components/ui/Counter";
 import { PageTitle } from "@/components/PageTitle";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
@@ -96,6 +94,9 @@ export function Catalog({
   // The order just placed, kept so "See the order" can open that one rather
   // than a list somebody then has to find it in.
   const [placed, setPlaced] = useState<{ id: string; order_no: string } | null>(null);
+  // The cart line being changed. Editing replaces what the line says rather
+  // than adding to it, so it reuses the add panel with the line already in it.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Fetched when a sheet opens rather than with the page: a catalogue of a
   // hundred items would otherwise carry every picture of every one of them to
@@ -211,31 +212,6 @@ export function Catalog({
     }
   }
 
-  /** Changes a line's discount, once it is already in the cart. */
-  async function setLineDiscount(line: CartLine, percent: number) {
-    const clean = cleanDiscount(percent);
-    // Optimistic on this one alone: a number field that snaps back between
-    // keystrokes is unusable, and the write below corrects it either way.
-    setLines((all) =>
-      all.map((l) =>
-        l.id === line.id
-          ? { ...l, discount_mode: "percent" as const, discount_percent: clean, discount_amount: 0 }
-          : l,
-      ),
-    );
-
-    const { data, error } = await createClient()
-      .from("cart_lines")
-      .update({ discount_mode: "percent", discount_percent: clean, discount_amount: 0 })
-      .eq("id", line.id)
-      .select(CART_COLUMNS);
-
-    if (error || !data?.length) {
-      setError("That discount could not be saved.");
-      setLines((all) => all.map((l) => (l.id === line.id ? line : l)));
-    }
-  }
-
   /** Who this cart is for. */
   async function setCustomer(customerId: string | null) {
     setBusy(true);
@@ -287,6 +263,39 @@ export function Catalog({
     }
   }
 
+  /** Replaces everything a line says, from the panel that edits it. */
+  async function saveLine(
+    line: CartLine,
+    quantity: number,
+    free: number,
+    discount: Discount,
+  ) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { data, error } = await createClient()
+        .from("cart_lines")
+        .update({
+          quantity,
+          free_quantity: free,
+          ...discountColumns(discount),
+        })
+        .eq("id", line.id)
+        .select(CART_COLUMNS);
+      if (error) throw error;
+      if (!data?.length) throw new Error("That line could not be changed.");
+
+      setLines((all) => all.map((l) => (l.id === line.id ? (data[0] as CartLine) : l)));
+      haptic("success");
+      setEditingId(null);
+    } catch (e) {
+      haptic("error");
+      setError(e instanceof Error ? e.message : "That line could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Sets a line's quantity, or removes it when nothing is left. */
   async function setLineQty(line: CartLine, next: number) {
     setBusy(true);
@@ -324,6 +333,7 @@ export function Catalog({
 
   const count = cartItemCount(lines);
   const chosen = customers.find((c) => c.id === cart?.customer_id) ?? null;
+  const editing = entries.find(({ line }) => line.id === editingId) ?? null;
 
   // Said only when there were any: "0.00 off" is a line of noise on a cart
   // nobody discounted.
@@ -557,6 +567,36 @@ export function Catalog({
         )}
       </Sheet>
 
+      {/* Editing a line reuses the panel that made it, with the line already in
+          it. One control for the four numbers, rather than a second, smaller
+          set of them wedged into a list row. */}
+      <Sheet
+        open={editing !== null}
+        onClose={() => setEditingId(null)}
+        title={editing ? editing.item.name : "Line"}
+      >
+        {editing && (
+          <AddToCart
+            key={editing.line.id}
+            item={editing.item}
+            // One line per item per cart, so this line's own numbers are not
+            // competing with another line of the same thing.
+            room={editing.item.stock_qty}
+            alreadyInCart={0}
+            currency={currency}
+            busy={busy}
+            editing={{
+              quantity: editing.line.quantity,
+              free: editing.line.free_quantity,
+              discount: lineDiscount(editing.line),
+            }}
+            onAdd={(quantity, free, discount) =>
+              saveLine(editing.line, quantity, free, discount)
+            }
+          />
+        )}
+      </Sheet>
+
       <Sheet open={cartOpen} onClose={() => setCartOpen(false)} title="Cart">
         <div className="max-h-[70vh] space-y-3 overflow-y-auto px-3 pb-4 pt-1">
           {placed ? (
@@ -600,65 +640,46 @@ export function Catalog({
 
               <ul className="divide-y divide-line">
                 {entries.map(({ line, item }) => (
-                  <li key={line.id} className="space-y-2 py-3">
-                    <div className="flex items-center gap-3">
-                      <StoredPhoto
-                        name={item.name}
-                        path={item.photo_path}
-                        bucket={INVENTORY_BUCKET}
-                        fallback={<Icon name="box" className="size-4" />}
-                        className="size-12 shrink-0 rounded-lg"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">
-                          {item.name}
-                        </span>
-                        <span className="block truncate text-xs text-muted">
-                          {priceIn(item, currency)}
-                        </span>
-                        {line.free_quantity > 0 && (
-                          /* Said on the line rather than folded into the
-                             quantity: the shop is owed twelve and charged for
-                             ten, and both numbers have to be readable. */
-                          <span className="block text-xs font-medium text-tint-3-fg">
-                            + {line.free_quantity} free
-                          </span>
-                        )}
+                  <li key={line.id} className="flex items-start gap-2 py-3">
+                    <span className="min-w-0 flex-1">
+                      {/* What is being bought, at what, less what — the
+                          sentence a rep reads back to the shopkeeper. */}
+                      <span className="block truncate text-xs tabular-nums text-muted">
+                        {cartLineDetail(item, line, priceIn(item, currency))}
                       </span>
-                      <Counter
-                        value={line.quantity}
-                        min={0}
-                        max={item.stock_qty - line.free_quantity}
-                        disabled={busy}
-                        compact
-                        onChange={(next) => setLineQty(line, next)}
-                        label={`Quantity of ${item.name}`}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 pl-15">
-                      {line.discount_mode === "amount" ? (
-                        /* Agreed in money. Shown as it was agreed, with what it
-                           worked out to, rather than silently rewritten as a
-                           percent the rep never said. */
-                        <span className="text-xs text-muted">
-                          ${line.discount_amount.toFixed(2)} off ·{" "}
-                          {discountLabel(
-                            discountShare(lineDiscount(line), item.price_usd, line.quantity),
-                          ) ?? "nothing"}
-                        </span>
-                      ) : (
-                        <DiscountField
-                          value={line.discount_percent}
-                          disabled={busy}
-                          onChange={(percent) => setLineDiscount(line, percent)}
-                          label={`Discount on ${item.name}`}
-                        />
-                      )}
-                      <span className="text-sm font-medium tabular-nums text-brand">
+                      <span className="block truncate text-sm font-medium">
+                        {item.name}
+                      </span>
+                      <span className="mt-0.5 block text-base font-semibold tabular-nums text-brand">
                         {totalIn(lineTotals(item, line.quantity, lineDiscount(line)), currency)}
                       </span>
-                    </div>
+                    </span>
+
+                    {/* Both ways of being wrong about a line: the wrong numbers
+                        on it, or its being there at all. */}
+                    <span className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptic("tap");
+                          setEditingId(line.id);
+                        }}
+                        disabled={busy}
+                        aria-label={`Edit ${item.name}`}
+                        className="pressable flex size-9 items-center justify-center rounded-xl border border-line text-muted disabled:opacity-60"
+                      >
+                        <Icon name="pencil" className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLineQty(line, 0)}
+                        disabled={busy}
+                        aria-label={`Remove ${item.name}`}
+                        className="pressable flex size-9 items-center justify-center rounded-xl border border-line text-muted disabled:opacity-60"
+                      >
+                        <Icon name="trash" className="size-4" />
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -733,47 +754,4 @@ function discountColumns(discount: Discount) {
       };
 }
 
-/**
- * A percent off, typed rather than stepped.
- *
- * A stepper is right for quantity, where the numbers are small and adjacent;
- * a discount is a number somebody has in mind before they reach for the phone,
- * and tapping + eleven times to reach 11% is not how that conversation goes.
- */
-function DiscountField({
-  id,
-  value,
-  disabled,
-  onChange,
-  label,
-}: {
-  id?: string;
-  value: number;
-  disabled: boolean;
-  onChange: (next: number) => void;
-  label: string;
-}) {
-  return (
-    <span className="flex w-fit items-center gap-1 rounded-xl border border-line px-2 py-1">
-      <input
-        id={id}
-        type="text"
-        inputMode="decimal"
-        aria-label={label}
-        disabled={disabled}
-        value={value === 0 ? "" : String(value)}
-        placeholder="0"
-        onChange={(e) => {
-          // Digits and one point. Typed on a phone, by somebody holding it out
-          // to a shopkeeper, so a value it will not accept is not worth an
-          // error message — it is worth not being typeable.
-          const cleaned = e.target.value.replace(/[^0-9.]/g, "");
-          const parsed = Number(cleaned);
-          onChange(cleaned === "" || Number.isNaN(parsed) ? 0 : cleanDiscount(parsed));
-        }}
-        className="w-12 bg-transparent text-right text-sm tabular-nums outline-none disabled:opacity-60"
-      />
-      <span className="text-sm text-muted">%</span>
-    </span>
-  );
-}
+

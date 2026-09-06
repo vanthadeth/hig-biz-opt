@@ -11,6 +11,8 @@ import {
   lineDiscount,
   lineOffShelf,
   lineTotals,
+  cartLineDetail,
+  discountOff,
   packChoices,
   quantityLine,
   cartPieceCount,
@@ -574,5 +576,57 @@ describe("the quantities worth one tap", () => {
     expect(
       packChoices({ qty_per_box: null, qty_per_carton: 48 }).map((p) => p.quantity),
     ).toEqual([1, 48]);
+  });
+});
+
+describe("what a cart line says above its name", () => {
+  const priced = { price_usd: 10, price_khr: 41000 };
+  const line = (over: Partial<{
+    quantity: number;
+    free_quantity: number;
+    discount_mode: "percent" | "amount";
+    discount_percent: number;
+    discount_amount: number;
+  }> = {}) => ({
+    quantity: 10,
+    free_quantity: 0,
+    discount_mode: "percent" as const,
+    discount_percent: 0,
+    discount_amount: 0,
+    ...over,
+  });
+
+  it("reads as the sentence a rep says out loud", () => {
+    expect(
+      cartLineDetail(priced, line({ free_quantity: 2, discount_percent: 10 }), "$10.00"),
+    ).toBe("10 + 2 free × $10.00 −10%");
+  });
+
+  it("drops each part that has nothing to say", () => {
+    expect(cartLineDetail(priced, line(), "$10.00")).toBe("10 × $10.00");
+    expect(cartLineDetail(priced, line({ free_quantity: 3 }), "$10.00")).toBe(
+      "10 + 3 free × $10.00",
+    );
+  });
+
+  it("still reads when there is no price at all", () => {
+    expect(cartLineDetail(priced, line({ discount_percent: 5 }), null)).toBe("10 −5%");
+  });
+
+  it("keeps money as money", () => {
+    // "two dollars off" rewritten as a percentage tells somebody they said
+    // something they did not.
+    expect(
+      discountOff(line({ discount_mode: "amount", discount_amount: 2 })),
+    ).toBe("−$2.00");
+  });
+
+  it("drops the zeros a machine would leave on a percent", () => {
+    expect(discountOff(line({ discount_percent: 12.5 }))).toBe("−12.5%");
+  });
+
+  it("says nothing when nothing was taken off", () => {
+    expect(discountOff(line())).toBeNull();
+    expect(discountOff(line({ discount_mode: "amount" }))).toBeNull();
   });
 });

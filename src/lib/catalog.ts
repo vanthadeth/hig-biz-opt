@@ -600,3 +600,53 @@ export function customerWhere(customer: CartCustomer): string | null {
     .filter((part): part is string => !!part);
   return parts.length ? parts.join(", ") : null;
 }
+
+/**
+ * The line above a cart item's name: what is being bought, at what, less what.
+ *
+ * "10 + 2 free × $10.00 −10%". One line rather than three labelled fields,
+ * because a rep reads it back to a shopkeeper as a sentence and every word of
+ * it is a number they already said out loud.
+ *
+ * Each part disappears when it has nothing to say: no free ones, no discount,
+ * no price. What is left still reads.
+ */
+export function cartLineDetail(
+  item: { price_usd: number | null; price_khr: number | null },
+  line: {
+    quantity: number;
+    free_quantity: number;
+    discount_mode: DiscountMode;
+    discount_percent: number;
+    discount_amount: number;
+  },
+  price: string | null,
+): string {
+  const parts = [quantityLine(line.quantity, line.free_quantity)];
+  if (price) parts.push(`× ${price}`);
+
+  const off = discountOff(line);
+  if (off) parts.push(off);
+
+  return parts.join(" ");
+}
+
+/**
+ * The discount on a line, as short as it can be said.
+ *
+ * Money stays money and a percent stays a percent: rewriting "two dollars off"
+ * as a percentage tells somebody they said something they did not.
+ */
+export function discountOff(line: {
+  discount_mode: DiscountMode;
+  discount_percent: number;
+  discount_amount: number;
+}): string | null {
+  if (line.discount_mode === "amount") {
+    const amount = cleanAmount(line.discount_amount);
+    return amount > 0 ? `−$${amount.toFixed(2)}` : null;
+  }
+  const percent = cleanDiscount(line.discount_percent);
+  // Trailing zeros dropped: "−12.5%", not "−12.50%".
+  return percent > 0 ? `−${Number(percent)}%` : null;
+}

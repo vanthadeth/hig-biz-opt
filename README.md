@@ -471,6 +471,17 @@ The rows are in the order the conversation happens in:
 4. **What it comes to**, large, with the undiscounted figure struck through above
    it — the number that gets read back.
 
+A cart line reads as the sentence a rep says out loud — `10 + 2 free × $10.00
+−10%`, the item's name under it, and what that comes to under that. Each part of
+the first line disappears when it has nothing to say. A discount agreed in money
+stays money there: rewriting "two dollars off" as a percentage tells somebody
+they said something they did not.
+
+Changing a line reuses the panel that made it, with the line already in it, so
+there is one control for the four numbers rather than a second smaller set of
+them wedged into a list row. Editing **replaces** what the line says — a rep
+correcting "ten" to "twelve" means twelve, not twenty-two.
+
 **Convert to sale order** is the line between the two, and **See the order**
 opens the one just placed rather than a list to find it in. Everything happens in
 `app.confirm_cart()`, in one transaction: the number is issued, the lines are

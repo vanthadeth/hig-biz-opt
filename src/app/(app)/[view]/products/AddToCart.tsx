@@ -34,12 +34,16 @@ import {
  * discount together, because they are the two ways a rep sweetens the same
  * deal; then the money, large, because it is the number read back.
  */
+/** What a line already says, when this panel is editing one. */
+export type LineDraft = { quantity: number; free: number; discount: Discount };
+
 export function AddToCart({
   item,
   room,
   alreadyInCart,
   currency,
   busy,
+  editing,
   onAdd,
 }: {
   item: CatalogItem;
@@ -49,13 +53,19 @@ export function AddToCart({
   room: number;
   alreadyInCart: number;
   busy: boolean;
+  /**
+   * The line being changed, when there is one. Editing replaces what the line
+   * says rather than adding to it — a rep correcting "ten" to "twelve" means
+   * twelve, not twenty-two.
+   */
+  editing?: LineDraft;
   onAdd: (quantity: number, free: number, discount: Discount) => void;
 }) {
-  const [quantity, setQuantity] = useState(1);
-  const [free, setFree] = useState(0);
-  const [mode, setMode] = useState<DiscountMode>("percent");
-  const [percent, setPercent] = useState(0);
-  const [amount, setAmount] = useState(0);
+  const [quantity, setQuantity] = useState(editing?.quantity ?? 1);
+  const [free, setFree] = useState(editing?.free ?? 0);
+  const [mode, setMode] = useState<DiscountMode>(editing?.discount.mode ?? "percent");
+  const [percent, setPercent] = useState(editing?.discount.percent ?? 0);
+  const [amount, setAmount] = useState(editing?.discount.amount ?? 0);
 
   const packs = packChoices(item);
   // An amount off needs a dollar price to be an amount off *of*.
@@ -187,7 +197,7 @@ export function AddToCart({
         <span className="min-w-0 space-y-0.5 text-xs text-muted">
           {free > 0 && <span className="block">{quantity} paid · {free} free</span>}
           <span className="block">{takes} off the shelf</span>
-          {alreadyInCart > 0 && (
+          {!editing && alreadyInCart > 0 && (
             <span className="block">{alreadyInCart} already in the cart</span>
           )}
         </span>
@@ -210,7 +220,7 @@ export function AddToCart({
         className="pressable flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg disabled:opacity-60"
       >
         <Icon name="cart" className="size-4" />
-        {busy ? "Adding…" : "Add to cart"}
+        {busy ? "Saving…" : editing ? "Save the line" : "Add to cart"}
       </button>
     </div>
   );

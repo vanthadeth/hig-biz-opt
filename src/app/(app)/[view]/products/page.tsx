@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { PageTitle } from "@/components/PageTitle";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -6,7 +7,9 @@ import {
   type CartLine,
   type CatalogItem,
 } from "@/lib/catalog";
+import { KIOSK_COOKIE } from "@/lib/kiosk";
 import { Catalog } from "./Catalog";
+import { KioskBar } from "./KioskBar";
 
 /**
  * The catalogue you sell from.
@@ -21,6 +24,9 @@ import { Catalog } from "./Catalog";
  */
 export default async function Page() {
   const supabase = await createClient();
+  // Read on the server: the cookie is httpOnly, so the page cannot see it and
+  // the shell would otherwise have no idea it is locked.
+  const locked = (await cookies()).has(KIOSK_COOKIE);
 
   const [catalogue, cart] = await Promise.all([
     supabase
@@ -36,6 +42,7 @@ export default async function Page() {
 
   return (
     <div className="space-y-5">
+      {locked && <KioskBar />}
       <PageTitle />
       <Catalog
         items={(catalogue.data ?? []) as unknown as CatalogItem[]}

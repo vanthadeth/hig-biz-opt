@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/AppShell";
+import { KIOSK_COOKIE } from "@/lib/kiosk";
 import {
   getMyModules,
   getMyNav,
@@ -32,6 +34,16 @@ export default async function ViewLayout({
     if (views.length === 0) redirect("/no-access");
     if (views.length === 1) redirect(`/${views[0].key}/home`);
     redirect("/select-view");
+  }
+
+  // Locked to the catalogue: render the page with no shell at all. The
+  // middleware already refuses every other path, so this is not the lock — it
+  // is not showing a customer a row of buttons that only bounce them back.
+  const locked = (await cookies()).get(KIOSK_COOKIE)?.value;
+  if (locked) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-3xl px-4 py-4">{children}</div>
+    );
   }
 
   // Fetched together rather than in sequence: the nav and the quick actions are

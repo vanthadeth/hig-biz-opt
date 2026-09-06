@@ -1,26 +1,20 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { Permission } from "@/lib/permissions";
 
-export type PermissionAction = "view" | "add" | "edit" | "delete";
-
-/** A reach that has actually been granted. `my_permissions()` returns only these. */
-export type PermissionScope = "own" | "sub" | "any";
-
-/**
- * What a matrix cell holds. `deny` is a decision somebody made, which is not
- * the same as a permission nobody has configured — the difference is invisible
- * once resolved, but the editing screen needs both.
- */
-export type StoredScope = PermissionScope | "deny";
+// Re-exported so callers keep one import, but defined in a module with no
+// server imports of its own: a client component importing `can` from here
+// would pull `next/headers` into the browser bundle and fail the build.
+export {
+  can,
+  type Permission,
+  type PermissionAction,
+  type PermissionScope,
+  type StoredScope,
+} from "@/lib/permissions";
 
 /** Mirrors public.user_status. A suspension is reversible; a discharge is not. */
 export type UserStatus = "active" | "suspended" | "discharged";
-
-export type Permission = {
-  module_key: string;
-  action: PermissionAction;
-  scope: PermissionScope;
-};
 
 export type ViewSummary = {
   key: string;
@@ -123,14 +117,6 @@ export async function getMyPermissions(): Promise<Permission[]> {
   const { data, error } = await supabase.rpc("my_permissions");
   if (error) throw error;
   return (data ?? []) as Permission[];
-}
-
-export function can(
-  permissions: Permission[],
-  moduleKey: string,
-  action: PermissionAction,
-): boolean {
-  return permissions.some((p) => p.module_key === moduleKey && p.action === action);
 }
 
 /**

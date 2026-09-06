@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { KIOSK_COOKIE, kioskAllows, kioskLandingPath } from "@/lib/kiosk";
 
 /**
  * Routes reachable without a session.
@@ -50,6 +51,18 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
+    return NextResponse.redirect(url);
+  }
+
+  // Kiosk: the phone is in a customer's hands, so nothing but the catalogue is
+  // served until somebody types the PIN. Enforced here rather than by hiding
+  // buttons, because a hidden button is not a lock — the address bar is right
+  // there, and so is the back gesture.
+  const lockedView = request.cookies.get(KIOSK_COOKIE)?.value;
+  if (user && lockedView && !kioskAllows(pathname, lockedView)) {
+    const url = request.nextUrl.clone();
+    url.pathname = kioskLandingPath(lockedView);
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

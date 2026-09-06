@@ -12,6 +12,7 @@ import {
   type UserRecord,
 } from "@/lib/users";
 import { ResetPasswordButton } from "./ResetPasswordButton";
+import { PinCard } from "./PinCard";
 
 export const metadata: Metadata = { title: "Profile" };
 
@@ -44,6 +45,8 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   }
 
   const record = data as unknown as UserRecord;
+
+  const { data: pinSet } = await supabase.rpc("my_pin_is_set");
 
   const [department, role] = await Promise.all([
     record.department_id
@@ -83,6 +86,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
       />
 
       <div className="flex flex-wrap gap-2 pt-1">
+        <PinCard isSet={pinSet === true} />
         <ResetPasswordButton email={record.email} />
         <SignOutButton />
       </div>

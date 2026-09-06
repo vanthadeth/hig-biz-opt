@@ -299,6 +299,42 @@ the sheet itself, with the same read-only credential as always.
 - **Arbitrary target tables.** `public.sync_targets` is seeded by migration.
   Adding one is a migration, which is a review, which is the point.
 
+## Handing the phone over
+
+A rep opens the catalogue, gives the phone to the shopkeeper, and the shopkeeper
+picks things off it. **Quick actions → Catalog** starts that: the app locks to
+the catalogue and everything else needs a four-digit PIN.
+
+The lock is a cookie the browser cannot read (`httpOnly`), checked in
+`src/lib/supabase/middleware.ts` on every request. A path that is not the
+catalogue redirects back to it, so the back gesture and the address bar are both
+covered. The shell — bottom bar, title bar, menu — is not rendered at all while
+locked, because a row of buttons that only bounce somebody back is worse than no
+buttons.
+
+**What this is not.** A defence against whoever owns the device. The signed-in
+session is still in that browser, and anybody who can reach the browser's own
+settings can clear a cookie. It stops a customer wandering out of the catalogue,
+which is the thing that actually happens. Do not lend the phone to somebody you
+would not lend the account to.
+
+The PIN is set on your profile, hashed with bcrypt in `public.user_pins` — a
+table with no RLS policies at all, reachable only through two `security definer`
+functions. Five wrong tries locks it for five minutes. Set one **before** the
+first time you hand the phone over: without it, browsing cannot be ended on that
+device.
+
+### Arranging the bottom bar
+
+Home and Menu are fixed; the two slots between them and the raised centre button
+are not. **Hold** any of the three to change it. The arrangement is kept on the
+device rather than on the account — it is where a thumb expects to find things
+on the phone somebody carries, not a fact about who they are.
+
+The centre button opens the quick actions by default, and can be pinned to one
+create action instead. A hold always reopens the choice, so pinning is never a
+one-way door.
+
 ## Pages start blank
 
 Every module page is deliberately empty:
@@ -359,6 +395,13 @@ migration — add a new one.
 0035_catalog_and_cart.sql     packing, stock, and a cart that is yours alone
 0036_data_sync.sql            Google Sheets in, one way, through an allow-list
 0036b_sync_apply_wrapper      the writer's doorway, open to the service role
+0037_sheet_ids_and_targets    the sheets' own IDs, and the links between them
+0037b_existing_syncs...       syncs written before 0037 keep their old matching
+0038_sync_clear.sql           undoing an import that went in wrong
+0039_sync_clear_scope.sql     ...including one that went in without its IDs
+0039b_clear_reports...        naming the table to clear first, not a constraint
+0040_name_and_name_alt.sql    name_en and name_km become name and name_alt
+0041_pin_lock.sql             a four-digit PIN, for handing the phone over
 ```
 
 Run `get_advisors` (security and performance) after adding a migration. The only

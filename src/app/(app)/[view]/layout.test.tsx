@@ -13,6 +13,11 @@ vi.mock("@/lib/access", () => ({
   getMyModules,
   getMyPermissions,
 }));
+// The layout reads the kiosk cookie before deciding whether to render a shell
+// at all. Unlocked is the state every assertion below is about.
+const cookieStore = { get: vi.fn(() => undefined) };
+vi.mock("next/headers", () => ({ cookies: async () => cookieStore }));
+
 vi.mock("@/components/shell/AppShell", () => ({
   AppShell: ({ data }: { data: { view: { key: string } } }) => (
     <div data-testid="shell" data-view={data.view.key} />

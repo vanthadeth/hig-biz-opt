@@ -11,11 +11,27 @@ import { SideNav } from "./SideNav";
  */
 export function AppShell({
   data,
+  locked = false,
   children,
 }: {
   data: ShellData;
+  /**
+   * Kiosk: the phone is in a customer's hands. No navigation is rendered — but
+   * the context still is. Children reach for it (the page heading comes from
+   * the module registry through `useShell`), and a provider that vanished in
+   * one mode would take the page down with it rather than hiding a menu.
+   */
+  locked?: boolean;
   children: React.ReactNode;
 }) {
+  if (locked) {
+    return (
+      <ShellProvider value={data}>
+        <main className="mx-auto min-h-dvh w-full max-w-3xl px-4 py-4">{children}</main>
+      </ShellProvider>
+    );
+  }
+
   return (
     <ShellProvider value={data}>
       <SideNav />

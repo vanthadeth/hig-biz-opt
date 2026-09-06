@@ -13,14 +13,15 @@ vi.mock("@/lib/access", () => ({
   getMyModules,
   getMyPermissions,
 }));
-// The layout reads the kiosk cookie before deciding whether to render a shell
-// at all. Unlocked is the state every assertion below is about.
-const cookieStore = { get: vi.fn(() => undefined) };
+// The layout reads the kiosk cookie to decide whether the shell renders its
+// navigation. Unlocked is the state every assertion below is about, bar the
+// one that names the lock.
+const cookieStore = { has: vi.fn(() => false) };
 vi.mock("next/headers", () => ({ cookies: async () => cookieStore }));
 
 vi.mock("@/components/shell/AppShell", () => ({
-  AppShell: ({ data }: { data: { view: { key: string } } }) => (
-    <div data-testid="shell" data-view={data.view.key} />
+  AppShell: ({ data, locked }: { data: { view: { key: string } }; locked?: boolean }) => (
+    <div data-testid="shell" data-view={data.view.key} data-locked={String(!!locked)} />
   ),
 }));
 
@@ -60,6 +61,7 @@ async function enter(viewKey: string) {
 }
 
 beforeEach(() => {
+  cookieStore.has.mockReset().mockReturnValue(false);
   requireViewer.mockReset().mockResolvedValue(viewer);
   getMyViews.mockReset();
   getMyNav.mockReset().mockResolvedValue([]);
@@ -113,5 +115,29 @@ describe("ViewLayout entitlement", () => {
     getMyViews.mockResolvedValue([view("sales")]);
     await enter("sales");
     expect(requireViewer).toHaveBeenCalled();
+  });
+});
+
+describe("ViewLayout in kiosk mode", () => {
+  /** The `locked` flag the layout hands the shell, read off the element. */
+  const lockedFlag = (element: unknown) =>
+    (element as { props: { locked?: boolean } }).props.locked;
+
+  it("still renders the shell, so the page keeps its context", async () => {
+    // The regression this guards: returning children bare left `useShell` with
+    // no provider, and the page heading threw rather than rendering.
+    cookieStore.has.mockReturnValue(true);
+    getMyViews.mockResolvedValue([view("sales")]);
+    const { element, redirectedTo } = await enter("sales");
+
+    expect(redirectedTo).toBeNull();
+    expect(element).not.toBeNull();
+    expect(lockedFlag(element)).toBe(true);
+  });
+
+  it("leaves the shell unlocked when the cookie is absent", async () => {
+    getMyViews.mockResolvedValue([view("sales")]);
+    const { element } = await enter("sales");
+    expect(lockedFlag(element)).toBe(false);
   });
 });

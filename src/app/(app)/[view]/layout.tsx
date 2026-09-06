@@ -36,15 +36,10 @@ export default async function ViewLayout({
     redirect("/select-view");
   }
 
-  // Locked to the catalogue: render the page with no shell at all. The
-  // middleware already refuses every other path, so this is not the lock — it
-  // is not showing a customer a row of buttons that only bounce them back.
-  const locked = (await cookies()).get(KIOSK_COOKIE)?.value;
-  if (locked) {
-    return (
-      <div className="mx-auto min-h-dvh w-full max-w-3xl px-4 py-4">{children}</div>
-    );
-  }
+  // Locked to the catalogue: the shell renders no navigation, but it still
+  // renders. The middleware is the lock; this only stops showing a customer a
+  // row of buttons that would bounce them straight back.
+  const locked = (await cookies()).has(KIOSK_COOKIE);
 
   // Fetched together rather than in sequence: the nav and the quick actions are
   // both needed before the shell can render, and they do not depend on one
@@ -56,7 +51,10 @@ export default async function ViewLayout({
   ]);
 
   return (
-    <AppShell data={{ viewer, view, views, nav, modules, permissions }}>
+    <AppShell
+      data={{ viewer, view, views, nav, modules, permissions }}
+      locked={locked}
+    >
       {children}
     </AppShell>
   );

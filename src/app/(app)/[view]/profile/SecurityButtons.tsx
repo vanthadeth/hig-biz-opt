@@ -6,7 +6,6 @@ import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
 import { ChangePassword } from "./ChangePassword";
 import { PinForm } from "./PinForm";
-import { ResetPasswordButton } from "./ResetPasswordButton";
 
 type Open = "password" | "pin" | null;
 
@@ -18,13 +17,7 @@ type Open = "password" | "pin" | null;
  * passwords and PINs makes the record underneath them harder to find. Each one
  * opens where the work is, and closes when it is done.
  */
-export function SecurityButtons({
-  email,
-  pinIsSet,
-}: {
-  email: string | null;
-  pinIsSet: boolean;
-}) {
+export function SecurityButtons({ pinIsSet }: { pinIsSet: boolean }) {
   const [open, setOpen] = useState<Open>(null);
 
   const show = (which: Open) => () => {
@@ -59,13 +52,8 @@ export function SecurityButtons({
         onClose={() => setOpen(null)}
         title="Change password"
       >
-        <div className="space-y-4 px-3 pb-4 pt-1">
+        <div className="px-3 pb-4 pt-1">
           <ChangePassword />
-          {/* Still here for somebody who is locked out and cannot reach this
-              page at all — a different problem from the one above it. */}
-          <div className="border-t border-line pt-3">
-            <ResetPasswordButton email={email} />
-          </div>
         </div>
       </Sheet>
 

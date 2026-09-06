@@ -327,9 +327,14 @@ alphabet is about 89 bits, far more than symbols would have added.
 
 **Anyone changes their own** from their profile — a button that opens a sheet,
 rather than a form sitting open on a page that is read far more often than it is
-edited — without an email round trip — the common case is a rep who was handed a temporary password an
-hour ago. The reset-by-email link is still there beside it for somebody who is
-locked out and cannot reach the page at all.
+edited. No email round trip: the common case is a rep who was handed a temporary
+password an hour ago and wants their own.
+
+There is deliberately **no self-service reset**. Somebody who has forgotten their
+password and cannot sign in asks a super admin for a new one, which is the same
+path that gave them their first. A reset link would have to arrive somewhere —
+and for a team on Telegram, whose addresses are often a shared office mailbox,
+"somewhere" is not reliably the person it names.
 
 ## Handing the phone over
 
@@ -764,7 +769,8 @@ unauthenticated caller gets nothing regardless of what it knows.
 
 - **Supabase → Authentication → URL Configuration**: set *Site URL* to the
   production URL and add `https://<your-url>/**` to *Redirect URLs*. Password
-  sign-in works without this; password-reset emails do not.
+  sign-in works without this; anything that sends a link would not, and nothing
+  in the app does today.
 - **Vercel → Settings → Functions → Region**: set it near the database
   (`ap-northeast-2`, Seoul). Singapore is the closest sensible choice for a
   Cambodia-based team. Every page render makes several Supabase calls, so the

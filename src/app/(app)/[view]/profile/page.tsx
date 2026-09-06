@@ -85,7 +85,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
       />
 
       <div className="flex flex-wrap gap-2 pt-1">
-        <SecurityButtons email={record.email} pinIsSet={pinSet === true} />
+        <SecurityButtons pinIsSet={pinSet === true} />
         <SignOutButton />
       </div>
     </div>

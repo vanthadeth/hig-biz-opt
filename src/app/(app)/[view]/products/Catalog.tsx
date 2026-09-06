@@ -42,6 +42,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { priceIn, totalIn, type Currency } from "@/lib/money";
 import { AddToCart } from "./AddToCart";
+import { CartRow } from "./CartRow";
 import { KioskBar } from "./KioskBar";
 import { CustomerPicker } from "./CustomerPicker";
 import {
@@ -97,6 +98,9 @@ export function Catalog({
   // The cart line being changed. Editing replaces what the line says rather
   // than adding to it, so it reuses the add panel with the line already in it.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Removing is asked about rather than done: a swipe is easy to make by
+  // accident, and a line put back is a line retyped.
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   // Fetched when a sheet opens rather than with the page: a catalogue of a
   // hundred items would otherwise carry every picture of every one of them to
@@ -334,6 +338,7 @@ export function Catalog({
   const count = cartItemCount(lines);
   const chosen = customers.find((c) => c.id === cart?.customer_id) ?? null;
   const editing = entries.find(({ line }) => line.id === editingId) ?? null;
+  const removing = entries.find(({ line }) => line.id === removingId) ?? null;
 
   // Said only when there were any: "0.00 off" is a line of noise on a cart
   // nobody discounted.
@@ -567,6 +572,42 @@ export function Catalog({
         )}
       </Sheet>
 
+      <Sheet
+        open={removing !== null}
+        onClose={() => setRemovingId(null)}
+        title="Remove from the cart?"
+      >
+        {removing && (
+          <div className="space-y-4 px-3 pb-4 pt-1">
+            <p className="text-sm text-muted">
+              <span className="font-medium text-fg">{removing.item.name}</span> comes
+              off this cart. Nothing else changes.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRemovingId(null)}
+                className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium"
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const line = removing.line;
+                  setRemovingId(null);
+                  void setLineQty(line, 0);
+                }}
+                disabled={busy}
+                className="pressable min-h-11 flex-1 rounded-xl bg-danger text-sm font-medium text-danger-fg disabled:opacity-60"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
+
       {/* Editing a line reuses the panel that made it, with the line already in
           it. One control for the four numbers, rather than a second, smaller
           set of them wedged into a list row. */}
@@ -640,49 +681,24 @@ export function Catalog({
 
               <ul className="divide-y divide-line">
                 {entries.map(({ line, item }) => (
-                  <li key={line.id} className="flex items-start gap-2 py-3">
-                    <span className="min-w-0 flex-1">
-                      {/* What is being bought, at what, less what — the
-                          sentence a rep reads back to the shopkeeper. */}
-                      <span className="block truncate text-xs tabular-nums text-muted">
-                        {cartLineDetail(item, line, priceIn(item, currency))}
-                      </span>
-                      <span className="block truncate text-sm font-medium">
-                        {item.name}
-                      </span>
-                      <span className="mt-0.5 block text-base font-semibold tabular-nums text-brand">
-                        {totalIn(lineTotals(item, line.quantity, lineDiscount(line)), currency)}
-                      </span>
-                    </span>
-
-                    {/* Both ways of being wrong about a line: the wrong numbers
-                        on it, or its being there at all. */}
-                    <span className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          haptic("tap");
-                          setEditingId(line.id);
-                        }}
-                        disabled={busy}
-                        aria-label={`Edit ${item.name}`}
-                        className="pressable flex size-9 items-center justify-center rounded-xl border border-line text-muted disabled:opacity-60"
-                      >
-                        <Icon name="pencil" className="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLineQty(line, 0)}
-                        disabled={busy}
-                        aria-label={`Remove ${item.name}`}
-                        className="pressable flex size-9 items-center justify-center rounded-xl border border-line text-muted disabled:opacity-60"
-                      >
-                        <Icon name="trash" className="size-4" />
-                      </button>
-                    </span>
-                  </li>
+                  <CartRow
+                    key={line.id}
+                    detail={cartLineDetail(item, line, priceIn(item, currency))}
+                    name={item.name}
+                    total={totalIn(
+                      lineTotals(item, line.quantity, lineDiscount(line)),
+                      currency,
+                    )}
+                    disabled={busy}
+                    onEdit={() => setEditingId(line.id)}
+                    onAskRemove={() => setRemovingId(line.id)}
+                  />
                 ))}
               </ul>
+
+              <p className="text-center text-xs text-muted">
+                Hold a line to change it. Swipe it left to remove it.
+              </p>
 
               <div className="space-y-1 border-t border-line pt-3">
                 <div className="flex items-baseline justify-between gap-3">

@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+
+/**
+ * Which sheets are open, oldest first.
+ *
+ * A sheet can open over a sheet — the cart holds a customer picker, a line
+ * editor and a confirmation — and each one used to listen for Escape on the
+ * document, so one press closed the whole stack. Only the last one opened
+ * should answer.
+ */
+const stack: string[] = [];
 
 /**
  * A bottom sheet: the phone-native way to offer a short list of choices.
@@ -39,11 +49,17 @@ export function Sheet({
     closeRef.current = onClose;
   });
 
+  const id = useId();
+
   useEffect(() => {
     if (!open) return;
 
+    stack.push(id);
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
+      // Only the sheet on top. Without this, one press closes the picker and
+      // the cart underneath it, and the rep is back at the catalogue.
+      if (e.key === "Escape" && stack[stack.length - 1] === id) closeRef.current();
     };
     document.addEventListener("keydown", onKey);
 
@@ -56,9 +72,13 @@ export function Sheet({
 
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
+      const at = stack.lastIndexOf(id);
+      if (at !== -1) stack.splice(at, 1);
+      // Only the last one out puts the page's scroll back: restoring it while a
+      // sheet is still open lets the catalogue move underneath it.
+      if (stack.length === 0) document.body.style.overflow = previous;
     };
-  }, [open]);
+  }, [open, id]);
 
   if (!open || typeof document === "undefined") return null;
 

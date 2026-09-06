@@ -114,3 +114,83 @@ describe("Sheet", () => {
     expect(document.body.style.overflow).toBe("");
   });
 });
+
+describe("a sheet opened over a sheet", () => {
+  it("lets only the top one answer Escape", () => {
+    // The cart holds a customer picker, a line editor and a confirmation. One
+    // press used to close the whole stack and put the rep back in the
+    // catalogue, because each sheet listened on the document.
+    const closeOuter = vi.fn();
+    const closeInner = vi.fn();
+
+    render(
+      <>
+        <Sheet open onClose={closeOuter} title="Cart">
+          outer
+        </Sheet>
+        <Sheet open onClose={closeInner} title="Remove?">
+          inner
+        </Sheet>
+      </>,
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(closeInner).toHaveBeenCalledTimes(1);
+    expect(closeOuter).not.toHaveBeenCalled();
+  });
+
+  it("hands Escape back when the top one closes", () => {
+    const closeOuter = vi.fn();
+    const { rerender } = render(
+      <>
+        <Sheet open onClose={closeOuter} title="Cart">
+          outer
+        </Sheet>
+        <Sheet open onClose={() => {}} title="Remove?">
+          inner
+        </Sheet>
+      </>,
+    );
+
+    rerender(
+      <>
+        <Sheet open onClose={closeOuter} title="Cart">
+          outer
+        </Sheet>
+        <Sheet open={false} onClose={() => {}} title="Remove?">
+          inner
+        </Sheet>
+      </>,
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(closeOuter).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the page still until the last one is gone", () => {
+    // Restoring the scroll while a sheet is still open lets the catalogue move
+    // underneath it.
+    const { rerender } = render(
+      <>
+        <Sheet open onClose={() => {}} title="Cart">
+          outer
+        </Sheet>
+        <Sheet open onClose={() => {}} title="Remove?">
+          inner
+        </Sheet>
+      </>,
+    );
+
+    rerender(
+      <>
+        <Sheet open onClose={() => {}} title="Cart">
+          outer
+        </Sheet>
+        <Sheet open={false} onClose={() => {}} title="Remove?">
+          inner
+        </Sheet>
+      </>,
+    );
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+});

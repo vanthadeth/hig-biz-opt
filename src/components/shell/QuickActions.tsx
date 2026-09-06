@@ -19,6 +19,7 @@ import { useState } from "react";
 export function QuickActions({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { nav, permissions, view } = useShell();
   const [locking, setLocking] = useState(false);
+  const [lockError, setLockError] = useState<string | null>(null);
   const actions = quickActionsFor(nav, permissions, view.key);
 
   // Only where there is a catalogue to browse. The lock is only worth anything
@@ -34,6 +35,7 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
   async function startBrowsing() {
     haptic("select");
     setLocking(true);
+    setLockError(null);
     try {
       const response = await fetch("/api/kiosk/enter", {
         method: "POST",
@@ -46,8 +48,12 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
       // A full load rather than a client navigation: the shell is rendered on
       // the server and has to come back knowing it is locked.
       window.location.href = body.to;
-    } catch {
+    } catch (e) {
+      // Said out loud rather than swallowed. The refusal that matters here is
+      // "you have no PIN", and a button that just stops looks broken instead of
+      // telling somebody the one thing they need to do.
       haptic("error");
+      setLockError(e instanceof Error ? e.message : "Could not lock the app.");
       setLocking(false);
     }
   }
@@ -77,6 +83,18 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
             </span>
             <Icon name="chevron" className="size-4 shrink-0 text-muted" />
           </button>
+          {lockError && (
+            <p role="alert" className="px-3 pb-1 pt-1 text-xs text-danger">
+              {lockError}{" "}
+              <Link
+                href={`/${view.key}/profile`}
+                onClick={() => onClose()}
+                className="underline"
+              >
+                Go to your profile
+              </Link>
+            </p>
+          )}
         </div>
       )}
 

@@ -320,9 +320,18 @@ would not lend the account to.
 
 The PIN is set on your profile, hashed with bcrypt in `public.user_pins` — a
 table with no RLS policies at all, reachable only through two `security definer`
-functions. Five wrong tries locks it for five minutes. Set one **before** the
-first time you hand the phone over: without it, browsing cannot be ended on that
-device.
+functions. Five wrong tries locks it for five minutes.
+
+**The lock lasts for that run of the app and no longer.** The cookie has no
+expiry date, so closing the app and opening it again starts normally, at Home.
+Handing the phone to one customer is not an instruction to greet you with a
+catalogue tomorrow morning.
+
+**No PIN, no lock.** Catalog refuses to start if the account has no PIN, and
+says so, because the PIN is the only way back out — locking without one shuts
+the app on its owner rather than handing it to a customer. A device that was
+locked before that rule existed can still leave: the unlock pad asks whether a
+PIN exists, and offers **Leave browsing** instead of a keypad when none does.
 
 ### Arranging the bottom bar
 

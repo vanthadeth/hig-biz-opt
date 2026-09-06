@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
@@ -22,6 +22,28 @@ export function KioskBar() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Unknown until asked. A device locked before the app started insisting on a
+  // PIN can still be sitting here with no way to type one, and drawing a keypad
+  // at somebody who has nothing to enter is how a lock becomes a trap.
+  const [pinSet, setPinSet] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!open || pinSet !== null) return;
+    let cancelled = false;
+    void fetch("/api/kiosk/state")
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled) setPinSet(body.pinSet === true);
+      })
+      .catch(() => {
+        // Assume there is one: the pad still works, and the exit route is the
+        // thing that actually decides.
+        if (!cancelled) setPinSet(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, pinSet]);
 
   async function unlock(value: string) {
     setBusy(true);
@@ -84,65 +106,92 @@ export function KioskBar() {
         </button>
       </div>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Enter your PIN">
-        <div className="space-y-4 px-3 pb-4 pt-1">
-          <div className="flex justify-center gap-3" aria-hidden>
-            {[0, 1, 2, 3].map((i) => (
-              <span
-                key={i}
-                className={`size-3.5 rounded-full ${
-                  i < pin.length ? "bg-brand" : "bg-line"
-                }`}
-              />
-            ))}
-          </div>
-
-          {error && (
-            <p role="alert" className="text-center text-sm text-danger">
-              {error}
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title={pinSet === false ? "No PIN on this account" : "Enter your PIN"}
+      >
+        {pinSet === false ? (
+          <div className="space-y-4 px-3 pb-4 pt-1">
+            <p className="text-sm text-muted">
+              There is no PIN set on this account, so there is nothing to unlock
+              with. Leave browsing and set one on your profile — after that,
+              handing the phone over needs it back.
             </p>
-          )}
+            <button
+              type="button"
+              onClick={() => void unlock("")}
+              disabled={busy}
+              className="pressable min-h-11 w-full rounded-xl bg-brand text-sm font-medium text-brand-fg disabled:opacity-60"
+            >
+              {busy ? "Leaving…" : "Leave browsing"}
+            </button>
+            {error && (
+              <p role="alert" className="text-center text-sm text-danger">
+                {error}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4 px-3 pb-4 pt-1">
+            <div className="flex justify-center gap-3" aria-hidden>
+              {[0, 1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  className={`size-3.5 rounded-full ${
+                    i < pin.length ? "bg-brand" : "bg-line"
+                  }`}
+                />
+              ))}
+            </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+            {error && (
+              <p role="alert" className="text-center text-sm text-danger">
+                {error}
+              </p>
+            )}
+
+            <div className="grid grid-cols-3 gap-2">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+                <button
+                  key={digit}
+                  type="button"
+                  onClick={() => press(digit)}
+                  disabled={busy}
+                  className="pressable min-h-14 rounded-2xl border border-line text-lg font-medium tabular-nums disabled:opacity-60"
+                >
+                  {digit}
+                </button>
+              ))}
+              <span />
               <button
-                key={digit}
                 type="button"
-                onClick={() => press(digit)}
+                onClick={() => press("0")}
                 disabled={busy}
                 className="pressable min-h-14 rounded-2xl border border-line text-lg font-medium tabular-nums disabled:opacity-60"
               >
-                {digit}
+                0
               </button>
-            ))}
-            <span />
-            <button
-              type="button"
-              onClick={() => press("0")}
-              disabled={busy}
-              className="pressable min-h-14 rounded-2xl border border-line text-lg font-medium tabular-nums disabled:opacity-60"
-            >
-              0
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                haptic("tap");
-                setPin((p) => p.slice(0, -1));
-                setError(null);
-              }}
-              disabled={busy}
-              aria-label="Delete"
-              className="pressable flex min-h-14 items-center justify-center rounded-2xl border border-line disabled:opacity-60"
-            >
-              <Icon name="chevron" className="size-5 rotate-180" />
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => {
+                  haptic("tap");
+                  setPin((p) => p.slice(0, -1));
+                  setError(null);
+                }}
+                disabled={busy}
+                aria-label="Delete"
+                className="pressable flex min-h-14 items-center justify-center rounded-2xl border border-line disabled:opacity-60"
+              >
+                <Icon name="chevron" className="size-5 rotate-180" />
+              </button>
+            </div>
 
-          <p className="text-center text-xs text-muted">
-            {busy ? "Checking…" : "Set a PIN on your profile if you have not."}
-          </p>
-        </div>
+            <p className="text-center text-xs text-muted">
+              {busy ? "Checking…" : "Set a PIN on your profile if you have not."}
+            </p>
+          </div>
+        )}
       </Sheet>
     </>
   );

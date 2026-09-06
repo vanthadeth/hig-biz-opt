@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/access";
+import { createClient } from "@/lib/supabase/server";
 import { KIOSK_COOKIE, kioskLandingPath } from "@/lib/kiosk";
 
 /**
@@ -22,16 +23,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No view given." }, { status: 400 });
   }
 
+  // No PIN, no lock. The PIN is the only way out, so locking without one does
+  // not hand the phone over — it shuts the app on its owner.
+  const supabase = await createClient();
+  const { data: pinSet } = await supabase.rpc("my_pin_is_set");
+  if (pinSet !== true) {
+    return NextResponse.json(
+      { error: "Set a four-digit PIN on your profile first. It is the way back out." },
+      { status: 400 },
+    );
+  }
+
   const response = NextResponse.json({ ok: true, to: kioskLandingPath(view) });
   response.cookies.set(KIOSK_COOKIE, view, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    // A day. Long enough for the longest round of visits, short enough that a
-    // phone left locked overnight is usable again in the morning without
-    // anybody having to remember how it got that way.
-    maxAge: 60 * 60 * 24,
+    // Deliberately no maxAge: a session cookie, so the lock lasts exactly as
+    // long as this run of the app. Closing the app and opening it again starts
+    // normally rather than back in a customer-facing catalogue that the owner
+    // never asked for twice. A dated cookie made every launch for the next day
+    // a locked one, which is not what handing somebody your phone once means.
   });
   return response;
 }

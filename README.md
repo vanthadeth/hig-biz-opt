@@ -427,7 +427,14 @@ migration — add a new one.
 0039b_clear_reports...        naming the table to clear first, not a constraint
 0040_name_and_name_alt.sql    name_en and name_km become name and name_alt
 0041_pin_lock.sql             a four-digit PIN, for handing the phone over
+0042_test_items.sql           ten made-up items, so the catalogue can be seen
 ```
+
+`0042` is the only one of these that is data rather than schema, and it is not
+real stock. It exists so the catalogue screen has something to draw: four
+categories, every availability state, and one item with no KHR price and no
+packing so the gaps show too. Delete them by their codes when the real items
+arrive — the migration says how, in its header.
 
 Run `get_advisors` (security and performance) after adding a migration. The only
 finding left open is leaked-password protection, which is a project auth setting

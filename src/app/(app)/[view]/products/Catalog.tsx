@@ -39,8 +39,11 @@ import {
   type Discount,
 } from "@/lib/catalog";
 import { Counter } from "@/components/ui/Counter";
+import { PageTitle } from "@/components/PageTitle";
+import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { priceIn, totalIn, type Currency } from "@/lib/money";
 import { AddToCart } from "./AddToCart";
+import { KioskBar } from "./KioskBar";
 import { CustomerPicker } from "./CustomerPicker";
 import {
   INVENTORY_BUCKET,
@@ -65,6 +68,7 @@ export function Catalog({
   cart: savedCart,
   customers,
   currency,
+  locked,
   viewKey,
 }: {
   items: CatalogItem[];
@@ -73,9 +77,15 @@ export function Catalog({
   customers: CartCustomer[];
   /** Which of the two prices to show. Chosen once, in Settings. */
   currency: Currency;
+  /** Kiosk: the phone is in a customer's hands. */
+  locked: boolean;
   viewKey: string;
 }) {
   const [query, setQuery] = useState("");
+  // The title bar slides away on a phone when the page scrolls down. The header
+  // below has to follow it, or it pins under a bar that is not there any more
+  // and leaves a strip of catalogue showing through above itself.
+  const barHidden = useScrollHidden();
   const [lines, setLines] = useState(saved);
   const [cart, setCart] = useState(savedCart);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -326,42 +336,60 @@ export function Catalog({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Icon
-            name="search"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="An item, a code, a brand"
-            aria-label="Search the catalogue"
-            className="min-h-11 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-sm outline-none placeholder:text-muted focus:border-brand"
-          />
-        </div>
+      {/* Everything somebody reaches for while browsing, kept on screen: the
+          heading that says where they are, the search, and the cart. Negative
+          margins so the background spans the page rather than leaving the
+          catalogue visible sliding past either side of it. */}
+      <div
+        data-bar-hidden={barHidden}
+        className={`sticky z-30 -mx-4 space-y-3 border-b border-line bg-bg px-4 pb-3 pt-2 ${
+          locked
+            ? // No title bar in kiosk mode, so nothing to sit under.
+              "top-0"
+            : "top-14 max-md:data-[bar-hidden=true]:top-0"
+        }`}
+      >
+        {locked && <KioskBar />}
 
-        <button
-          type="button"
-          onClick={() => {
-            haptic("tap");
-            setCartOpen(true);
-          }}
-          aria-haspopup="dialog"
-          // The badge counts items, so the label must say items. A number that
-          // means one thing to the eye and another to a screen reader is worse
-          // than no label.
-          aria-label={`Cart, ${cartCountLine(lines)}`}
-          className="pressable relative flex size-11 shrink-0 items-center justify-center rounded-xl border border-line text-muted"
-        >
-          <Icon name="cart" className="size-5" />
-          {count > 0 && (
-            <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand px-1 text-center text-[11px] font-semibold leading-5 text-brand-fg">
-              {count}
-            </span>
-          )}
-        </button>
+        <PageTitle />
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Icon
+              name="search"
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="An item, a code, a brand"
+              aria-label="Search the catalogue"
+              className="min-h-11 w-full rounded-xl border border-line bg-surface pl-9 pr-3 text-sm outline-none placeholder:text-muted focus:border-brand"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              haptic("tap");
+              setCartOpen(true);
+            }}
+            aria-haspopup="dialog"
+            // The badge counts items, so the label must say items. A number
+            // that means one thing to the eye and another to a screen reader
+            // is worse than no label.
+            aria-label={`Cart, ${cartCountLine(lines)}`}
+            className="pressable relative flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-muted"
+          >
+            <Icon name="cart" className="size-5" />
+            {count > 0 && (
+              <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-brand px-1 text-center text-[11px] font-semibold leading-5 text-brand-fg">
+                {count}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-muted" role="status">

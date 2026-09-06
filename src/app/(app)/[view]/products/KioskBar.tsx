@@ -166,6 +166,10 @@ export function KioskBar() {
         <p className="min-w-0 flex-1 text-xs text-muted">
           Browsing the catalogue. The rest of the app is locked.
         </p>
+        {/* Icon only: this sits in the header that stays on screen the whole
+            time the phone is in a customer's hands, and the row has a title
+            and a search box to fit beside it. The label is still there for a
+            screen reader, and the door reads as the way out. */}
         <button
           type="button"
           onClick={() => {
@@ -174,9 +178,11 @@ export function KioskBar() {
             setError(null);
             setOpen(true);
           }}
-          className="pressable min-h-9 shrink-0 rounded-xl border border-line bg-surface px-3 text-xs font-medium"
+          aria-label="Unlock the app"
+          title="Unlock"
+          className="pressable flex size-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface"
         >
-          Unlock
+          <Icon name="logout" className="size-4" />
         </button>
       </div>
 

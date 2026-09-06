@@ -1,4 +1,3 @@
-import { PageTitle } from "@/components/PageTitle";
 import { createClient } from "@/lib/supabase/server";
 import {
   CART_COLUMNS,
@@ -13,7 +12,6 @@ import {
 import { lockedView } from "@/lib/kiosk.server";
 import { primaryCurrency } from "@/lib/money.server";
 import { Catalog } from "./Catalog";
-import { KioskBar } from "./KioskBar";
 
 /**
  * The catalogue you sell from.
@@ -61,14 +59,17 @@ export default async function Page({
 
   return (
     <div className="space-y-5">
-      {locked && <KioskBar />}
-      <PageTitle />
+      {/* The heading, the search and the cart are one sticky block inside the
+          catalogue: they have to move together, and the search owns its own
+          state, so the page hands the heading down rather than the other way
+          round. */}
       <Catalog
         items={(catalogue.data ?? []) as unknown as CatalogItem[]}
         lines={(lines.data ?? []) as unknown as CartLine[]}
         cart={(cart.data ?? null) as unknown as Cart | null}
         customers={(customers.data ?? []) as unknown as CartCustomer[]}
         currency={currency}
+        locked={locked}
         viewKey={view}
       />
     </div>

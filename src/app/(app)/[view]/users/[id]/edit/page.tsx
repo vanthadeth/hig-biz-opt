@@ -76,6 +76,9 @@ export default async function Page({
         roles={(roles.data ?? []) as RoleOption[]}
         positions={(positions.data ?? []).map((p) => p.name as string)}
         canEdit
+        // Editing never creates a login: that is done from the record itself,
+        // where it is a deliberate act rather than a side effect of saving.
+        canGrantLogin={false}
         canSeeBank
         canAddDepartment={can(mine, "role_permission", "edit")}
         viewKey={view}

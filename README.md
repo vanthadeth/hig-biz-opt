@@ -299,6 +299,37 @@ the sheet itself, with the same read-only credential as always.
 - **Arbitrary target tables.** `public.sync_targets` is seeded by migration.
   Adding one is a migration, which is a review, which is the point.
 
+## Logins and passwords
+
+An employee record and a login are two different things — 0016 made that so, and
+this is the other half of it. A record can exist for a warehouse hand with a
+Telegram number and no email; a login can be granted later, or never.
+
+**A super admin generates the password**, from the person's own record. The
+route behind that button holds the service role key, which bypasses every policy
+in the database, so it checks `is_super_admin` itself rather than trusting the
+page that drew the button — and it reads the target through the *caller's*
+client, so it cannot be used to reach a record the caller could not otherwise
+see. The account is created with the employee record's own id, so one person
+means one row rather than two that have to be matched up afterwards.
+
+**The password is shown once and stored nowhere.** Sending it is deliberately
+not this app's job: it goes into Telegram, or is read down a phone, by whoever
+generated it. Emailing credentials from here would put them in a mailbox neither
+side controls. Creating a user with an email address generates one at that
+moment, on the same screen, with a button that copies it.
+
+The generated shape is four groups of four from an alphabet with every
+look-alike character removed — no `0`/`O`, no `1`/`l`/`I`, no `5`/`S`. That is
+not fussiness: a password that arrives wrong twice gets replaced by something
+like "hig1234", which is the real failure. Sixteen characters from the remaining
+alphabet is about 89 bits, far more than symbols would have added.
+
+**Anyone changes their own** from their profile, in the page, without an email
+round trip — the common case is a rep who was handed a temporary password an
+hour ago. The reset-by-email link is still there beside it for somebody who is
+locked out and cannot reach the page at all.
+
 ## Handing the phone over
 
 A rep opens the catalogue, gives the phone to the shopkeeper, and the shopkeeper

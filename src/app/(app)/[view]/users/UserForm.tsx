@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { CopyField } from "@/components/ui/CopyField";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Field, SelectField, SuggestField } from "@/components/ui/Field";
 import { NewDepartmentSheet } from "./NewDepartmentSheet";
 import { PhotoField } from "./PhotoField";
@@ -109,6 +111,7 @@ export function UserForm({
   canEdit,
   canSeeBank,
   canAddDepartment,
+  canGrantLogin,
   viewKey,
 }: {
   record: UserRecord | null;
@@ -118,6 +121,8 @@ export function UserForm({
   canEdit: boolean;
   canSeeBank: boolean;
   canAddDepartment: boolean;
+  /** Super admins only: nobody else can create a login to hand over. */
+  canGrantLogin: boolean;
   viewKey: string;
 }) {
   const router = useRouter();
@@ -126,6 +131,9 @@ export function UserForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Held after creating somebody, so the password can be copied before leaving
+  // the page. It exists in this one place and nowhere else.
+  const [welcome, setWelcome] = useState<{ id: string; password: string } | null>(null);
   // Held locally so a department created here is selectable at once, without a
   // round trip through the router that would discard the rest of the form.
   const [departments, setDepartments] = useState(initialDepartments);
@@ -181,6 +189,30 @@ export function UserForm({
           await supabase.from("users").update({ photo_path: photoPath }).eq("id", data.id);
         }
 
+        // A record without a login is somebody who cannot sign in, so the
+        // password is offered here rather than left as a second errand on
+        // another screen. Only a super admin can create one, and only an
+        // address can be signed in with.
+        if (canGrantLogin && draft.email.trim() !== "") {
+          const response = await fetch(`/api/users/${data.id}/password`, {
+            method: "POST",
+          });
+          const body = await response.json();
+          if (response.ok) {
+            haptic("success");
+            setWelcome({ id: data.id as string, password: body.password as string });
+            return;
+          }
+          // The record is made either way. Say what went wrong with the login
+          // rather than losing the person who was just created.
+          setError(
+            `${body.error ?? "The password could not be set."} The record was created; a password can be set from it.`,
+          );
+          router.replace(`/${viewKey}/users/${data.id}`);
+          router.refresh();
+          return;
+        }
+
         haptic("success");
         router.replace(`/${viewKey}/users/${data.id}`);
         router.refresh();
@@ -214,6 +246,34 @@ export function UserForm({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (welcome) {
+    // Nothing else on the page matters now: the record exists, and this is the
+    // one moment the password can be read.
+    return (
+      <Card className="space-y-3 p-4">
+        <SectionHeader
+          title="Login created"
+          caption={`${draft.full_name || "They"} can sign in as ${draft.email.trim()}.`}
+        />
+        <CopyField value={welcome.password} label="temporary password" />
+        <p className="text-sm text-muted">
+          Shown once and stored nowhere. Send it to them yourself — this app will
+          not email it — and have them change it from their profile.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            router.replace(`/${viewKey}/users/${welcome.id}`);
+            router.refresh();
+          }}
+          className="pressable min-h-11 w-full rounded-xl bg-brand text-sm font-medium text-brand-fg"
+        >
+          Done
+        </button>
+      </Card>
+    );
   }
 
   return (

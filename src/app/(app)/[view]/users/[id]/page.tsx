@@ -11,6 +11,7 @@ import {
 } from "@/lib/users";
 import { RemoveUserButton } from "../RemoveUserButton";
 import { StatusControls } from "../StatusControls";
+import { GeneratePassword } from "./GeneratePassword";
 
 export async function generateMetadata({
   params,
@@ -122,6 +123,17 @@ export default async function Page({
           <StatusControls record={person} canEdit={canEdit === true} isSelf={isSelf} />
         }
       />
+
+      {/* Only a super admin, because the route behind it holds the key that
+          bypasses every policy in the database. Not for yourself either: your
+          own password is changed on your profile, where it needs no such key. */}
+      {viewer.is_super_admin && !isSelf && (
+        <GeneratePassword
+          userId={person.id}
+          email={person.email}
+          name={person.full_name}
+        />
+      )}
     </div>
   );
 }

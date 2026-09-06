@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Card } from "@/components/ui/Card";
+import { SectionHeader } from "@/components/ui/SectionHeader";
 import { RecordView } from "@/components/ui/RecordView";
 import { requireViewer } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +13,7 @@ import {
   type UserRecord,
 } from "@/lib/users";
 import { ResetPasswordButton } from "./ResetPasswordButton";
+import { ChangePassword } from "./ChangePassword";
 import { PinCard } from "./PinCard";
 
 export const metadata: Metadata = { title: "Profile" };
@@ -85,9 +87,20 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         }
       />
 
-      <div className="flex flex-wrap gap-2 pt-1">
-        <PinCard isSet={pinSet === true} />
+      <Card className="space-y-3 p-4">
+        <SectionHeader
+          title="Password"
+          caption="Change the one you sign in with."
+        />
+        <ChangePassword />
+        {/* The link is still the right answer when somebody is locked out and
+            cannot get as far as this page. */}
         <ResetPasswordButton email={record.email} />
+      </Card>
+
+      <PinCard isSet={pinSet === true} />
+
+      <div className="flex flex-wrap gap-2 pt-1">
         <SignOutButton />
       </div>
     </div>

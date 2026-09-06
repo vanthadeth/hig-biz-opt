@@ -51,7 +51,9 @@ export function Field({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: "text" | "email" | "tel" | "date";
+  // "password" masks the value and lets a phone offer to remember it; without
+  // it a password field is a text field somebody's shoulder can read.
+  type?: "text" | "email" | "tel" | "date" | "password";
   optional?: boolean;
   hint?: string;
   placeholder?: string;

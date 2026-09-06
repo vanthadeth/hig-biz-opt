@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { can, getMyPermissions } from "@/lib/access";
+import { can, getMyPermissions, requireViewer } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import type { Department } from "@/lib/users";
 import { UserForm, type RoleOption } from "../UserForm";
@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "New user" };
 
 export default async function Page({ params }: { params: Promise<{ view: string }> }) {
   const { view } = await params;
-  const mine = await getMyPermissions();
+  const [mine, viewer] = await Promise.all([getMyPermissions(), requireViewer()]);
 
   // The insert policy would refuse it anyway; this keeps someone from filling in
   // a long form only to be turned away at the end.
@@ -47,6 +47,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         roles={(roles.data ?? []) as RoleOption[]}
         positions={(positions.data ?? []).map((p) => p.name as string)}
         canEdit
+        canGrantLogin={viewer.is_super_admin}
         canSeeBank
         canAddDepartment={can(mine, "role_permission", "edit")}
         viewKey={view}

@@ -20,7 +20,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  SALE ORDERS OK - 26 assertions passed (rls: ran)
+--     ERROR:  SALE ORDERS OK - 39 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -121,7 +121,9 @@ declare
   v_itm  uuid;   -- priced in both currencies
   v_alt  uuid;   -- priced in dollars only
   v_cart uuid;
+  v_riel uuid;   -- priced in riel and nothing else
   v_ord  public.sale_orders;
+  v_ord1 public.sale_orders;   -- the first one, kept for the snapshot below
   v_txt  text;
   v_rls  text := 'skipped (cannot assume the authenticated role)';
 begin
@@ -138,6 +140,8 @@ begin
     values ('SO Widget', 'SO-1', 10.00, 41000, 100) returning id into v_itm;
   insert into public.items (name, code, price_usd, stock_qty)
     values ('SO Gadget', 'SO-2', 3.00, 100) returning id into v_alt;
+  insert into public.items (name, code, price_khr, stock_qty)
+    values ('SO Riel Only', 'SO-3', 8000, 100) returning id into v_riel;
 
   ----------------------------------------------------------------------------
   -- Confirming, as the rep, through the same doorway the app uses
@@ -155,6 +159,25 @@ begin
     -- order of nothing, which would be a document somebody has to cancel.
     perform pg_temp.rejects('an empty cart does not become an order',
       'select public.confirm_cart()');
+
+    ----------------------------------------------------------------------
+    -- One discount, or the other, never both
+    --
+    -- "Ten percent and two dollars off" is two people remembering the same
+    -- conversation differently. The constraint is what makes that impossible
+    -- rather than something the form is trusted to remember.
+    ----------------------------------------------------------------------
+    perform pg_temp.rejects('a line may not carry both kinds of discount',
+      format('insert into public.cart_lines (cart_id, item_id, quantity,
+                discount_mode, discount_percent, discount_amount)
+              values (%L, %L, 1, ''percent'', 5, 2)', v_cart, v_itm));
+    perform pg_temp.rejects('nor an amount filed as a percent',
+      format('insert into public.cart_lines (cart_id, item_id, quantity,
+                discount_mode, discount_percent, discount_amount)
+              values (%L, %L, 1, ''amount'', 5, 2)', v_cart, v_itm));
+    perform pg_temp.rejects('a negative number of free ones is not a gift',
+      format('insert into public.cart_lines (cart_id, item_id, quantity, free_quantity)
+              values (%L, %L, 1, -1)', v_cart, v_itm));
 
     insert into public.cart_lines (cart_id, item_id, quantity, discount_percent)
       values (v_cart, v_itm, 3, 10);
@@ -192,12 +215,68 @@ begin
     perform pg_temp.eq('the lines are copied in code order',
       v_txt, 'SO-1/3/10.00 SO-2/2/0.00');
 
+    perform pg_temp.eq('nothing is given away unless somebody says so',
+      (select free_quantity::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), '0');
+    perform pg_temp.eq('and a percent is how a discount is filed by default',
+      (select discount_mode::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), 'percent');
+
     perform pg_temp.eq('confirming empties the cart',
       (select count(*)::text from public.cart_lines where cart_id = v_cart), '0');
     -- The rep is still standing in the same shop; the next order is usually
     -- for the same customer.
     perform pg_temp.eq('but leaves the cart itself, and its customer',
       (select customer_id::text from public.carts where id = v_cart), v_cus::text);
+
+    -- Held on to: the snapshot assertions below are about this order, and the
+    -- second confirm is about to take the variable.
+    v_ord1 := v_ord;
+
+    ----------------------------------------------------------------------
+    -- Buy ten, two free, two dollars off
+    --
+    -- The three things a rep does at the moment of adding, in one order. The
+    -- amount is said in dollars and becomes a share, so the riel side of the
+    -- same line comes down by the same fraction — not a conversion, which
+    -- this app has no rate for, but the same proportion of a price that was
+    -- already in riel.
+    ----------------------------------------------------------------------
+    insert into public.cart_lines (cart_id, item_id, quantity, free_quantity,
+                                   discount_mode, discount_amount)
+      values (v_cart, v_itm, 10, 2, 'amount', 2);
+    insert into public.cart_lines (cart_id, item_id, quantity,
+                                   discount_mode, discount_amount)
+      values (v_cart, v_riel, 5, 'amount', 5);
+
+    v_ord := public.confirm_cart();
+
+    perform pg_temp.eq('two dollars off a hundred is two percent',
+      (select discount_percent::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), '2.00');
+    perform pg_temp.eq('so the dollar line is ninety-eight',
+      (select line_total_usd::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), '98.00');
+    perform pg_temp.eq('and the same two percent comes off the riel side',
+      (select line_total_khr::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), '401800');
+    perform pg_temp.eq('the free two are carried onto the order',
+      (select free_quantity::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), '2');
+    perform pg_temp.eq('and how it was agreed survives beside what it came to',
+      (select discount_mode || '/' || discount_amount from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-1'), 'amount/2.00');
+
+    -- Nothing for the amount to be a share of. No discount at all rather than
+    -- all of it, which is the failure that would give the stock away.
+    perform pg_temp.eq('an amount off an item with no dollar price takes nothing',
+      (select line_total_khr::text from public.sale_order_lines
+        where order_id = v_ord.id and item_code = 'SO-3'), '40000');
+
+    perform pg_temp.eq('an amount bigger than the line is the whole line',
+      app.discount_share('amount', 0, 999, 10, 10)::text, '100');
+    perform pg_temp.eq('and nothing at all where there is no price to take it off',
+      app.discount_share('amount', 0, 5, null, 10)::text, '0');
 
     execute 'reset role';
     v_rls := 'ran';
@@ -219,28 +298,28 @@ begin
 
     perform pg_temp.eq('a price rise does not reach a placed order',
       (select unit_price_usd::text from public.sale_order_lines
-        where order_id = v_ord.id and item_id = v_itm), '10.00');
+        where order_id = v_ord1.id and item_id = v_itm), '10.00');
     perform pg_temp.eq('nor a rename',
       (select item_name from public.sale_order_lines
-        where order_id = v_ord.id and item_id = v_itm), 'SO Widget');
+        where order_id = v_ord1.id and item_id = v_itm), 'SO Widget');
     perform pg_temp.eq('nor a new code',
       (select item_code from public.sale_order_lines
-        where order_id = v_ord.id and item_id = v_itm), 'SO-1');
+        where order_id = v_ord1.id and item_id = v_itm), 'SO-1');
     perform pg_temp.eq('and the total stays what was agreed',
-      (select total_usd::text from public.sale_orders where id = v_ord.id), '33.00');
+      (select total_usd::text from public.sale_orders where id = v_ord1.id), '33.00');
 
     -- An item withdrawn from the catalogue must not take the record of what
     -- was sold with it.
     delete from public.items where id = v_alt;
     perform pg_temp.eq('deleting an item leaves the order line standing',
       (select count(*)::text from public.sale_order_lines
-        where order_id = v_ord.id), '2');
+        where order_id = v_ord1.id), '2');
     perform pg_temp.eq('and the line still says what it was',
       (select item_name from public.sale_order_lines
-        where order_id = v_ord.id and item_code = 'SO-2'), 'SO Gadget');
+        where order_id = v_ord1.id and item_code = 'SO-2'), 'SO Gadget');
     perform pg_temp.ok('with nothing left to point at',
       (select item_id is null from public.sale_order_lines
-        where order_id = v_ord.id and item_code = 'SO-2'));
+        where order_id = v_ord1.id and item_code = 'SO-2'));
 
     -- A customer with orders cannot simply vanish; the order would be for
     -- nobody, which is the state the not-null forbids in the first place.

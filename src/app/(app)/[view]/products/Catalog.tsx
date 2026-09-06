@@ -19,10 +19,14 @@ import {
   cartSavings,
   cartTotals,
   catalogGroups,
+  cleanAmount,
   cleanDiscount,
   countCatalog,
   discountLabel,
-  lineTotal,
+  discountShare,
+  lineDiscount,
+  lineOffShelf,
+  lineTotals,
   matchesCatalog,
   packingLine,
   priceLine,
@@ -34,7 +38,10 @@ import {
   type CartCustomer,
   type CartLine,
   type CatalogItem,
+  type Discount,
 } from "@/lib/catalog";
+import { Counter } from "@/components/ui/Counter";
+import { AddToCart } from "./AddToCart";
 import { CustomerPicker } from "./CustomerPicker";
 import {
   INVENTORY_BUCKET,
@@ -71,8 +78,6 @@ export function Catalog({
   const [cart, setCart] = useState(savedCart);
   const [openId, setOpenId] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
-  const [qty, setQty] = useState(1);
-  const [discount, setDiscount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [placed, setPlaced] = useState<string | null>(null);
@@ -88,8 +93,11 @@ export function Catalog({
   const entries = cartEntries(lines, items);
   const totals = cartTotals(entries);
 
-  const inCart = (itemId: string) =>
-    lines.find((l) => l.item_id === itemId)?.quantity ?? 0;
+  /** How many pieces of an item the cart already claims, free ones included. */
+  const inCart = (itemId: string) => {
+    const line = lines.find((l) => l.item_id === itemId);
+    return line ? lineOffShelf(line) : 0;
+  };
 
   /**
    * The cart's id, making one if this is the first thing going into it.
@@ -109,8 +117,6 @@ export function Catalog({
   async function openItem(item: CatalogItem) {
     haptic("tap");
     setError(null);
-    setQty(1);
-    setDiscount(0);
     setOpenId(item.id);
 
     if (gallery[item.id]) return;
@@ -133,7 +139,12 @@ export function Catalog({
    * item. Adding more of something already in the cart takes the newer
    * discount: the last thing agreed is the thing that was agreed.
    */
-  async function addToCart(item: CatalogItem, amount: number, percent: number) {
+  async function addToCart(
+    item: CatalogItem,
+    amount: number,
+    free: number,
+    discount: Discount,
+  ) {
     const existing = lines.find((l) => l.item_id === item.id);
     setBusy(true);
     setError(null);
@@ -146,7 +157,11 @@ export function Catalog({
         // raises nothing at all.
         const { data, error } = await supabase
           .from("cart_lines")
-          .update({ quantity: next, discount_percent: cleanDiscount(percent) })
+          .update({
+            quantity: next,
+            free_quantity: existing.free_quantity + free,
+            ...discountColumns(discount),
+          })
           .eq("id", existing.id)
           .select(CART_COLUMNS);
         if (error) throw error;
@@ -162,7 +177,8 @@ export function Catalog({
             cart_id: id,
             item_id: item.id,
             quantity: amount,
-            discount_percent: cleanDiscount(percent),
+            free_quantity: free,
+            ...discountColumns(discount),
           })
           .select(CART_COLUMNS)
           .single();
@@ -186,12 +202,16 @@ export function Catalog({
     // Optimistic on this one alone: a number field that snaps back between
     // keystrokes is unusable, and the write below corrects it either way.
     setLines((all) =>
-      all.map((l) => (l.id === line.id ? { ...l, discount_percent: clean } : l)),
+      all.map((l) =>
+        l.id === line.id
+          ? { ...l, discount_mode: "percent" as const, discount_percent: clean, discount_amount: 0 }
+          : l,
+      ),
     );
 
     const { data, error } = await createClient()
       .from("cart_lines")
-      .update({ discount_percent: clean })
+      .update({ discount_mode: "percent", discount_percent: clean, discount_amount: 0 })
       .eq("id", line.id)
       .select(CART_COLUMNS);
 
@@ -293,6 +313,7 @@ export function Catalog({
   // Said only when there were any: "0.00 off" is a line of noise on a cart
   // nobody discounted.
   const savings = cartSavings(entries);
+  const freeTotal = lines.reduce((n, line) => n + line.free_quantity, 0);
   const discountTotal =
     savings.usd === null && savings.khr === null ? null : totalsLine(savings);
   const openStock = open ? stockState(open) : null;
@@ -423,101 +444,74 @@ export function Catalog({
         title={open ? itemTitle(open) : "Item"}
       >
         {open && openStock && (
-          <div className="max-h-[70vh] space-y-4 overflow-y-auto px-3 pb-4 pt-1">
-            <ul className="flex gap-2 overflow-x-auto pb-1">
-              {(openPictures.length > 0
-                ? openPictures.map((p) => ({ key: p.id, path: p.photo_path }))
-                : [{ key: "lead", path: open.photo_path }]
-              ).map((picture) => (
-                <li key={picture.key} className="shrink-0">
-                  <StoredPhoto
-                    name={open.name}
-                    path={picture.path}
-                    bucket={INVENTORY_BUCKET}
-                    fallback={<Icon name="box" className="size-7" />}
-                    className="size-32 rounded-xl"
-                  />
-                </li>
-              ))}
-            </ul>
+          /* Two parts, and only the first one scrolls. The detail is read once;
+             the panel is worked while a shopkeeper says numbers out loud, so it
+             stays put rather than being scrolled back to between answers. */
+          <div className="flex max-h-[78vh] flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-4 pt-1">
+              <ul className="flex gap-2 overflow-x-auto pb-1">
+                {(openPictures.length > 0
+                  ? openPictures.map((p) => ({ key: p.id, path: p.photo_path }))
+                  : [{ key: "lead", path: open.photo_path }]
+                ).map((picture) => (
+                  <li key={picture.key} className="shrink-0">
+                    <StoredPhoto
+                      name={open.name}
+                      path={picture.path}
+                      bucket={INVENTORY_BUCKET}
+                      fallback={<Icon name="box" className="size-7" />}
+                      className="size-32 rounded-xl"
+                    />
+                  </li>
+                ))}
+              </ul>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Chip tone={STOCK_TONE[openStock]}>{STOCK_LABELS[openStock]}</Chip>
-              {open.code && <Chip>{open.code}</Chip>}
-              {open.brand_name && <Chip tone="brand">{open.brand_name}</Chip>}
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip tone={STOCK_TONE[openStock]}>{STOCK_LABELS[openStock]}</Chip>
+                {open.code && <Chip>{open.code}</Chip>}
+                {open.brand_name && <Chip tone="brand">{open.brand_name}</Chip>}
+              </div>
+
+              <p className="text-base font-semibold">{priceLine(open)}</p>
+
+              {open.description && (
+                <p className="whitespace-pre-wrap text-sm text-muted">
+                  {open.description}
+                </p>
+              )}
+
+              <Row label="Packing" value={packingLine(open) ?? "Not recorded"} />
+              {/* Deliberately empty. There is no promotions table yet, and a
+                  fabricated one would read as a feature rather than a gap. */}
+              <Row label="Promotion" value="None at the moment" />
+
+              <Row
+                label="In stock"
+                value={`${open.stock_qty}${
+                  inCart(open.id) > 0 ? `, ${inCart(open.id)} claimed by your cart` : ""
+                }`}
+              />
             </div>
 
-            <p className="text-base font-semibold">{priceLine(open)}</p>
-
-            {open.description && (
-              <p className="whitespace-pre-wrap text-sm text-muted">{open.description}</p>
-            )}
-
-            <Row label="Packing" value={packingLine(open) ?? "Not recorded"} />
-            {/* Deliberately empty. There is no promotions table yet, and a
-                fabricated one would read as a feature rather than a gap. */}
-            <Row label="Promotion" value="None at the moment" />
-
             {openRoom === 0 ? (
-              <p className="text-sm text-muted">
+              <p className="border-t border-line px-3 py-4 text-sm text-muted">
                 {open.stock_qty === 0
                   ? "There is none of this in stock."
                   : "Your cart already holds everything in stock."}
               </p>
             ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm">Quantity</span>
-                  <Stepper
-                    value={qty}
-                    min={1}
-                    max={openRoom}
-                    disabled={busy}
-                    onChange={setQty}
-                    label="Order quantity"
-                  />
-                </div>
-                <p className="text-xs text-muted">
-                  {openRoom} available{inCart(open.id) > 0 && `, ${inCart(open.id)} already in your cart`}.
-                </p>
-
-                {/* Agreed here, while the two of them are looking at the item,
-                    rather than as a sum done to the basket afterwards. */}
-                <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="discount" className="text-sm">
-                    Discount
-                  </label>
-                  <DiscountField
-                    id="discount"
-                    value={discount}
-                    disabled={busy}
-                    onChange={setDiscount}
-                    label={`Discount on ${open.name}`}
-                  />
-                </div>
-
-                <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
-                  <span className="text-sm text-muted">
-                    {discountLabel(discount) ?? "No discount"}
-                  </span>
-                  <span className="text-base font-semibold tabular-nums">
-                    {totalsLine({
-                      usd: lineTotal(open.price_usd, qty, discount, 2),
-                      khr: lineTotal(open.price_khr, qty, discount, 0),
-                    })}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => addToCart(open, qty, discount)}
-                  disabled={busy}
-                  className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg disabled:opacity-60"
-                >
-                  <Icon name="cart" className="size-4" />
-                  {busy ? "Adding…" : "Add to cart"}
-                </button>
-              </div>
+              <AddToCart
+                // Remounted per item, so yesterday's quantity and discount do
+                // not follow the rep to the next thing they open.
+                key={open.id}
+                item={open}
+                room={openRoom}
+                alreadyInCart={inCart(open.id)}
+                busy={busy}
+                onAdd={(quantity, free, discount) =>
+                  addToCart(open, quantity, free, discount)
+                }
+              />
             )}
           </div>
         )}
@@ -582,11 +576,19 @@ export function Catalog({
                         <span className="block truncate text-xs text-muted">
                           {priceLine(item)}
                         </span>
+                        {line.free_quantity > 0 && (
+                          /* Said on the line rather than folded into the
+                             quantity: the shop is owed twelve and charged for
+                             ten, and both numbers have to be readable. */
+                          <span className="block text-xs font-medium text-tint-3-fg">
+                            + {line.free_quantity} free
+                          </span>
+                        )}
                       </span>
-                      <Stepper
+                      <Counter
                         value={line.quantity}
                         min={0}
-                        max={item.stock_qty}
+                        max={item.stock_qty - line.free_quantity}
                         disabled={busy}
                         compact
                         onChange={(next) => setLineQty(line, next)}
@@ -595,17 +597,26 @@ export function Catalog({
                     </div>
 
                     <div className="flex items-center justify-between gap-3 pl-15">
-                      <DiscountField
-                        value={line.discount_percent}
-                        disabled={busy}
-                        onChange={(percent) => setLineDiscount(line, percent)}
-                        label={`Discount on ${item.name}`}
-                      />
+                      {line.discount_mode === "amount" ? (
+                        /* Agreed in money. Shown as it was agreed, with what it
+                           worked out to, rather than silently rewritten as a
+                           percent the rep never said. */
+                        <span className="text-xs text-muted">
+                          ${line.discount_amount.toFixed(2)} off ·{" "}
+                          {discountLabel(
+                            discountShare(lineDiscount(line), item.price_usd, line.quantity),
+                          ) ?? "nothing"}
+                        </span>
+                      ) : (
+                        <DiscountField
+                          value={line.discount_percent}
+                          disabled={busy}
+                          onChange={(percent) => setLineDiscount(line, percent)}
+                          label={`Discount on ${item.name}`}
+                        />
+                      )}
                       <span className="text-sm font-medium tabular-nums">
-                        {totalsLine({
-                          usd: lineTotal(item.price_usd, line.quantity, line.discount_percent, 2),
-                          khr: lineTotal(item.price_khr, line.quantity, line.discount_percent, 0),
-                        })}
+                        {totalsLine(lineTotals(item, line.quantity, lineDiscount(line)))}
                       </span>
                     </div>
                   </li>
@@ -614,7 +625,10 @@ export function Catalog({
 
               <div className="space-y-1 border-t border-line pt-3">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm text-muted">{cartCountLine(lines)}</span>
+                  <span className="text-sm text-muted">
+                    {cartCountLine(lines)}
+                    {freeTotal > 0 && `, ${freeTotal} free`}
+                  </span>
                   {discountTotal !== null && (
                     <span className="text-xs text-muted">{discountTotal} off</span>
                   )}
@@ -659,66 +673,24 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * A quantity, with the two buttons a thumb can hit.
+ * The two columns a discount writes, whichever way it was agreed.
  *
- * Clamped rather than validated: there is no wrong number to explain, because
- * the control will not produce one.
+ * Both are always sent, and the unused one is zeroed: the database refuses a
+ * row carrying a percent *and* an amount, which is what makes "only one can
+ * apply" true rather than something the form is trusted to remember.
  */
-function Stepper({
-  value,
-  min,
-  max,
-  disabled,
-  compact,
-  onChange,
-  label,
-}: {
-  value: number;
-  min: number;
-  max: number;
-  disabled: boolean;
-  compact?: boolean;
-  onChange: (next: number) => void;
-  label: string;
-}) {
-  const step = (delta: number) => {
-    const next = Math.min(max, Math.max(min, value + delta));
-    if (next !== value) onChange(next);
-  };
-  const size = compact ? "size-8" : "size-11";
-
-  return (
-    <div
-      role="group"
-      aria-label={label}
-      className="flex w-fit shrink-0 items-center gap-1 rounded-xl border border-line p-1"
-    >
-      <button
-        type="button"
-        onClick={() => step(-1)}
-        disabled={disabled || value <= min}
-        aria-label={`Fewer — ${label}`}
-        className={`pressable ${size} rounded-lg text-lg leading-none text-muted disabled:opacity-40`}
-      >
-        −
-      </button>
-      <span
-        aria-live="polite"
-        className={`min-w-8 text-center text-sm font-medium tabular-nums ${compact ? "" : "min-w-10"}`}
-      >
-        {value}
-      </span>
-      <button
-        type="button"
-        onClick={() => step(1)}
-        disabled={disabled || value >= max}
-        aria-label={`More — ${label}`}
-        className={`pressable ${size} rounded-lg text-lg leading-none text-muted disabled:opacity-40`}
-      >
-        +
-      </button>
-    </div>
-  );
+function discountColumns(discount: Discount) {
+  return discount.mode === "percent"
+    ? {
+        discount_mode: "percent" as const,
+        discount_percent: cleanDiscount(discount.percent),
+        discount_amount: 0,
+      }
+    : {
+        discount_mode: "amount" as const,
+        discount_percent: 0,
+        discount_amount: cleanAmount(discount.amount),
+      };
 }
 
 /**

@@ -4,6 +4,15 @@ import {
   byCode,
   cartCountLine,
   cartItemCount,
+  cleanAmount,
+  cleanQuantity,
+  discountShare,
+  lineBefore,
+  lineDiscount,
+  lineOffShelf,
+  lineTotals,
+  packChoices,
+  quantityLine,
   cartPieceCount,
   cartSavings,
   cleanDiscount,
@@ -225,11 +234,20 @@ describe("catalogGroups", () => {
 describe("the cart", () => {
   const water = item({ id: "w", code: "HIG-001", price_usd: 0.5, price_khr: 2000, stock_qty: 10 });
   const rice = item({ id: "r", code: "HIG-002", price_usd: 12, price_khr: null, stock_qty: 4 });
-  const line = (item_id: string, quantity: number, discount_percent = 0): CartLine => ({
+  const line = (
+    item_id: string,
+    quantity: number,
+    discount_percent = 0,
+    extra: Partial<CartLine> = {},
+  ): CartLine => ({
     id: `l-${item_id}`,
     item_id,
     quantity,
+    free_quantity: 0,
+    discount_mode: "percent",
     discount_percent,
+    discount_amount: 0,
+    ...extra,
   });
 
   it("pairs a line with what it is a line of", () => {
@@ -465,5 +483,117 @@ describe("choosing who the cart is for", () => {
       }),
     ).toBe("12 Street 271, Chamkar Mon");
     expect(customerWhere(near)).toBeNull();
+  });
+});
+
+describe("giving some away", () => {
+  const line = (quantity: number, free_quantity: number) => ({ quantity, free_quantity });
+
+  it("takes the free ones off the shelf too", () => {
+    // Buy ten, two free, is twelve leaving the warehouse. A picker packing
+    // twelve against an order that says ten is a dispute waiting to happen.
+    expect(lineOffShelf(line(10, 2))).toBe(12);
+    expect(lineOffShelf(line(10, 0))).toBe(10);
+  });
+
+  it("says both numbers where there are two", () => {
+    expect(quantityLine(10, 2)).toBe("10 + 2 free");
+    expect(quantityLine(10, 0)).toBe("10");
+  });
+
+  it("counts whole things, and not fewer than none", () => {
+    expect(cleanQuantity(3.7)).toBe(3);
+    expect(cleanQuantity(-4)).toBe(0);
+    expect(cleanQuantity(Number.NaN)).toBe(0);
+    expect(cleanQuantity(500, 12)).toBe(12);
+  });
+});
+
+describe("a discount given in money", () => {
+  const priced = { price_usd: 10, price_khr: 41000 };
+
+  it("becomes the share of the line it takes off", () => {
+    // $2 off ten at $10 is 2%. This must match app.discount_share exactly: the
+    // cart screen and the order it becomes have to agree about the number.
+    expect(discountShare({ mode: "amount", percent: 0, amount: 2 }, 10, 10)).toBe(2);
+  });
+
+  it("takes the same share off the riel side of the line", () => {
+    // Not a conversion — this app has no rate. The same fraction, applied to
+    // the price that is already in riel.
+    const totals = lineTotals(priced, 10, { mode: "amount", percent: 0, amount: 2 });
+    expect(totals.usd).toBe(98);
+    expect(totals.khr).toBe(401_800);
+  });
+
+  it("is the whole line when it is bigger than the line, never a refund", () => {
+    expect(discountShare({ mode: "amount", percent: 0, amount: 999 }, 10, 10)).toBe(100);
+    expect(lineTotals(priced, 10, { mode: "amount", percent: 0, amount: 999 }).usd).toBe(0);
+  });
+
+  it("takes nothing off an item with no dollar price", () => {
+    // Nothing for it to be a share of. No discount at all, rather than all of
+    // it, which is the failure that would give the stock away.
+    expect(discountShare({ mode: "amount", percent: 0, amount: 5 }, null, 10)).toBe(0);
+    const riel = { price_usd: null, price_khr: 8000 };
+    expect(lineTotals(riel, 5, { mode: "amount", percent: 0, amount: 5 }).khr).toBe(40_000);
+  });
+
+  it("ignores the percent it is not using, and the other way round", () => {
+    // The database refuses a row carrying both; this is the same rule read
+    // from the other side.
+    expect(discountShare({ mode: "amount", percent: 90, amount: 2 }, 10, 10)).toBe(2);
+    expect(discountShare({ mode: "percent", percent: 10, amount: 99 }, 10, 10)).toBe(10);
+  });
+
+  it("rounds money to the cent and refuses a negative", () => {
+    expect(cleanAmount(2.345)).toBe(2.35);
+    expect(cleanAmount(-2)).toBe(0);
+    expect(cleanAmount(Number.NaN)).toBe(0);
+  });
+
+  it("prices the line before any of it, for showing what was saved", () => {
+    expect(lineBefore(priced, 10)).toEqual({ usd: 100, khr: 410_000 });
+  });
+
+  it("reads a line's own discount back", () => {
+    expect(
+      lineDiscount({ discount_mode: "amount", discount_percent: 0, discount_amount: 2 }),
+    ).toEqual({ mode: "amount", percent: 0, amount: 2 });
+  });
+});
+
+describe("the quantities worth one tap", () => {
+  const packed = { qty_per_box: 12, qty_per_carton: 144 };
+
+  it("offers the single, the box and the carton", () => {
+    expect(packChoices(packed).map((p) => `${p.label} ${p.quantity}`)).toEqual([
+      "Single 1",
+      "Box 12",
+      "Carton 144",
+    ]);
+  });
+
+  it("leads with the box, because that is how these go out of the door", () => {
+    expect(packChoices(packed).find((p) => p.lead)?.label).toBe("Box");
+  });
+
+  it("leads with the single when there is no box", () => {
+    const choices = packChoices({ qty_per_box: null, qty_per_carton: null });
+    expect(choices.map((p) => p.label)).toEqual(["Single"]);
+    expect(choices[0].lead).toBe(true);
+  });
+
+  it("does not offer the same number twice", () => {
+    // "Box 1" next to "Single 1" is two buttons that do the same thing.
+    expect(packChoices({ qty_per_box: 1, qty_per_carton: 1 }).map((p) => p.label)).toEqual([
+      "Single",
+    ]);
+  });
+
+  it("keeps the carton when only that is recorded", () => {
+    expect(
+      packChoices({ qty_per_box: null, qty_per_carton: 48 }).map((p) => p.quantity),
+    ).toEqual([1, 48]);
   });
 });

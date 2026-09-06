@@ -41,15 +41,54 @@ export type CatalogItem = {
 export const CATALOG_COLUMNS =
   "id, code, name, name_alt, active, price_usd, price_khr, category_id, category_name, category_name_alt, category_parent_id, category_parent_name, category_parent_name_alt, brand_id, brand_name, photo_path, description, stock_qty, low_stock_qty, qty_per_box, qty_per_carton";
 
-export const CART_COLUMNS = "id, item_id, quantity, discount_percent";
+export const CART_COLUMNS =
+  "id, item_id, quantity, free_quantity, discount_mode, discount_percent, discount_amount";
+
+/** Off a percent of the line, or off it in dollars. Never both. */
+export type DiscountMode = "percent" | "amount";
+
+/**
+ * A discount as it was agreed, rather than as it works out.
+ *
+ * Both halves are kept because they are different facts: "ten percent" and
+ * "two dollars off" are the same money on one line and different money on the
+ * next, and a rep asked afterwards will say which one they gave.
+ */
+export type Discount = {
+  mode: DiscountMode;
+  percent: number;
+  amount: number;
+};
+
+export const NO_DISCOUNT: Discount = { mode: "percent", percent: 0, amount: 0 };
 
 export type CartLine = {
   id: string;
   item_id: string;
   quantity: number;
+  /**
+   * Given, not sold. Not charged and not discounted, but off the shelf all the
+   * same — "buy ten, two free" is twelve leaving the warehouse.
+   */
+  free_quantity: number;
   /** Per line, because a rep discounts the slow item rather than the basket. */
+  discount_mode: DiscountMode;
   discount_percent: number;
+  discount_amount: number;
 };
+
+/** The discount on a line, as the maths wants it. */
+export function lineDiscount(line: {
+  discount_mode: DiscountMode;
+  discount_percent: number;
+  discount_amount: number;
+}): Discount {
+  return {
+    mode: line.discount_mode,
+    percent: line.discount_percent,
+    amount: line.discount_amount,
+  };
+}
 
 /** The cart's head. Null customer while somebody is still building it. */
 export type Cart = { id: string; customer_id: string | null };
@@ -274,6 +313,71 @@ export function cleanDiscount(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value * 100) / 100));
 }
 
+/** An amount off, in dollars. Not capped here — the share below caps it. */
+export function cleanAmount(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value * 100) / 100);
+}
+
+/** A count of things: whole, not negative, and not a typo. */
+export function cleanQuantity(value: number, max?: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const whole = Math.max(0, Math.floor(value));
+  return max === undefined ? whole : Math.min(max, whole);
+}
+
+/**
+ * What a discount comes to, as a share of the line.
+ *
+ * The one place this division happens on the client, matching
+ * `app.discount_share` exactly — the cart screen and the order it becomes have
+ * to agree about it, and two implementations of a division eventually do not.
+ *
+ * An amount is said in dollars, because that is the currency a discount gets
+ * said in, and it becomes a share so the riel side of the same line comes down
+ * by the same fraction. That is not converting between currencies: this app has
+ * no rate and will not invent one.
+ */
+export function discountShare(
+  discount: Discount,
+  unitPriceUsd: number | null,
+  quantity: number,
+): number {
+  if (discount.mode === "percent") return cleanDiscount(discount.percent);
+
+  const line = (unitPriceUsd ?? 0) * quantity;
+  // Nothing to take it off — no dollar price, or nothing being bought. No
+  // discount at all, rather than all of it.
+  if (line <= 0) return 0;
+
+  // An amount larger than the line is the whole line, not a refund.
+  return Math.min(100, (cleanAmount(discount.amount) / line) * 100);
+}
+
+/** Both currencies for one line, after its discount. */
+export function lineTotals(
+  item: { price_usd: number | null; price_khr: number | null },
+  quantity: number,
+  discount: Discount,
+): { usd: number | null; khr: number | null } {
+  const share = discountShare(discount, item.price_usd, quantity);
+  return {
+    usd: lineTotal(item.price_usd, quantity, share, 2),
+    khr: lineTotal(item.price_khr, quantity, share, 0),
+  };
+}
+
+/** The same line with nothing off, for showing what the discount saved. */
+export function lineBefore(
+  item: { price_usd: number | null; price_khr: number | null },
+  quantity: number,
+): { usd: number | null; khr: number | null } {
+  return {
+    usd: lineTotal(item.price_usd, quantity, 0, 2),
+    khr: lineTotal(item.price_khr, quantity, 0, 0),
+  };
+}
+
 /**
  * What a line comes to, in one currency, after its discount.
  *
@@ -317,8 +421,7 @@ export function cartTotals(entries: CartEntry[]): {
   let khr: number | null = null;
 
   for (const { line, item } of entries) {
-    const inUsd = lineTotal(item.price_usd, line.quantity, line.discount_percent, 2);
-    const inKhr = lineTotal(item.price_khr, line.quantity, line.discount_percent, 0);
+    const { usd: inUsd, khr: inKhr } = lineTotals(item, line.quantity, lineDiscount(line));
     if (inUsd !== null) usd = (usd ?? 0) + inUsd;
     if (inKhr !== null) khr = (khr ?? 0) + inKhr;
   }
@@ -341,15 +444,13 @@ export function cartSavings(entries: CartEntry[]): {
   let khr: number | null = null;
 
   for (const { line, item } of entries) {
-    if (cleanDiscount(line.discount_percent) === 0) continue;
-    if (item.price_usd !== null) {
-      const full = item.price_usd * line.quantity;
-      usd = (usd ?? 0) + full - (lineTotal(item.price_usd, line.quantity, line.discount_percent, 2) ?? full);
-    }
-    if (item.price_khr !== null) {
-      const full = item.price_khr * line.quantity;
-      khr = (khr ?? 0) + full - (lineTotal(item.price_khr, line.quantity, line.discount_percent, 0) ?? full);
-    }
+    const discount = lineDiscount(line);
+    if (discountShare(discount, item.price_usd, line.quantity) === 0) continue;
+
+    const before = lineBefore(item, line.quantity);
+    const after = lineTotals(item, line.quantity, discount);
+    if (before.usd !== null && after.usd !== null) usd = (usd ?? 0) + before.usd - after.usd;
+    if (before.khr !== null && after.khr !== null) khr = (khr ?? 0) + before.khr - after.khr;
   }
 
   return { usd, khr };
@@ -369,6 +470,67 @@ export function totalsLine(totals: { usd: number | null; khr: number | null }): 
  */
 export function addableQty(item: CatalogItem, alreadyInCart: number): number {
   return Math.max(0, item.stock_qty - alreadyInCart);
+}
+
+/**
+ * How many pieces a line takes off the shelf.
+ *
+ * The free ones are given rather than sold, but they leave the warehouse with
+ * the rest — a picker packing twelve against an order that says ten is a
+ * dispute waiting to happen.
+ */
+export function lineOffShelf(line: { quantity: number; free_quantity: number }): number {
+  return line.quantity + line.free_quantity;
+}
+
+// Packing ---------------------------------------------------------------------------
+
+/** A way this item is sold: a name, how many that is, and whether to lead with it. */
+export type PackChoice = { key: string; label: string; quantity: number; lead: boolean };
+
+/**
+ * The quantities worth one tap.
+ *
+ * A rep selling hardware orders a box, not eleven of something. The box is the
+ * one to lead with where there is one — that is how these go out of the door —
+ * and the single is kept because the last one of an order often is one.
+ *
+ * Skips anything that would repeat a number already offered: "Box 1" next to
+ * "Single 1" is two buttons that do the same thing.
+ */
+export function packChoices(item: {
+  qty_per_box: number | null;
+  qty_per_carton: number | null;
+}): PackChoice[] {
+  const hasBox = (item.qty_per_box ?? 0) > 1;
+  const raw: PackChoice[] = [
+    { key: "single", label: "Single", quantity: 1, lead: !hasBox },
+    ...(hasBox
+      ? [{ key: "box", label: "Box", quantity: item.qty_per_box as number, lead: true }]
+      : []),
+    ...((item.qty_per_carton ?? 0) > 1
+      ? [
+          {
+            key: "carton",
+            label: "Carton",
+            quantity: item.qty_per_carton as number,
+            lead: false,
+          },
+        ]
+      : []),
+  ];
+
+  const seen = new Set<number>();
+  return raw.filter((choice) => {
+    if (seen.has(choice.quantity)) return false;
+    seen.add(choice.quantity);
+    return true;
+  });
+}
+
+/** "10 + 2 free", or just the number when nothing is being given away. */
+export function quantityLine(quantity: number, free: number): string {
+  return free > 0 ? `${quantity} + ${free} free` : String(quantity);
 }
 
 /** Does this item answer the search — by name, code or brand? */

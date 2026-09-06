@@ -359,17 +359,50 @@ being built for.
 - **The badge counts items, not pieces.** Twelve of one padlock is one item. The
   number a rep glances at is "how long is this order", and twelve reads as a
   list of twelve to somebody who has not opened it.
-- **Discounts are per line, as a percent.** Agreed while the two of them are
-  looking at that item, not applied to the basket afterwards. A percent rather
-  than an amount because that is what gets said out loud, and because it
-  survives both currencies without being quoted twice. Adding more of something
-  already in the cart takes the newer discount: the last thing agreed is the
-  thing that was agreed.
+- **Discounts are per line, and one way only.** Agreed while the two of them are
+  looking at that item, not applied to the basket afterwards. A percent, *or* an
+  amount off the line, never both — "10% and $2 off" is two people remembering
+  the conversation differently, and `cart_lines_one_discount_ck` is what makes
+  that impossible rather than something the form is trusted to remember. Adding
+  more of something already in the cart takes the newer discount: the last thing
+  agreed is the thing that was agreed.
+- **An amount is said in dollars and applied as a share.** "$2 off" a $100 line
+  is 2%, and the riel side of that same line comes down 2% too. That is not a
+  conversion — this app has no rate and will not invent one — it is the same
+  fraction applied to a price that was already in riel. An item with no dollar
+  price has nothing to take an amount off, so only the percent is offered there.
+- **Free quantity is given, not sold.** "Buy ten, two free" is a deal made in the
+  shop, so it is a number on the line rather than a rule configured somewhere
+  else. The free ones are not charged and not discounted, but they do leave the
+  warehouse — `lineOffShelf` is twelve, and the order line carries the two,
+  because a picker packing twelve against an order that says ten is a dispute
+  waiting to happen.
 - **The customer is suggested, nearest first.** A rep picks one standing inside
   the shop, so the phone sorts by distance from where it is. Location refused,
   no signal, a shop whose coordinates were never recorded — each falls back to
   alphabetical, and a shop with no coordinates sorts after every shop that has
   them, because unknown is not the same as far away.
+
+### The add-to-cart panel
+
+The item sheet is two parts, and only the top one scrolls. Pictures, description,
+packing and stock are read once; everything from **Quantity** down is worked
+repeatedly while a shopkeeper says numbers out loud, so it is pinned to the
+bottom and never scrolls away.
+
+The rows are in the order the conversation happens in:
+
+1. **Quantity**, typed or stepped. Typed matters: 144 is a number somebody says,
+   and reaching it with a `+` button is not a thing anybody does twice.
+2. **The pack buttons** — `Single · 1`, `Box · 12`, `Carton · 144` — set it in one
+   tap. The box is marked *usual*, because that is how these go out of the door.
+   Marked rather than sorted first, so the row still reads smallest to largest.
+   A number that would appear twice is offered once.
+3. **Free** and **Discount**, side by side, because they are the two ways a rep
+   sweetens the same deal. The discount's `%`/`$` pair is two buttons rather than
+   a dropdown: there are two answers, and switching clears the other.
+4. **What it comes to**, large, with the undiscounted figure struck through above
+   it — the number that gets read back.
 
 **Convert to sale order** is the line between the two. Everything happens in
 `app.confirm_cart()`, in one transaction: the number is issued, the lines are
@@ -472,6 +505,8 @@ migration — add a new one.
 0042_test_items.sql           ten made-up items, so the catalogue can be seen
 0043_cart_customer_discount_and_sale_orders.sql
                               the cart gets a head, and orders start existing
+0044_free_quantity_and_discount_modes.sql
+                              give some away, or discount in money
 ```
 
 `0042` is the only one of these that is data rather than schema, and it is not
@@ -563,14 +598,15 @@ ERROR:  CATALOG OK - 37 assertions passed (rls: ran)
 psql "$DATABASE_URL" -f supabase/tests/sale_orders.test.sql
 ```
 
-26 assertions over turning a cart into an order. The one that matters moves an
+39 assertions over turning a cart into an order, including free quantities and
+a discount agreed in dollars becoming the share of the line it takes off. The one that matters moves an
 item's price, name and code after the order exists and insists the order does
 not move with it — without that, every historical order silently rewrites
 itself the next time somebody edits a price, and nobody finds out until a
 customer disputes an invoice.
 
 ```
-ERROR:  SALE ORDERS OK - 26 assertions passed (rls: ran)
+ERROR:  SALE ORDERS OK - 39 assertions passed (rls: ran)
 ```
 
 ### Data sync tests

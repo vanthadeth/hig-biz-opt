@@ -1,22 +1,28 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Icon } from "@/components/Icon";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Card } from "@/components/ui/Card";
 import { RecordView } from "@/components/ui/RecordView";
+import { SecurityButtons } from "@/components/profile/SecurityButtons";
 import { requireViewer } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import {
-  profileGroups,
-  USER_RECORD_COLUMNS,
-  type UserRecord,
-} from "@/lib/users";
-import { SecurityButtons } from "@/components/profile/SecurityButtons";
+import { profileGroups, USER_RECORD_COLUMNS, type UserRecord } from "@/lib/users";
 
 export const metadata: Metadata = { title: "Profile" };
 
-export default async function Page({ params }: { params: Promise<{ view: string }> }) {
-  const { view } = await params;
+/**
+ * The same record as `/{view}/profile`, minus the editing.
+ *
+ * It exists because the account menu in the title bar links to the profile of
+ * whichever view you are standing in, and a rep whose only workspace is this one
+ * would otherwise have a dead link where their password lives.
+ *
+ * What is missing is deliberate. Changing your nickname or your photo is a
+ * back-office errand, and this app is for the ten minutes somebody spends in a
+ * shop; it is one tap away in Sale for anyone who holds it. What a rep actually
+ * needs from here is their password, their PIN and the way out, so that is what
+ * is here.
+ */
+export default async function Page() {
   const viewer = await requireViewer();
   const supabase = await createClient();
 
@@ -26,12 +32,9 @@ export default async function Page({ params }: { params: Promise<{ view: string 
     .eq("id", viewer.id)
     .maybeSingle();
 
-  // Signed in with no employee record yet — the shell still works, so say so
-  // plainly rather than crashing on a row that is legitimately absent.
   if (!data) {
     return (
       <div className="space-y-5">
-        <h1 className="text-xl font-semibold tracking-tight">Profile</h1>
         <Card className="p-4">
           <p className="text-sm text-muted">
             Your login has no employee record attached yet. An administrator can
@@ -44,7 +47,6 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   }
 
   const record = data as unknown as UserRecord;
-
   const { data: pinSet } = await supabase.rpc("my_pin_is_set");
 
   const [department, role] = await Promise.all([
@@ -56,8 +58,6 @@ export default async function Page({ params }: { params: Promise<{ view: string 
       : Promise.resolve({ data: null }),
   ]);
 
-  // Your own bank details are yours to see: this is the one record where that
-  // needs no permission beyond being the person it describes.
   const groups = profileGroups(
     record,
     {
@@ -69,20 +69,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
 
   return (
     <div className="space-y-5">
-      <RecordView
-        record={record}
-        groups={groups}
-        isSuperAdmin={viewer.is_super_admin}
-        actions={
-          <Link
-            href={`/${view}/profile/edit`}
-            className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
-          >
-            <Icon name="pencil" className="size-4" />
-            Edit profile
-          </Link>
-        }
-      />
+      <RecordView record={record} groups={groups} isSuperAdmin={viewer.is_super_admin} />
 
       <div className="flex flex-wrap gap-2 pt-1">
         <SecurityButtons pinIsSet={pinSet === true} />

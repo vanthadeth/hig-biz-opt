@@ -10,6 +10,22 @@
 
 import type { ChipTone } from "@/components/ui/Chip";
 
+/**
+ * Where the shops are.
+ *
+ * These moved to `@/lib/geo` when My Visit's check-in list became their second
+ * caller — a shop's coordinates are a fact about the shop, not about the cart.
+ * Re-exported here so the catalogue's own files keep one import.
+ */
+export {
+  nearestCustomers,
+  distanceMetres,
+  distanceLabel,
+  customerWhere,
+  NEARBY_CUSTOMER_COLUMNS as CART_CUSTOMER_COLUMNS,
+  type NearbyCustomer as CartCustomer,
+} from "@/lib/geo";
+
 /** One row of public.item_catalogue, as the catalogue screen reads it. */
 export type CatalogItem = {
   id: string;
@@ -93,20 +109,6 @@ export function lineDiscount(line: {
 export type Cart = { id: string; customer_id: string | null };
 
 export const CART_HEADER_COLUMNS = "id, customer_id";
-
-/** A customer, as the cart's picker needs to see one. */
-export type CartCustomer = {
-  id: string;
-  shop_name: string;
-  street_address: string | null;
-  province_text: string | null;
-  district_text: string | null;
-  latitude: number | null;
-  longitude: number | null;
-};
-
-export const CART_CUSTOMER_COLUMNS =
-  "id, shop_name, street_address, province_text, district_text, latitude, longitude";
 
 // Availability -------------------------------------------------------------------
 
@@ -532,73 +534,6 @@ export function matchesCatalog(item: CatalogItem, query: string): boolean {
   return [item.name, item.name_alt, item.code, item.brand_name].some(
     (field) => field != null && field.toLowerCase().includes(needle),
   );
-}
-
-// Who the cart is for --------------------------------------------------------------
-
-/**
- * The customers to offer, nearest first when the phone knows where it is.
- *
- * A rep opens the cart standing in the shop they are selling to, so the shop
- * they want is almost always the one they are inside. Without a fix — no
- * permission, no signal, a customer whose coordinates were never recorded —
- * this falls back to alphabetical, which is at least predictable.
- *
- * Straight-line distance on a sphere. Cambodia is not large enough for the
- * ellipsoid to matter, and this is choosing between shops in a district, not
- * navigating between them.
- */
-export function nearestCustomers(
-  customers: CartCustomer[],
-  from: { latitude: number; longitude: number } | null,
-): CartCustomer[] {
-  const byName = [...customers].sort((a, b) => a.shop_name.localeCompare(b.shop_name));
-  if (!from) return byName;
-
-  return byName
-    .map((customer) => ({ customer, metres: distanceMetres(from, customer) }))
-    .sort((a, b) => {
-      // A shop with no coordinates is not far away, it is unknown. Unknown
-      // sorts after everything known rather than to the top or the bottom of
-      // a distance it does not have.
-      if (a.metres === null && b.metres === null) return 0;
-      if (a.metres === null) return 1;
-      if (b.metres === null) return -1;
-      return a.metres - b.metres;
-    })
-    .map((entry) => entry.customer);
-}
-
-/** Metres between a point and a customer, or null if the customer has no fix. */
-export function distanceMetres(
-  from: { latitude: number; longitude: number },
-  to: { latitude: number | null; longitude: number | null },
-): number | null {
-  if (to.latitude === null || to.longitude === null) return null;
-
-  const R = 6_371_000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(to.latitude - from.latitude);
-  const dLon = toRad(to.longitude - from.longitude);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(from.latitude)) * Math.cos(toRad(to.latitude)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-}
-
-/** "120 m" or "4.3 km" — near enough for choosing between shops. */
-export function distanceLabel(metres: number | null): string | null {
-  if (metres === null) return null;
-  if (metres < 1000) return `${Math.round(metres)} m`;
-  return `${(metres / 1000).toFixed(metres < 10_000 ? 1 : 0)} km`;
-}
-
-/** The shop's address in one line, for telling two branches apart. */
-export function customerWhere(customer: CartCustomer): string | null {
-  const parts = [customer.street_address, customer.district_text, customer.province_text]
-    .map((part) => part?.trim())
-    .filter((part): part is string => !!part);
-  return parts.length ? parts.join(", ") : null;
 }
 
 /**

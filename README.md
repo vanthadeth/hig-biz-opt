@@ -40,6 +40,7 @@ Views are separate from roles: one person may be entitled to several.
 | `sales` | Sale |
 | `accounting` | Accountant |
 | `warehouse` | Warehouse & Logistic |
+| `visit` | My Visit |
 
 After signing in, `resolveEntryPath()` in `src/lib/access.ts` decides where the
 user lands: no views → `/no-access`, exactly one → straight into it, more than one
@@ -49,6 +50,10 @@ so links are shareable and the navigation set is never ambiguous.
 `src/app/(app)/[view]/layout.tsx` re-checks entitlement server-side on every
 request — hiding a view from the switcher is presentation, that check is the
 enforcement.
+
+`visit` is the odd one out: it is a view, so it is chosen and entered like the
+others, but its pages are not modules and it has its own shell rather than the
+navigation the other four share. See [My Visit](#my-visit) for why.
 
 ### Modules and navigation
 
@@ -533,6 +538,73 @@ The centre button opens the quick actions by default, and can be pinned to one
 create action instead. A hold always reopens the choice, so pinning is never a
 one-way door.
 
+## My Visit
+
+A second app on the same database and the same sign-in: **HIG My Visit**, at
+`/visit`. A rep opens it standing in a shop, checks in against the customer,
+records what happened, and checks out.
+
+It is a fifth **view**, not a module, and that is what earns it its own shell.
+The other four views carry a dozen modules between them, so their bar has five
+slots and a long press to rearrange the middle ones. This app has three things
+in it — Dashboard, the check-in action, Report — and a bar with nothing to
+customise would only be a way to break it. So `src/app/(visit)/` is its own
+route group with its own `VisitShell`, while `(app)/[view]/` keeps the bar the
+other views rely on, untouched.
+
+A static `visit` segment sits beside the dynamic `[view]` one. Next resolves
+the literal first, so `/visit/home` is served by the visit layout and the other
+never sees it. Everything else is shared: `/login`, the Supabase clients, the
+theme, `components/ui/*`, and the title bar with its account menu.
+
+### The centre button has two states, and never asks
+
+`visits_one_open_per_person` — a unique index on the rep, where
+`checked_out_at is null` — means there is either an open visit or there is not.
+So the button in the middle of the bar says **Check in** and goes to the shop
+list, or says **Check out** and goes straight to the visit that is open. It
+never offers both, because the database already knows which one makes sense.
+
+The shop list is nearest-first, from the browser's location and the coordinates
+on `public.customers`. Location is asked for once and never insisted on: a
+refusal, no signal, or a shop whose coordinates were never recorded all fall
+back to alphabetical, and the visit is made either way. The helpers live in
+`src/lib/geo.ts` — they used to be in `catalog.ts`, because the cart's customer
+picker needed them first, and moved when a second screen asked the same
+question.
+
+### Evidence, and a report
+
+Two different kinds of fact live in one row, and `0046_visits.sql` treats them
+differently.
+
+**The stamps are evidence.** `checked_in_at` and its coordinates cannot be
+changed at all, and `checked_out_at` is written exactly once — that write *is*
+the check-out. `public.guard_visit_edit()` refuses the rest, which matters
+because the form is not the only way to reach the row.
+
+**The observations are a report, and reports get corrected.** Type of visit,
+visit status, order status, payment status, the next appointment and the
+remarks may be edited while the visit is open and for **24 hours after
+check-out**. After that the window shuts, and the only way through it is
+holding `visit.edit` at `any` scope — so a correction to week-old history
+belongs to somebody who was given that reach on purpose, and lands in the audit
+log. `canEditVisit()` in `src/lib/visits.ts` says the same thing in TypeScript
+so a button is not drawn for a save that would be refused; the two are commented
+to point at each other.
+
+Checking out is what files the record, so the four answers are required to do
+it — `visits_closed_record_ck` says so in the database too. That is what lets
+the report count statuses without having to say "of the visits that were filled
+in".
+
+### What the shop remembers
+
+`customers.last_visit_date` has carried the comment *"Recorded by the visit and
+the sale, once those exist"* since 0025. Checking out is what finally writes it,
+forward only: a visit filed late, or a correction to an older one, must not
+rewind a date a later visit already moved on.
+
 ## Pages start blank
 
 Every module page is deliberately empty:
@@ -606,6 +678,7 @@ migration — add a new one.
 0044_free_quantity_and_discount_modes.sql
                               give some away, or discount in money
 0045_primary_currency.sql     which of the two prices a screen shows
+0046_visits.sql               check in, check out, and what the rep saw
 ```
 
 `0042` is the only one of these that is data rather than schema, and it is not
@@ -621,7 +694,7 @@ rather than schema — enable it under Authentication → Policies in the dashbo
 ## Tests
 
 ```bash
-npm test          # Vitest, 378 tests
+npm test          # Vitest, 704 tests
 npm run test:watch
 ```
 
@@ -758,6 +831,23 @@ chain, the one-primary rules and the directory view.
 
 ```
 ERROR:  CUSTOMERS OK - 47 assertions passed (rls: ran)
+```
+
+### Visit tests
+
+```bash
+psql "$DATABASE_URL" -f supabase/tests/visits.test.sql
+```
+
+31 assertions, and the ones worth reading are about time. A second open visit is
+refused; the check-in stamp cannot be moved at any age or scope; a visit closed
+more than a day ago is no longer the rep's to edit but is still a supervisor's;
+and a visit filed late does not rewind the customer's `last_visit_date`. The
+day-old visit is set up with nobody signed in, because back-dating the stamp is
+precisely what the guard refuses to a person.
+
+```
+ERROR:  VISITS OK - 31 assertions passed (rls: ran)
 ```
 
 ## Deploy

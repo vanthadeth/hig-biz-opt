@@ -336,6 +336,12 @@ A rep opens the catalogue, gives the phone to the shopkeeper, and the shopkeeper
 picks things off it. **Quick actions → Catalog** starts that: the app locks to
 the catalogue and everything else needs a four-digit PIN.
 
+The way out is an icon on the catalogue's title row, beside a light/dark
+toggle — a shop is bright at noon and dark at six, and in kiosk mode there is no
+title bar to reach the theme from. There is no longer a strip of text explaining
+that the app is locked; it said something a customer holding a catalogue can see
+for themselves.
+
 The lock is a cookie the browser cannot read (`httpOnly`), checked in
 `src/lib/supabase/middleware.ts` on every request. A path that is not the
 catalogue redirects back to it, so the back gesture and the address bar are both

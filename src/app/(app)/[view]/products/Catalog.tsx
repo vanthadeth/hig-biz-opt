@@ -40,6 +40,7 @@ import {
 } from "@/lib/catalog";
 import { Counter } from "@/components/ui/Counter";
 import { PageTitle } from "@/components/PageTitle";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { priceIn, totalIn, type Currency } from "@/lib/money";
 import { AddToCart } from "./AddToCart";
@@ -349,9 +350,15 @@ export function Catalog({
             : "top-14 max-md:data-[bar-hidden=true]:top-0"
         }`}
       >
-        {locked && <KioskBar />}
-
-        <PageTitle />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <PageTitle />
+          </div>
+          {/* A shop is bright at noon and dark at six, and in kiosk mode there
+              is no title bar to reach the theme from. */}
+          <ThemeToggle />
+          {locked && <KioskBar />}
+        </div>
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">

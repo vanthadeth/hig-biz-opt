@@ -16,13 +16,13 @@ const STALE_RELOAD = "hig.kiosk.staleReload";
 /**
  * The way out of kiosk mode, and the only one.
  *
- * It sits at the top of the catalogue because that is the one page a locked
+ * It sits on the catalogue's title row because that is the one page a locked
  * device can be on. Everything else redirects here, so a button anywhere else
  * would be a button nobody could reach.
  *
- * Deliberately plain about what it is: a customer holding the phone should be
- * able to tell that this is the shop's app in a browsing mode, not a locked
- * device they have broken.
+ * The component stays mounted whether or not anything is on screen: the
+ * keep-alive below is what tells the server this lock is still in somebody's
+ * hands, and a page that stopped saying so would unlock itself.
  */
 export function KioskBar() {
   const [open, setOpen] = useState(false);
@@ -161,30 +161,22 @@ export function KioskBar() {
 
   return (
     <>
-      <div className="flex items-center gap-3 rounded-2xl border border-line bg-subtle px-3 py-2">
-        <Icon name="shield" className="size-4 shrink-0 text-muted" />
-        <p className="min-w-0 flex-1 text-xs text-muted">
-          Browsing the catalogue. The rest of the app is locked.
-        </p>
-        {/* Icon only: this sits in the header that stays on screen the whole
-            time the phone is in a customer's hands, and the row has a title
-            and a search box to fit beside it. The label is still there for a
-            screen reader, and the door reads as the way out. */}
-        <button
-          type="button"
-          onClick={() => {
-            haptic("tap");
-            setPin("");
-            setError(null);
-            setOpen(true);
-          }}
-          aria-label="Unlock the app"
-          title="Unlock"
-          className="pressable flex size-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface"
-        >
-          <Icon name="logout" className="size-4" />
-        </button>
-      </div>
+      {/* The button alone. It sits on the title row, where the space belongs to
+          the catalogue rather than to a strip explaining itself. */}
+      <button
+        type="button"
+        onClick={() => {
+          haptic("tap");
+          setPin("");
+          setError(null);
+          setOpen(true);
+        }}
+        aria-label="Unlock the app"
+        title="Unlock"
+        className="pressable flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-muted transition-colors hover:text-fg"
+      >
+        <Icon name="logout" className="size-5" />
+      </button>
 
       <Sheet
         open={open}

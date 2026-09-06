@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getViewer = vi.fn();
 const rpc = vi.fn();
+const cookieStore = { get: vi.fn(() => undefined as { value: string } | undefined) };
 
 vi.mock("@/lib/access", () => ({ getViewer }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc }) }));
+vi.mock("next/headers", () => ({ cookies: async () => cookieStore }));
 
+const { KIOSK_GRACE_MS, kioskCookieValue } = await import("@/lib/kiosk");
 const { POST: enter } = await import("./enter/route");
 const { POST: exit } = await import("./exit/route");
+const { POST: keep } = await import("./keep/route");
 const { GET: state } = await import("./state/route");
 
 /** The Set-Cookie line for the lock, or null when the response sets none. */
@@ -35,8 +39,18 @@ function pin({ isSet, verifies }: { isSet: boolean; verifies?: boolean }) {
   });
 }
 
+/** The lock this device is carrying, last kept alive `agoMs` ago. */
+function carrying(agoMs: number | null) {
+  cookieStore.get.mockReturnValue(
+    agoMs === null
+      ? undefined
+      : { value: kioskCookieValue("sales", Date.now() - agoMs) },
+  );
+}
+
 beforeEach(() => {
   rpc.mockReset();
+  cookieStore.get.mockReset().mockReturnValue(undefined);
   getViewer.mockReset().mockResolvedValue({ id: "u1" });
 });
 
@@ -71,6 +85,17 @@ describe("entering kiosk mode", () => {
 
     expect(cookie).not.toMatch(/Max-Age/i);
     expect(cookie).not.toMatch(/Expires/i);
+  });
+
+  it("stamps the lock with the moment it started", async () => {
+    // The cookie being present is not enough to lock anything; a browser can
+    // restore that. Being recently alive is, and this is where that starts.
+    pin({ isSet: true });
+    const cookie = lockCookie(await enter(post({ view: "sales" })));
+    const stamp = Number(/hig_kiosk=sales\.(\d+)/.exec(cookie ?? "")?.[1]);
+
+    expect(Number.isFinite(stamp)).toBe(true);
+    expect(Math.abs(Date.now() - stamp)).toBeLessThan(5_000);
   });
 
   it("cannot be locked into a view that was not named", async () => {
@@ -140,5 +165,45 @@ describe("the unlock pad asking what it is facing", () => {
   it("tells a stranger nothing", async () => {
     getViewer.mockResolvedValue(null);
     expect((await state()).status).toBe(401);
+  });
+});
+
+describe("keeping a lock alive", () => {
+  it("extends one that is still alive", async () => {
+    carrying(60_000);
+    const response = await keep();
+    const stamp = Number(/hig_kiosk=sales\.(\d+)/.exec(lockCookie(response) ?? "")?.[1]);
+
+    expect(response.status).toBe(200);
+    // Moved forward, which is the point: this is what a minute of browsing
+    // buys, and what stops when the app is closed.
+    expect(Date.now() - stamp).toBeLessThan(5_000);
+  });
+
+  it("cannot revive one that has expired", async () => {
+    // The whole guarantee rests here. If a page could re-arm a dead lock, a
+    // restored tab would re-arm it on load and the app would start locked.
+    carrying(KIOSK_GRACE_MS + 60_000);
+    const response = await keep();
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, stale: true });
+    expect(lockCookie(response)).toBeNull();
+  });
+
+  it("cannot conjure one out of nothing", async () => {
+    carrying(null);
+    expect((await keep()).status).toBe(409);
+  });
+
+  it("keeps the view it was locked to", async () => {
+    carrying(1_000);
+    expect(lockCookie(await keep())).toContain("hig_kiosk=sales.");
+  });
+
+  it("refuses a caller who is not signed in", async () => {
+    getViewer.mockResolvedValue(null);
+    carrying(1_000);
+    expect((await keep()).status).toBe(401);
   });
 });

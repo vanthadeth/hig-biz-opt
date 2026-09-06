@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { KIOSK_COOKIE, kioskAllows, kioskLandingPath } from "@/lib/kiosk";
+import {
+  KIOSK_COOKIE,
+  kioskAllows,
+  kioskLandingPath,
+  readKioskCookie,
+} from "@/lib/kiosk";
 
 /**
  * Routes reachable without a session.
@@ -58,12 +63,20 @@ export async function updateSession(request: NextRequest) {
   // served until somebody types the PIN. Enforced here rather than by hiding
   // buttons, because a hidden button is not a lock — the address bar is right
   // there, and so is the back gesture.
-  const lockedView = request.cookies.get(KIOSK_COOKIE)?.value;
+  const lock = request.cookies.get(KIOSK_COOKIE)?.value;
+  const lockedView = readKioskCookie(lock, Date.now());
   if (user && lockedView && !kioskAllows(pathname, lockedView)) {
     const url = request.nextUrl.clone();
     url.pathname = kioskLandingPath(lockedView);
     url.search = "";
     return NextResponse.redirect(url);
+  }
+
+  // A lock nobody kept alive is swept up rather than left to be read again on
+  // every request. This is the line that makes a restored tab harmless: the
+  // browser may bring the cookie back, but it comes back dead.
+  if (lock && !lockedView) {
+    response.cookies.set(KIOSK_COOKIE, "", { path: "/", maxAge: 0 });
   }
 
   if (user && pathname === "/login") {

@@ -7,6 +7,13 @@ import { haptic } from "@/lib/haptics";
 import { isPinShaped } from "@/lib/kiosk";
 
 /**
+ * Marks that this page has already reloaded itself once over an expired lock.
+ * Per tab, and gone when the tab is, which is exactly the life of the problem
+ * it guards against.
+ */
+const STALE_RELOAD = "hig.kiosk.staleReload";
+
+/**
  * The way out of kiosk mode, and the only one.
  *
  * It sits at the top of the catalogue because that is the one page a locked
@@ -26,6 +33,73 @@ export function KioskBar() {
   // PIN can still be sitting here with no way to type one, and drawing a keypad
   // at somebody who has nothing to enter is how a lock becomes a trap.
   const [pinSet, setPinSet] = useState<boolean | null>(null);
+
+  /**
+   * Keep the lock alive while this page is.
+   *
+   * The lock expires on its own, and this is the only thing that stops it. So
+   * closing the app ends it a few minutes later without anybody doing
+   * anything, and a launch tomorrow morning opens the ordinary app — which is
+   * the point, and cannot be had from a cookie alone.
+   *
+   * Only while the page is visible. A phone in a pocket is not a hand-over in
+   * progress, and the browser throttles the timer there anyway; coming back to
+   * the page says so at once rather than waiting for the next tick.
+   */
+  useEffect(() => {
+    let stopped = false;
+
+    async function keepAlive() {
+      if (stopped || document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch("/api/kiosk/keep", { method: "POST" });
+        if (stopped) return;
+
+        if (response.ok) {
+          // Alive again, so a later expiry gets its own reload.
+          try {
+            sessionStorage.removeItem(STALE_RELOAD);
+          } catch {
+            // Private mode. The guard below is a courtesy, not the mechanism.
+          }
+          return;
+        }
+
+        // The lock expired while this page sat there — the app is not locked
+        // any more, so the page has to stop pretending it is. Reloading brings
+        // the shell back, because the server will render it unlocked.
+        if (response.status !== 409) return;
+
+        // Once. The reloaded page should come back unlocked and never reach
+        // here again; if something goes wrong and it does, a second reload
+        // would be an endless one, in a customer's hands, on a page with no
+        // way out of it.
+        let reloadedAlready = false;
+        try {
+          reloadedAlready = sessionStorage.getItem(STALE_RELOAD) === "1";
+          sessionStorage.setItem(STALE_RELOAD, "1");
+        } catch {
+          // Private mode: no guard available. Reload once and stop trying,
+          // which the flag below does without any storage at all.
+        }
+        stopped = true;
+        if (!reloadedAlready) window.location.reload();
+      } catch {
+        // Offline. Left to expire, which is the safe direction: the way out is
+        // a PIN typed into a page that is already loaded.
+      }
+    }
+
+    void keepAlive();
+    // Well inside the grace, so a few missed beats are survivable.
+    const timer = setInterval(keepAlive, 60_000);
+    document.addEventListener("visibilitychange", keepAlive);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", keepAlive);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open || pinSet !== null) return;

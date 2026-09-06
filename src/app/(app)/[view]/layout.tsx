@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/AppShell";
-import { KIOSK_COOKIE } from "@/lib/kiosk";
+import { lockedView } from "@/lib/kiosk.server";
 import {
   getMyModules,
   getMyNav,
@@ -39,7 +38,7 @@ export default async function ViewLayout({
   // Locked to the catalogue: the shell renders no navigation, but it still
   // renders. The middleware is the lock; this only stops showing a customer a
   // row of buttons that would bounce them straight back.
-  const locked = (await cookies()).has(KIOSK_COOKIE);
+  const locked = (await lockedView()) !== null;
 
   // Fetched together rather than in sequence: the nav and the quick actions are
   // both needed before the shell can render, and they do not depend on one

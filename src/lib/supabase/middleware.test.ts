@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { KIOSK_GRACE_MS, kioskCookieValue } from "@/lib/kiosk";
 
 const getUser = vi.fn();
 
@@ -15,9 +16,14 @@ function request(pathname: string, cookies: Record<string, string> = {}) {
   return req;
 }
 
-/** The same request, on a phone that has been handed to a customer. */
-function locked(pathname: string) {
-  return request(pathname, { hig_kiosk: "sales" });
+/**
+ * The same request, on a phone that has been handed to a customer.
+ *
+ * `agoMs` is how long since anything said the lock was still alive. The
+ * default is "just now", which is what an open catalogue keeps making true.
+ */
+function locked(pathname: string, agoMs = 0) {
+  return request(pathname, { hig_kiosk: kioskCookieValue("sales", Date.now() - agoMs) });
 }
 
 function signedIn() {
@@ -139,5 +145,46 @@ describe("updateSession, locked to the catalogue", () => {
 
   it("locks nothing when the cookie is absent", async () => {
     expect(redirectedTo(await updateSession(request("/sales/customers")))).toBeNull();
+  });
+});
+
+describe("updateSession, a lock nobody kept alive", () => {
+  beforeEach(signedIn);
+
+  it("does not lock the app on a launch hours later", async () => {
+    // The promise: the app never starts into a customer-facing catalogue. A
+    // phone that restores its tabs restores its session cookies with them, so
+    // the cookie coming back is expected — it comes back dead.
+    const to = redirectedTo(await updateSession(locked("/sales/home", 6 * 60 * 60 * 1000)));
+    expect(to).toBeNull();
+  });
+
+  it("nor a minute past the grace", async () => {
+    const to = redirectedTo(await updateSession(locked("/sales/home", KIOSK_GRACE_MS + 60_000)));
+    expect(to).toBeNull();
+  });
+
+  it("still locks one that is being kept alive", async () => {
+    const to = redirectedTo(await updateSession(locked("/sales/home", 60_000)));
+    expect(to?.pathname).toBe("/sales/products");
+  });
+
+  it("sweeps the dead cookie up", async () => {
+    // Otherwise it is read again on every request for as long as the browser
+    // keeps it, and the app carries a lock it is deliberately ignoring.
+    const response = await updateSession(locked("/sales/home", 24 * 60 * 60 * 1000));
+    expect(response.headers.get("set-cookie")).toMatch(/hig_kiosk=;[\s\S]*Max-Age=0/i);
+  });
+
+  it("leaves a live one alone", async () => {
+    const response = await updateSession(locked("/sales/products", 10_000));
+    expect(response.headers.get("set-cookie") ?? "").not.toMatch(/hig_kiosk=;/);
+  });
+
+  it("ignores a cookie of the old shape", async () => {
+    // Devices locked before the stamp existed carry a bare view key. It has no
+    // moment attached, so it has never been kept alive, so it locks nothing.
+    const to = redirectedTo(await updateSession(request("/sales/home", { hig_kiosk: "sales" })));
+    expect(to).toBeNull();
   });
 });

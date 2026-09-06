@@ -13,11 +13,11 @@ vi.mock("@/lib/access", () => ({
   getMyModules,
   getMyPermissions,
 }));
-// The layout reads the kiosk cookie to decide whether the shell renders its
-// navigation. Unlocked is the state every assertion below is about, bar the
-// one that names the lock.
-const cookieStore = { has: vi.fn(() => false) };
-vi.mock("next/headers", () => ({ cookies: async () => cookieStore }));
+// The layout asks whether the device is locked to decide whether the shell
+// renders its navigation. Unlocked is the state every assertion below is
+// about, bar the one that names the lock.
+const lockedView = vi.fn(async () => null as string | null);
+vi.mock("@/lib/kiosk.server", () => ({ lockedView }));
 
 vi.mock("@/components/shell/AppShell", () => ({
   AppShell: ({ data, locked }: { data: { view: { key: string } }; locked?: boolean }) => (
@@ -61,7 +61,7 @@ async function enter(viewKey: string) {
 }
 
 beforeEach(() => {
-  cookieStore.has.mockReset().mockReturnValue(false);
+  lockedView.mockReset().mockResolvedValue(null);
   requireViewer.mockReset().mockResolvedValue(viewer);
   getMyViews.mockReset();
   getMyNav.mockReset().mockResolvedValue([]);
@@ -126,7 +126,7 @@ describe("ViewLayout in kiosk mode", () => {
   it("still renders the shell, so the page keeps its context", async () => {
     // The regression this guards: returning children bare left `useShell` with
     // no provider, and the page heading threw rather than rendering.
-    cookieStore.has.mockReturnValue(true);
+    lockedView.mockResolvedValue("sales");
     getMyViews.mockResolvedValue([view("sales")]);
     const { element, redirectedTo } = await enter("sales");
 

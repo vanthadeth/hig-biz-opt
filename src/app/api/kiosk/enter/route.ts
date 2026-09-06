@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import { KIOSK_COOKIE, kioskLandingPath } from "@/lib/kiosk";
+import { KIOSK_COOKIE, kioskCookieValue, kioskLandingPath } from "@/lib/kiosk";
 
 /**
  * Lock the device to the catalogue.
@@ -35,16 +35,16 @@ export async function POST(request: Request) {
   }
 
   const response = NextResponse.json({ ok: true, to: kioskLandingPath(view) });
-  response.cookies.set(KIOSK_COOKIE, view, {
+  response.cookies.set(KIOSK_COOKIE, kioskCookieValue(view, Date.now()), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    // Deliberately no maxAge: a session cookie, so the lock lasts exactly as
-    // long as this run of the app. Closing the app and opening it again starts
-    // normally rather than back in a customer-facing catalogue that the owner
-    // never asked for twice. A dated cookie made every launch for the next day
-    // a locked one, which is not what handing somebody your phone once means.
+    // No maxAge, so the browser is asked to drop it when this run of the app
+    // ends. That is a request, not a guarantee — a phone that restores its tabs
+    // restores its session cookies too — which is why the value carries the
+    // moment it was last alive and the middleware reads that rather than the
+    // mere presence of a cookie.
   });
   return response;
 }

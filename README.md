@@ -322,10 +322,26 @@ The PIN is set on your profile, hashed with bcrypt in `public.user_pins` — a
 table with no RLS policies at all, reachable only through two `security definer`
 functions. Five wrong tries locks it for five minutes.
 
-**The lock lasts for that run of the app and no longer.** The cookie has no
-expiry date, so closing the app and opening it again starts normally, at Home.
-Handing the phone to one customer is not an instruction to greet you with a
-catalogue tomorrow morning.
+**The app never starts locked.** Opening it always gives you the ordinary app,
+whatever happened yesterday — handing the phone to one customer is not an
+instruction to greet you with a catalogue the next morning.
+
+That is not something a cookie can promise. "Until the browser closes" is a
+promise browsers break: a phone that restores its tabs restores its session
+cookies with them. So the cookie carries the moment the lock was last known to
+be alive, and an open catalogue says so about once a minute — only while it is
+on screen, since a phone in a pocket is not a hand-over in progress. Close the
+app and the saying stops; five minutes later the lock is dead, and the
+middleware sweeps the cookie up the next time it sees it. Nothing can revive an
+expired lock, which is why a restored tab cannot re-arm one on load; starting a
+new lock takes a tap on **Catalog**.
+
+Five minutes rather than instantly, because a lock that ended the moment the app
+closed could be escaped by closing the app — one gesture, for the customer
+holding the phone. It is long enough to survive the browser dropping a
+backgrounded tab, and no ordinary launch falls inside it. A rep who wants out
+now types their PIN, which ends the lock on the spot. The window is
+`KIOSK_GRACE_MS` in `src/lib/kiosk.ts`.
 
 **No PIN, no lock.** Catalog refuses to start if the account has no PIN, and
 says so, because the PIN is the only way back out — locking without one shuts

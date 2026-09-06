@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { PageTitle } from "@/components/PageTitle";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -7,7 +6,7 @@ import {
   type CartLine,
   type CatalogItem,
 } from "@/lib/catalog";
-import { KIOSK_COOKIE } from "@/lib/kiosk";
+import { lockedView } from "@/lib/kiosk.server";
 import { Catalog } from "./Catalog";
 import { KioskBar } from "./KioskBar";
 
@@ -26,7 +25,7 @@ export default async function Page() {
   const supabase = await createClient();
   // Read on the server: the cookie is httpOnly, so the page cannot see it and
   // the shell would otherwise have no idea it is locked.
-  const locked = (await cookies()).has(KIOSK_COOKIE);
+  const locked = (await lockedView()) !== null;
 
   const [catalogue, cart] = await Promise.all([
     supabase

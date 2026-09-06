@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   isPinShaped,
+  KIOSK_GRACE_MS,
   kioskAllows,
+  kioskCookieValue,
   kioskLandingPath,
   pinAttemptsMessage,
+  readKioskCookie,
 } from "./kiosk";
 
 describe("what a locked device may reach", () => {
@@ -67,5 +70,58 @@ describe("the PIN", () => {
       "That PIN is wrong. One more try before it locks.",
     );
     expect(pinAttemptsMessage(0)).toBe("That PIN is wrong.");
+  });
+});
+
+describe("how long a lock lives", () => {
+  const now = 1_800_000_000_000;
+  const alive = (agoMs: number) => kioskCookieValue("sales", now - agoMs);
+
+  it("holds while something is keeping it alive", () => {
+    expect(readKioskCookie(alive(0), now)).toBe("sales");
+    expect(readKioskCookie(alive(60_000), now)).toBe("sales");
+  });
+
+  it("is dead once nothing has kept it alive", () => {
+    // The whole promise. Nothing said this lock was still in somebody's hands,
+    // so it is not one — whatever the browser restored.
+    expect(readKioskCookie(alive(KIOSK_GRACE_MS + 1), now)).toBeNull();
+  });
+
+  it("survives a phone closed and opened again straight away", () => {
+    // Not an escape hatch: a customer holding the phone can close the app with
+    // one gesture, and that must not be the way out.
+    expect(readKioskCookie(alive(30_000), now)).toBe("sales");
+  });
+
+  it("is dead the next morning", () => {
+    expect(readKioskCookie(alive(14 * 60 * 60 * 1000), now)).toBeNull();
+  });
+
+  it("keeps the view it was locked to", () => {
+    expect(readKioskCookie(kioskCookieValue("admin", now), now)).toBe("admin");
+  });
+
+  it("locks nothing without a cookie", () => {
+    expect(readKioskCookie(undefined, now)).toBeNull();
+    expect(readKioskCookie("", now)).toBeNull();
+  });
+
+  it("locks nothing on a value that is not one of ours", () => {
+    // Including the shape this cookie used to have, so a device carrying an
+    // old one starts the ordinary app rather than a catalogue.
+    expect(readKioskCookie("sales", now)).toBeNull();
+    expect(readKioskCookie("sales.tomorrow", now)).toBeNull();
+    expect(readKioskCookie(".123", now)).toBeNull();
+  });
+
+  it("tolerates a clock that has drifted a little", () => {
+    expect(readKioskCookie(alive(-30_000), now)).toBe("sales");
+  });
+
+  it("refuses a stamp far in the future", () => {
+    // A lock that arithmetic could make eternal is worse than one that ends
+    // early: the failure that leaves the app usable is the one to prefer.
+    expect(readKioskCookie(alive(-(KIOSK_GRACE_MS + 1)), now)).toBeNull();
   });
 });

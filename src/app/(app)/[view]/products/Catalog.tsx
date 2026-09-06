@@ -80,7 +80,9 @@ export function Catalog({
   const [cartOpen, setCartOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [placed, setPlaced] = useState<string | null>(null);
+  // The order just placed, kept so "See the order" can open that one rather
+  // than a list somebody then has to find it in.
+  const [placed, setPlaced] = useState<{ id: string; order_no: string } | null>(null);
 
   // Fetched when a sheet opens rather than with the page: a catalogue of a
   // hundred items would otherwise carry every picture of every one of them to
@@ -258,12 +260,12 @@ export function Catalog({
     try {
       const { data, error } = await createClient().rpc("confirm_cart");
       if (error) throw new Error(error.message);
-      const order = data as { order_no: string } | null;
-      if (!order) throw new Error("The order could not be created.");
+      const order = data as { id: string; order_no: string } | null;
+      if (!order?.id) throw new Error("The order could not be created.");
 
       haptic("success");
       setLines([]);
-      setPlaced(order.order_no);
+      setPlaced({ id: order.id, order_no: order.order_no });
     } catch (e) {
       haptic("error");
       setError(e instanceof Error ? e.message : "The order could not be created.");
@@ -524,7 +526,7 @@ export function Catalog({
                it is what the shop and the warehouse will both quote back. */
             <div className="space-y-4 py-4 text-center">
               <p className="text-sm text-muted">Order placed</p>
-              <p className="text-3xl font-semibold tabular-nums">{placed}</p>
+              <p className="text-3xl font-semibold tabular-nums">{placed.order_no}</p>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -537,7 +539,7 @@ export function Catalog({
                   Keep selling
                 </button>
                 <Link
-                  href={`/${viewKey}/sale-orders`}
+                  href={`/${viewKey}/sale-orders/${placed.id}`}
                   onClick={() => haptic("tap")}
                   className="pressable flex min-h-11 flex-1 items-center justify-center rounded-xl bg-brand text-sm font-medium text-brand-fg"
                 >

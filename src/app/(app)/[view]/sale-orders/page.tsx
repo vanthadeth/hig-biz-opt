@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Icon } from "@/components/Icon";
 import { PageTitle } from "@/components/PageTitle";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
@@ -16,7 +18,12 @@ import { ORDER_COLUMNS, orderDate, type SaleOrderRow } from "@/lib/saleOrders";
  * Whose orders appear is the policy's decision, not this query's — a rep with
  * `sale_order.view` at 'own' sees theirs, at 'sub' sees their department's.
  */
-export default async function Page() {
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ view: string }>;
+}) {
+  const { view } = await params;
   const supabase = await createClient();
   const { data } = await supabase
     .from("sale_orders")
@@ -41,36 +48,42 @@ export default async function Page() {
         <ul className="space-y-2">
           {orders.map((order) => (
             <li key={order.id}>
-              <Card className="flex items-center gap-3 p-3">
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium tabular-nums">
-                      {order.order_no}
+              <Link
+                href={`/${view}/sale-orders/${order.id}`}
+                className="pressable block"
+              >
+                <Card className="flex items-center gap-3 p-3">
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium tabular-nums">
+                        {order.order_no}
+                      </span>
+                      {order.status === "cancelled" && (
+                        <Chip tone="danger">Cancelled</Chip>
+                      )}
                     </span>
-                    {order.status === "cancelled" && (
-                      <Chip tone="danger">Cancelled</Chip>
+                    <span className="block truncate text-xs text-muted">
+                      {order.customer?.shop_name ?? "Customer removed"} ·{" "}
+                      {orderDate(order.created_at)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-sm font-semibold tabular-nums">
+                      {totalsLine({ usd: order.total_usd, khr: order.total_khr })}
+                    </span>
+                    {(order.discount_usd ?? 0) > 0 && (
+                      <span className="block text-xs tabular-nums text-muted">
+                        {totalsLine({
+                          usd: order.discount_usd,
+                          khr: order.discount_khr,
+                        })}{" "}
+                        off
+                      </span>
                     )}
                   </span>
-                  <span className="block truncate text-xs text-muted">
-                    {order.customer?.shop_name ?? "Customer removed"} ·{" "}
-                    {orderDate(order.created_at)}
-                  </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="block text-sm font-semibold tabular-nums">
-                    {totalsLine({ usd: order.total_usd, khr: order.total_khr })}
-                  </span>
-                  {(order.discount_usd ?? 0) > 0 && (
-                    <span className="block text-xs text-muted tabular-nums">
-                      {totalsLine({
-                        usd: order.discount_usd,
-                        khr: order.discount_khr,
-                      })}{" "}
-                      off
-                    </span>
-                  )}
-                </span>
-              </Card>
+                  <Icon name="chevron" className="size-4 shrink-0 text-muted" />
+                </Card>
+              </Link>
             </li>
           ))}
         </ul>

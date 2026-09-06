@@ -404,7 +404,8 @@ The rows are in the order the conversation happens in:
 4. **What it comes to**, large, with the undiscounted figure struck through above
    it — the number that gets read back.
 
-**Convert to sale order** is the line between the two. Everything happens in
+**Convert to sale order** is the line between the two, and **See the order**
+opens the one just placed rather than a list to find it in. Everything happens in
 `app.confirm_cart()`, in one transaction: the number is issued, the lines are
 copied, the totals are computed and the cart is emptied. A client doing that in
 four writes would eventually leave an order with no lines on a phone that lost
@@ -415,6 +416,15 @@ prices **as they were at that moment** — change an item's price tomorrow and t
 order still says what the shop agreed to pay. `item_id` is a convenience and is
 allowed to go null: withdrawing an item from the catalogue must not take the
 record of what was sold with it.
+
+An order opens at `/<view>/sale-orders/<id>`. Everything on it is the copy taken
+when the cart was confirmed — the names, the codes, the prices — and nothing is
+read back from the item, which is the point: the catalogue has moved on and the
+order has not. A discount given in money is shown as money with what it came to
+beside it, because rewriting "two dollars off" as "2%" tells somebody they said
+something they did not. An order that is not yours and an order that does not
+exist both come back as not found: the policy decides which orders exist for the
+person asking, and saying "this one is not yours" says something about it.
 
 An order needs a customer, and the function refuses without one — an order for
 nobody cannot be delivered, chased or invoiced. Unlike a cart, an order is

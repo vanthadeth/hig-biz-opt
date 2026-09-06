@@ -40,6 +40,13 @@ export type SyncDefinition = {
   target_table: string;
   trigger_kind: SyncTrigger;
   interval_minutes: number | null;
+  /**
+   * A target column that must not be empty for the row to be written.
+   *
+   * For a sync that reads a parent's tab to fill a child table — contacts out
+   * of the customer row — where most rows have nothing in the slot at all.
+   */
+  require_column: string | null;
   match_on: SyncMatch;
   hook_token: string;
   active: boolean;
@@ -53,6 +60,8 @@ export type SyncColumnMap = {
   sheet_column: string;
   target_column: string | null;
   value_kind: SyncValueKind;
+  transform: SyncTransform;
+  transform_arg: string | null;
   /**
    * When set, this column holds a sheet ID belonging to that table rather than a
    * value. The database resolves it to our own key at write time.
@@ -81,10 +90,10 @@ export type TargetColumn = {
 };
 
 export const SYNC_DEFINITION_COLUMNS =
-  "id, name, spreadsheet_id, tab_name, header_row, target_table, trigger_kind, interval_minutes, match_on, hook_token, active, last_run_at, next_run_at";
+  "id, name, spreadsheet_id, tab_name, header_row, target_table, trigger_kind, interval_minutes, match_on, require_column, hook_token, active, last_run_at, next_run_at";
 
 export const SYNC_COLUMN_MAP_COLUMNS =
-  "id, sync_id, sheet_column, target_column, value_kind, reference_table, sort_order";
+  "id, sync_id, sheet_column, target_column, value_kind, reference_table, transform, transform_arg, sort_order";
 
 export const SYNC_TARGET_COLUMNS = "table_name, label, key_column, pk_column, sort_order";
 
@@ -158,6 +167,71 @@ function readNumber(raw: unknown): number | null {
  * Null for anything that cannot be read, never a guess and never a zero: a
  * blank price is not a free item, and an unparseable date is not today.
  */
+/**
+ * What to do with a cell before it is written.
+ *
+ * The sheet and this database do not agree about shape, and the disagreement
+ * is ours to resolve rather than the sheet's — it is the system of record
+ * until everything is moved over, and asking somebody to restructure it while
+ * they are still working in it is asking for the data to get worse.
+ */
+export type SyncTransform = "none" | "latitude" | "longitude" | "suffix";
+
+/**
+ * One half of a "lat, long" cell.
+ *
+ * Accepts a comma or a semicolon between them, and any amount of space, which
+ * is what a column typed by hand over several years actually contains. Refuses
+ * anything that is not two numbers: half a coordinate locates nothing, and the
+ * database has a constraint saying exactly that, so guessing here would only
+ * move the failure.
+ */
+export function splitLatLng(raw: unknown): { lat: number; lng: number } | null {
+  if (raw === null || raw === undefined) return null;
+  const parts = String(raw)
+    .split(/[,;]/)
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  if (parts.length !== 2) return null;
+
+  const lat = Number(parts[0]);
+  const lng = Number(parts[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  // Somebody has typed them the wrong way round if this fails, and a shop in
+  // the Gulf of Guinea is worse than a shop with no pin at all.
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+
+  return { lat, lng };
+}
+
+/**
+ * The value a mapping writes, once its transform has had the cell.
+ *
+ * `coerced` is what the column's own type made of the raw cell; the raw cell
+ * comes too, because splitting "11.55, 104.93" has to happen before anything
+ * tries to read it as a number and gets 11.
+ */
+export function applyTransform(
+  transform: SyncTransform,
+  arg: string | null,
+  raw: unknown,
+  coerced: unknown,
+): unknown {
+  if (transform === "none") return coerced;
+
+  if (transform === "latitude" || transform === "longitude") {
+    const pair = splitLatLng(raw);
+    if (!pair) return null;
+    return transform === "latitude" ? pair.lat : pair.lng;
+  }
+
+  // A suffix on nothing is nothing: a child of a parent with no ID has no
+  // identity of its own to derive.
+  const base = raw === null || raw === undefined ? "" : String(raw).trim();
+  if (base === "") return null;
+  return `${base}${arg ?? ""}`;
+}
+
 export function coerceValue(raw: unknown, kind: SyncValueKind): unknown {
   if (raw === null || raw === undefined) return null;
   const text = typeof raw === "string" ? raw.trim() : raw;
@@ -244,9 +318,9 @@ export function buildRows(
   rows: unknown[][],
   maps: SyncColumnMap[],
   keyColumn: string,
+  requireColumn: string | null = null,
 ): BuiltRows {
   const mapped = maps.filter((m) => m.target_column !== null);
-  const byHeader = new Map(mapped.map((m) => [m.sheet_column.trim(), m]));
   const index = new Map<string, number>();
   headers.forEach((header, i) => {
     const name = String(header ?? "").trim();
@@ -273,14 +347,33 @@ export function buildRows(
     }
 
     const record: Record<string, unknown> = {};
-    for (const [header, map] of byHeader) {
-      const at = index.get(header);
+    // Over the mappings rather than over the sheet's columns: two mappings may
+    // read the same column and take different things from it, which is how one
+    // "lat, long" cell becomes two.
+    for (const map of mapped) {
+      const at = index.get(map.sheet_column.trim());
+      const raw = at === undefined ? null : row[at];
       // A reference carries the other sheet's ID, which is text whatever the
       // column it will eventually land in holds. Coercing it to the target
       // column's type here would turn an ID into null before the database ever
       // got the chance to look it up.
       const kind = map.reference_table ? "text" : map.value_kind;
-      record[map.target_column!] = at === undefined ? null : coerceValue(row[at], kind);
+      record[map.target_column!] = applyTransform(
+        map.transform,
+        map.transform_arg,
+        raw,
+        coerceValue(raw, kind),
+      );
+    }
+
+    // An empty slot. The key can be present and the row still be nothing: a
+    // contact's id is derived from its customer's, so it exists whether or not
+    // anybody filled the contact in.
+    if (requireColumn !== null) {
+      const required = record[requireColumn];
+      if (required === null || required === undefined || String(required).trim() === "") {
+        continue;
+      }
     }
 
     const key = record[keyColumn];

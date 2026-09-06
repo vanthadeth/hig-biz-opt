@@ -17,6 +17,8 @@ import {
   matchColumn,
   type SyncColumnMap,
   type SyncDefinition,
+  applyTransform,
+  splitLatLng,
 } from "./sync";
 
 const map = (
@@ -25,13 +27,17 @@ const map = (
   value_kind: SyncColumnMap["value_kind"] = "text",
   sort_order = 0,
   reference_table: string | null = null,
+  transform: SyncColumnMap["transform"] = "none",
+  transform_arg: string | null = null,
 ): SyncColumnMap => ({
-  id: `m-${sheet_column}`,
+  id: `m-${sheet_column}-${target_column ?? "none"}-${transform}`,
   sync_id: "s",
   sheet_column,
   target_column,
   value_kind,
   reference_table,
+  transform,
+  transform_arg,
   sort_order,
 });
 
@@ -44,6 +50,7 @@ const sync = (over: Partial<SyncDefinition> = {}): SyncDefinition => ({
   target_table: "items",
   trigger_kind: "interval",
   interval_minutes: 60,
+  require_column: null,
   match_on: "sheet_id",
   hook_token: "t",
   active: true,
@@ -383,5 +390,127 @@ describe("sheet IDs and references", () => {
       "sheet_id",
     );
     expect(problems.some((p) => p.includes("sheet_id"))).toBe(true);
+  });
+});
+
+describe("a sheet column that is two columns here", () => {
+  it("splits a location cell into a pair", () => {
+    expect(splitLatLng("11.5564, 104.9282")).toEqual({ lat: 11.5564, lng: 104.9282 });
+  });
+
+  it("takes the separators a column typed by hand actually holds", () => {
+    expect(splitLatLng("11.5564,104.9282")).toEqual({ lat: 11.5564, lng: 104.9282 });
+    expect(splitLatLng("  11.5564 ; 104.9282  ")).toEqual({ lat: 11.5564, lng: 104.9282 });
+  });
+
+  it("refuses half a coordinate rather than guessing the other half", () => {
+    // Half a coordinate locates nothing, and the database has a constraint
+    // saying so — guessing here would only move the failure.
+    expect(splitLatLng("11.5564")).toBeNull();
+    expect(splitLatLng("")).toBeNull();
+    expect(splitLatLng(null)).toBeNull();
+    expect(splitLatLng("somewhere near the market")).toBeNull();
+  });
+
+  it("refuses a pair that is not on the planet", () => {
+    // Typed the wrong way round. A shop in the Gulf of Guinea is worse than a
+    // shop with no pin at all.
+    expect(splitLatLng("104.9282, 11.5564")).toBeNull();
+  });
+
+  it("writes one cell into two columns, from two mappings", () => {
+    // The bug this fixes: mappings used to be keyed by sheet column, so a
+    // second mapping of the same column replaced the first and one half of
+    // every location was silently dropped.
+    const built = buildRows(
+      ["Code", "Pin"],
+      [["C-1", "11.5564, 104.9282"]],
+      [
+        map("Code", "code"),
+        map("Pin", "latitude", "number", 1, null, "latitude"),
+        map("Pin", "longitude", "number", 2, null, "longitude"),
+      ],
+      "code",
+    );
+
+    expect(built.records).toEqual([
+      { code: "C-1", latitude: 11.5564, longitude: 104.9282 },
+    ]);
+  });
+
+  it("leaves both halves null when the cell is unusable", () => {
+    const built = buildRows(
+      ["Code", "Pin"],
+      [["C-1", "not a pin"]],
+      [
+        map("Code", "code"),
+        map("Pin", "latitude", "number", 1, null, "latitude"),
+        map("Pin", "longitude", "number", 2, null, "longitude"),
+      ],
+      "code",
+    );
+
+    expect(built.records[0]).toEqual({ code: "C-1", latitude: null, longitude: null });
+  });
+});
+
+describe("contacts that live in the customer's row", () => {
+  const contactMaps = [
+    // The customer this contact belongs to, resolved through its sheet id.
+    map("Customer ID", "customer_id", "text", 0, "customers"),
+    // Its own identity, derived from the parent's: contact one is always
+    // contact one, so a second run rewrites it rather than adding it again.
+    map("Customer ID", "sheet_id", "text", 1, null, "suffix", "#1"),
+    map("Contact 1 Name", "name", "text", 2),
+    map("Contact 1 Phone", "phone", "text", 3),
+  ];
+
+  it("gives the child a stable id derived from its parent", () => {
+    const built = buildRows(
+      ["Customer ID", "Contact 1 Name", "Contact 1 Phone"],
+      [["CUS-7", "Sok Dara", "012345678"]],
+      contactMaps,
+      "sheet_id",
+    );
+
+    expect(built.records).toEqual([
+      { customer_id: "CUS-7", sheet_id: "CUS-7#1", name: "Sok Dara", phone: "012345678" },
+    ]);
+  });
+
+  it("leaves out the slot nobody filled in", () => {
+    // The synthesised id is there whether or not the contact is, so the key
+    // check cannot tell the difference. require_column can.
+    const built = buildRows(
+      ["Customer ID", "Contact 1 Name", "Contact 1 Phone"],
+      [
+        ["CUS-7", "Sok Dara", "012345678"],
+        ["CUS-8", "", ""],
+      ],
+      contactMaps,
+      "sheet_id",
+      "name",
+    );
+
+    expect(built.records).toHaveLength(1);
+    expect(built.records[0].sheet_id).toBe("CUS-7#1");
+    // Not counted as a skip: nobody meant to enter a second contact.
+    expect(built.skipped).toBe(0);
+  });
+
+  it("has no identity to give when the parent has none", () => {
+    expect(applyTransform("suffix", "#1", "", null)).toBeNull();
+    expect(applyTransform("suffix", "#1", null, null)).toBeNull();
+  });
+
+  it("keeps two slots apart", () => {
+    expect(applyTransform("suffix", "#1", "CUS-7", "CUS-7")).toBe("CUS-7#1");
+    expect(applyTransform("suffix", "#2", "CUS-7", "CUS-7")).toBe("CUS-7#2");
+  });
+});
+
+describe("a mapping with nothing to do", () => {
+  it("hands back what the column's own type made of the cell", () => {
+    expect(applyTransform("none", null, "12", 12)).toBe(12);
   });
 });

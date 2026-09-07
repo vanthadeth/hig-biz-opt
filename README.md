@@ -875,3 +875,20 @@ mobile layout — the auto-hiding title bar and bottom bar are built for it.
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
 | `npm run icons` | Regenerate app icons from the brand palette |
+
+## Maps
+
+The visit map and the customer location picker use the Google Maps JavaScript
+API. Set:
+
+```
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=...
+```
+
+The key reaches the browser either way, so restrict it by HTTP referrer in the
+Google Cloud console rather than trying to hide it. Enable **Maps JavaScript
+API** on the project the key belongs to.
+
+Without a key the maps do not go blank — they say which variable is missing,
+because a grey rectangle is indistinguishable from no data, a slow network, or
+a bug.

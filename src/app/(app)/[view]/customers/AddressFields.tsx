@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { LocationPicker } from "@/components/ui/LocationPicker";
 import { Field, SelectField } from "@/components/ui/Field";
 import { haptic } from "@/lib/haptics";
 import {
@@ -223,7 +224,7 @@ export function AddressFields({
         disabled={disabled}
       />
 
-      <div className="sm:col-span-2">
+      <div className="sm:col-span-2 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={useMyLocation}
@@ -233,6 +234,21 @@ export function AddressFields({
           <Icon name="bolt" className="size-4" />
           {locating ? "Finding you…" : "Use my location"}
         </button>
+
+        {/* The other case: the shop was added from a phone call at the office,
+            or the fix landed on the wrong side of the road. Dragging a pin
+            onto a roofline is something a person can do accurately from an
+            armchair and cannot do at all by typing six decimal places. */}
+        <LocationPicker
+          disabled={disabled}
+          latitude={Number.isFinite(Number(draft.latitude)) && draft.latitude.trim() !== ""
+            ? Number(draft.latitude) : null}
+          longitude={Number.isFinite(Number(draft.longitude)) && draft.longitude.trim() !== ""
+            ? Number(draft.longitude) : null}
+          onPick={(lat, lng) =>
+            set({ latitude: formatCoordinate(lat), longitude: formatCoordinate(lng) })
+          }
+        />
         <p className="mt-1 text-xs text-muted">
           {accuracy
             ? `Taken from this device, accurate to about ${accuracy}. Check it is the shop and not the road.`

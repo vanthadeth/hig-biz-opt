@@ -1,153 +1,180 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import type { Map as LeafletMap } from "leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useRef, useState } from "react";
 import { boundsOf, gapLine, padded, routeLines, type MapPin } from "@/lib/mapView";
+import { loadMaps, mapsKey, mapsProblem } from "@/lib/googleMaps";
 
 /**
  * The map itself, and nothing else.
  *
- * Leaflet is imported at run time rather than at the top of the module: it
- * touches `window` on the way in, so a static import would break the server
- * render of the page around it. This component is only ever the map, so
- * everything above it renders while the library is still arriving.
+ * Google Maps arrives as a script with a key on it, loaded at run time rather
+ * than imported, so the page around it renders while the library is still on
+ * its way — and says plainly when it never arrives. A blank grey rectangle is
+ * the worst way to report a missing key: it looks exactly like no data.
  *
- * Markers are drawn as our own HTML rather than Leaflet's default pin, which
- * would need image files served from a path Next does not publish. Doing it
- * ourselves also means the numbers and the colours are ours: a check-in is a
- * numbered blue disc, one outside the radius is amber, and a shop is a small
- * hollow ring so it never reads as somebody having been there.
+ * Markers are drawn as numbered discs with our own colours, read off the page
+ * so they follow the theme. A check-in is a numbered disc, one outside the
+ * radius is amber, and a shop is a small hollow ring so it never reads as
+ * somebody having been there.
  *
- * Tiles come from OpenStreetMap. They are the reason this needs a network, and
- * the only part of the screen that does — pins, lines and numbers are all
- * drawn locally, so a map with no tiles still shows where everybody was, on a
- * blank ground.
+ * These use `google.maps.Marker` rather than `AdvancedMarkerElement`, which
+ * needs a cloud-configured Map ID that this app does not have and should not
+ * require somebody to create before a map will draw. Google has committed to
+ * twelve months' notice before withdrawing it.
  */
 export function VisitMapCanvas({ pins }: { pins: MapPin[] }) {
   const holder = useRef<HTMLDivElement>(null);
-  const map = useRef<LeafletMap | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const key = mapsKey();
+  const problem = mapsProblem(key, failed);
 
   useEffect(() => {
+    if (key === null) return;
     let cancelled = false;
 
-    (async () => {
-      const L = await import("leaflet");
-      if (cancelled || !holder.current) return;
+    loadMaps()
+      .then((maps) => {
+        if (cancelled || !holder.current) return;
 
-      // React can run an effect twice in development; a second Leaflet on the
-      // same element throws rather than replacing the first.
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
+        const css = getComputedStyle(holder.current);
+        const token = (name: string, fallback: string) =>
+          css.getPropertyValue(name).trim() || fallback;
+        const brand = token("--brand", "#1B7FD0");
+        const brandFg = token("--brand-fg", "#ffffff");
+        const warn = token("--warn", "#fdf0cf");
+        const warnFg = token("--warn-fg", "#7a4e00");
+        const surface = token("--surface", "#ffffff");
+        const muted = token("--muted", "#64707D");
 
-      const instance = L.map(holder.current, {
-        // A map inside a scrolling page that swallows the wheel is a map that
-        // traps the page. Dragging and pinching still work.
-        scrollWheelZoom: false,
-        attributionControl: true,
-      });
-      map.current = instance;
+        const map = new maps.Map(holder.current, {
+          // A map inside a scrolling page that swallows the wheel is a map that
+          // traps the page; dragging and pinching still work.
+          gestureHandling: "cooperative",
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          center: { lat: 11.5564, lng: 104.9282 },
+          zoom: 13,
+        });
 
-      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: "© OpenStreetMap contributors",
-      }).addTo(instance);
+        const info = new maps.InfoWindow();
 
-      // The palette, read off the page rather than written twice. Markers are
-      // built as HTML strings, which Tailwind cannot scan, and the lines are
-      // drawn onto a canvas that takes a colour rather than a class — so both
-      // ask the stylesheet for the token and follow the theme for free.
-      const css = getComputedStyle(holder.current);
-      const token = (name: string, fallback: string) =>
-        css.getPropertyValue(name).trim() || fallback;
-      const brand = token("--brand", "#1B7FD0");
-      const brandFg = token("--brand-fg", "#ffffff");
-      const warn = token("--warn", "#fdf0cf");
-      const warnFg = token("--warn-fg", "#7a4e00");
-      const surface = token("--surface", "#ffffff");
-      const muted = token("--muted", "#64707D");
-
-      // Leaflet's own stylesheet paints the container light grey, which is a
-      // pale slab in a dark page for as long as the tiles are still coming —
-      // and permanently, for anybody offline. An inline style beats its class.
-      holder.current.style.background = token("--subtle", "#EEF2F7");
-
-      // The shop first, so a check-in disc sits over its ring rather than under.
-      for (const pin of pins) {
-        if (!pin.shop) continue;
-        L.marker([pin.shop.latitude, pin.shop.longitude], {
-          icon: L.divIcon({
-            className: "",
-            html:
-              `<span style="display:block;width:12px;height:12px;border-radius:9999px;` +
-              `border:2px solid ${brand};background:${surface}"></span>`,
-            iconSize: [12, 12],
-            iconAnchor: [6, 6],
-          }),
-        })
-          .addTo(instance)
-          .bindPopup(`${pin.shopName}<br><small>Where the shop is recorded</small>`);
-      }
-
-      for (const pin of pins) {
-        const line = gapLine(pin);
-        if (line) {
-          L.polyline(line, {
-            color: pin.outOfRange ? warnFg : muted,
-            weight: 1.5,
-            dashArray: "4 4",
-          }).addTo(instance);
+        // The shop first, so a check-in disc sits over its ring, not under.
+        for (const pin of pins) {
+          if (!pin.shop) continue;
+          const marker = new maps.Marker({
+            map,
+            position: { lat: pin.shop.latitude, lng: pin.shop.longitude },
+            icon: {
+              path: maps.SymbolPath.CIRCLE,
+              scale: 6,
+              fillColor: surface,
+              fillOpacity: 1,
+              strokeColor: brand,
+              strokeWeight: 2,
+            },
+            title: pin.shopName,
+          });
+          marker.addListener("click", () => {
+            info.setContent(
+              `<strong>${pin.shopName}</strong><br><small>Where the shop is recorded</small>`,
+            );
+            info.open({ map, anchor: marker });
+          });
         }
-      }
 
-      for (const line of routeLines(pins)) {
-        L.polyline(line, { color: brand, weight: 3, opacity: 0.55 }).addTo(instance);
-      }
+        for (const pin of pins) {
+          const line = gapLine(pin);
+          if (!line) continue;
+          new maps.Polyline({
+            map,
+            path: line.map(([lat, lng]) => ({ lat, lng })),
+            strokeOpacity: 0,
+            // A dashed line, drawn as repeated dots: the gap between where
+            // somebody stood and where the shop is recorded.
+            icons: [{
+              icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2,
+                      strokeColor: pin.outOfRange ? warnFg : muted },
+              offset: "0",
+              repeat: "10px",
+            }],
+          });
+        }
 
-      for (const pin of pins) {
-        if (!pin.at) continue;
-        const fill = pin.outOfRange ? warnFg : brand;
-        const ink = pin.outOfRange ? warn : brandFg;
-        L.marker([pin.at.latitude, pin.at.longitude], {
-          icon: L.divIcon({
-            className: "",
-            html:
-              `<span style="display:grid;place-items:center;width:24px;height:24px;` +
-              `border-radius:9999px;background:${fill};color:${ink};font-size:11px;` +
-              `font-weight:600;box-shadow:0 1px 3px rgb(0 0 0 / .35)">${pin.order}</span>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
-          }),
-        })
-          .addTo(instance)
-          .bindPopup(
-            `<strong>${pin.order}. ${pin.shopName}</strong><br>` +
-              `<small>${
+        for (const line of routeLines(pins)) {
+          new maps.Polyline({
+            map,
+            path: line.map(([lat, lng]) => ({ lat, lng })),
+            strokeColor: brand,
+            strokeWeight: 3,
+            strokeOpacity: 0.55,
+          });
+        }
+
+        for (const pin of pins) {
+          if (!pin.at) continue;
+          const marker = new maps.Marker({
+            map,
+            position: { lat: pin.at.latitude, lng: pin.at.longitude },
+            zIndex: 10 + pin.order,
+            icon: {
+              path: maps.SymbolPath.CIRCLE,
+              scale: 12,
+              fillColor: pin.outOfRange ? warnFg : brand,
+              fillOpacity: 1,
+              strokeWeight: 0,
+            },
+            label: {
+              text: String(pin.order),
+              color: pin.outOfRange ? warn : brandFg,
+              fontSize: "11px",
+              fontWeight: "600",
+            },
+            title: `${pin.order}. ${pin.shopName}`,
+          });
+          marker.addListener("click", () => {
+            info.setContent(
+              `<strong>${pin.order}. ${pin.shopName}</strong><br><small>${
                 pin.distanceM === null
                   ? "Distance unknown"
                   : `${Math.round(pin.distanceM)} m from the shop`
               }</small>`,
-          );
-      }
+            );
+            info.open({ map, anchor: marker });
+          });
+        }
 
-      const box = boundsOf(pins);
-      if (box) {
-        const air = padded(box);
-        instance.fitBounds([
-          [air.south, air.west],
-          [air.north, air.east],
-        ]);
-      }
-    })();
+        const box = boundsOf(pins);
+        if (box) {
+          const air = padded(box);
+          map.fitBounds(
+            new maps.LatLngBounds(
+              { lat: air.south, lng: air.west },
+              { lat: air.north, lng: air.east },
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
 
     return () => {
       cancelled = true;
-      map.current?.remove();
-      map.current = null;
     };
-  }, [pins]);
+  }, [pins, key]);
+
+  if (problem) {
+    return (
+      <div
+        role="status"
+        className="grid h-[60vh] min-h-72 w-full place-items-center rounded-2xl border border-dashed border-line bg-subtle p-6 text-center text-sm text-muted"
+      >
+        {problem}
+      </div>
+    );
+  }
 
   return (
     <div

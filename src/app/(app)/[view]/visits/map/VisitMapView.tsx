@@ -126,8 +126,8 @@ export function VisitMapView({ visits }: { visits: ReportVisit[] }) {
       <p className="text-xs text-muted">
         Numbered discs are check-ins, in the order of the day. Rings are where
         the shops are recorded; a dashed line to one is the distance between
-        them. Maps are drawn with tiles from OpenStreetMap and need a
-        connection — the pins do not.
+        them. The map itself comes from Google and needs a connection; the list
+        below it does not.
       </p>
     </div>
   );

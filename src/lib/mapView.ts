@@ -40,6 +40,9 @@ export type Bounds = { south: number; west: number; north: number; east: number 
  */
 export function pinsFor(visits: ReportVisit[], day: string): MapPin[] {
   return visits
+    // A visit called off is not a place somebody was working; drawing it would
+    // put a pin on the map for a pocket tap.
+    .filter((visit) => visit.cancelled_at === null)
     .filter((visit) => dayKey(visit.checked_in_at) === day)
     .sort((a, b) => (a.checked_in_at < b.checked_in_at ? -1 : 1))
     .map((visit, index) => ({
@@ -64,6 +67,7 @@ export function pinsFor(visits: ReportVisit[], day: string): MapPin[] {
 export function mappableDays(visits: ReportVisit[]): string[] {
   const days = new Set<string>();
   for (const visit of visits) {
+    if (visit.cancelled_at !== null) continue;
     if (visit.in_latitude !== null || visit.customer?.latitude != null) {
       days.add(dayKey(visit.checked_in_at));
     }

@@ -12,9 +12,22 @@ import { hoursMinutes } from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { timeOf } from "@/lib/time";
-import { distanceLabel, rangeNote, shopNameOf, visitLength, type VisitOption, type VisitRow } from "@/lib/visits";
+import type { CartCustomer } from "@/lib/catalog";
+import {
+  cancelChange,
+  canNameShop,
+  cancellable,
+  distanceLabel,
+  rangeNote,
+  shopNameOf,
+  visitLength,
+  type VisitOption,
+  type VisitRow,
+} from "@/lib/visits";
 import { useFix } from "../useFix";
 import { VisitFields, type VisitDraft } from "../VisitFields";
+import { CancelVisit } from "./CancelVisit";
+import { ShopPicker } from "./ShopPicker";
 
 const draftOf = (visit: VisitRow): VisitDraft => ({
   visit_type_id: visit.visit_type_id,
@@ -42,11 +55,13 @@ export function OpenVisitPage({
   viewKey,
   visit,
   options,
+  customers,
   now,
 }: {
   viewKey: string;
   visit: VisitRow;
   options: VisitOption[];
+  customers: CartCustomer[];
   now: string;
 }) {
   const router = useRouter();
@@ -89,6 +104,51 @@ export function OpenVisitPage({
     }
     setSaved(draft);
     return true;
+  }
+
+  /**
+   * Naming the shop, once. The database refuses a second one — moving a visit
+   * from one shop to another is falsification — so this is a one-way write and
+   * the picker disappears after it.
+   */
+  async function nameShop(customer: CartCustomer) {
+    setBusy(true);
+    setError(null);
+
+    const { data, error: failed } = await createClient()
+      .from("visits")
+      .update({ customer_id: customer.id })
+      .eq("id", visit.id)
+      .select("id");
+
+    setBusy(false);
+    if (failed || !data?.length) {
+      haptic("error");
+      setError(failed?.message ?? "That shop was not saved. You may not have permission.");
+      return;
+    }
+    haptic("success");
+    router.refresh();
+  }
+
+  async function cancelVisit(reason: string) {
+    setBusy(true);
+    setError(null);
+
+    const { data, error: failed } = await createClient()
+      .from("visits")
+      .update(cancelChange(reason))
+      .eq("id", visit.id)
+      .select("id");
+
+    setBusy(false);
+    if (failed || !data?.length) {
+      haptic("error");
+      setError(failed?.message ?? "That visit was not cancelled. You may not have permission.");
+      return;
+    }
+    haptic("success");
+    router.push(`/${viewKey}/visits`);
   }
 
   async function save() {
@@ -143,32 +203,51 @@ export function OpenVisitPage({
         All visits
       </Link>
 
-      {/* When you arrived ------------------------------------------------- */}
+      {/* When you arrived, and where ---------------------------------------
+          The time leads, because it is the part that is already fixed and
+          cannot be argued with. The shop comes second, because at this point
+          it is still a question. */}
       <Card className="space-y-3 p-4">
         <div className="flex items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-brand-fg">
             <Icon name="pin" className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-semibold">{shopName}</h1>
             <p className="text-xs text-muted">Checked in</p>
+            <div className="flex items-end gap-2">
+              <h1 className="text-3xl font-semibold tabular-nums text-brand">
+                {timeOf(visit.checked_in_at)}
+              </h1>
+              <p className="pb-1 text-sm text-muted">
+                {hoursMinutes(visitLength(visit, nowMs))} ago
+              </p>
+            </div>
           </div>
           <Chip tone={visit.out_of_range ? "warn" : "accent"}>
             {distanceLabel(visit.distance_m)}
           </Chip>
         </div>
 
-        <div className="flex items-end gap-3">
-          <p className="text-3xl font-semibold tabular-nums text-brand">
-            {timeOf(visit.checked_in_at)}
+        {canNameShop(visit, nowMs) ? (
+          <ShopPicker
+            customers={customers}
+            fix={fix}
+            busy={busy}
+            onChoose={nameShop}
+          />
+        ) : (
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <Icon name="building" className="size-4 shrink-0 text-muted" />
+            <span className="truncate">{shopName}</span>
           </p>
-          <p className="pb-1 text-sm text-muted">
-            {hoursMinutes(visitLength(visit, nowMs))} ago
-          </p>
-        </div>
+        )}
 
         {note && <p className="text-xs text-muted">{note}</p>}
         {problem && <p className="text-xs text-muted">{problem}</p>}
+
+        {cancellable(visit, nowMs) && (
+          <CancelVisit busy={busy} onCancel={cancelVisit} />
+        )}
       </Card>
 
       {/* What happened ---------------------------------------------------- */}

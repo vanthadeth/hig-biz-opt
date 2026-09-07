@@ -336,3 +336,49 @@ describe("activeShare", () => {
     expect(activeShare({ workingMs: 10, activeMs: 20 })).toBe(1);
   });
 });
+
+/**
+ * A check-in made by mistake is cancelled rather than deleted, so the row
+ * survives as a record of what happened. What it must not survive as is half
+ * an hour in somebody's attendance.
+ */
+describe("a visit that was called off", () => {
+  const cancelled = (from: string, to: string | null): VisitSpan => ({
+    ...call(from, to),
+    cancelledAt: "2026-09-03T12:00:00+07:00",
+  });
+
+  it("counts towards no hours at all", () => {
+    const [day] = attendanceDays([
+      call("03T08:00:00", "03T08:30:00"),
+      cancelled("03T14:00:00", "03T16:00:00"),
+    ], NOW);
+
+    expect(hoursMinutes(day.activeMs)).toBe("30m");
+    // And not towards the working span either: the day ended at half past
+    // eight, whatever the cancelled row says.
+    expect(hoursMinutes(day.workingMs)).toBe("30m");
+  });
+
+  it("nor towards the tally of visits", () => {
+    const [day] = attendanceDays([
+      call("03T08:00:00", "03T08:30:00"),
+      cancelled("03T14:00:00", "03T16:00:00"),
+    ], NOW);
+    expect(day.visits).toBe(1);
+  });
+
+  it("and a cancelled one left open does not flag the day as unclosed", () => {
+    const [day] = attendanceDays([
+      call("03T08:00:00", "03T08:30:00"),
+      cancelled("03T14:00:00", null),
+    ], NOW);
+
+    expect(day.unclosed).toBe(false);
+    expect(day.open).toBe(false);
+  });
+
+  it("so a day of nothing but cancellations is not a day at all", () => {
+    expect(attendanceDays([cancelled("03T08:00:00", "03T09:00:00")], NOW)).toEqual([]);
+  });
+});

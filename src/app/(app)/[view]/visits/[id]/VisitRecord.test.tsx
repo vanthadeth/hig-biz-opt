@@ -38,6 +38,7 @@ const visit = (over: Partial<VisitRow> = {}): VisitRow => ({
   visit_type_id: null, visit_status_id: null,
   order_status_id: null, payment_status_id: null,
   next_appointment: null, remarks: null,
+  cancelled_at: null, cancel_reason: null,
   customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282 },
   ...over,
 });
@@ -66,10 +67,10 @@ describe("a visit, and the day there is to correct it", () => {
   it("lets the record be corrected within the day", () => {
     render(<VisitRecord visit={visit()} options={OPTIONS} now={at(23)} />);
 
-    const orderStatus = screen.getByLabelText(/Order status/);
-    expect(orderStatus).not.toBeDisabled();
+    const ordered = screen.getByRole("button", { name: "Ordered" });
+    expect(ordered).not.toBeDisabled();
 
-    fireEvent.change(orderStatus, { target: { value: "o1" } });
+    fireEvent.click(ordered);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(update).toHaveBeenCalledWith(
@@ -85,7 +86,7 @@ describe("a visit, and the day there is to correct it", () => {
   it("closes the record when the day is up", () => {
     render(<VisitRecord visit={visit()} options={OPTIONS} now={at(25)} />);
 
-    expect(screen.getByLabelText(/Order status/)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ordered" })).toBeDisabled();
     expect(screen.getByLabelText(/Remarks/)).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
     expect(screen.getByText(/now the record/)).toBeInTheDocument();
@@ -93,7 +94,7 @@ describe("a visit, and the day there is to correct it", () => {
 
   it("exactly at the day, not a minute after it", () => {
     render(<VisitRecord visit={visit()} options={OPTIONS} now={at(24)} />);
-    expect(screen.getByLabelText(/Order status/)).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ordered" })).toBeDisabled();
   });
 
   it("a visit still open is always open to writing", () => {
@@ -102,7 +103,7 @@ describe("a visit, and the day there is to correct it", () => {
         now={at(1000)} />,
     );
 
-    expect(screen.getByLabelText(/Order status/)).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ordered" })).not.toBeDisabled();
     expect(screen.getByText("Still open")).toBeInTheDocument();
     // No countdown, because nothing is counting down yet.
     expect(screen.queryByText(/left to correct/)).toBeNull();

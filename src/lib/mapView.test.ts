@@ -24,7 +24,7 @@ const call = (
   checked_in_at: `2026-09-${at}+07:00`,
   checked_out_at: null,
   in_latitude: 11.5564, in_longitude: 104.9282,
-  distance_m: 90, out_of_range: false,
+  distance_m: 90, out_of_range: false, cancelled_at: null,
   user: { full_name: "Sokha Chan" },
   customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282 },
   ...over,
@@ -202,5 +202,35 @@ describe("the route through the day", () => {
       pin({ at: { latitude: 2, longitude: 2 }, shop: { latitude: 8, longitude: 8 } }),
     ]);
     expect(lines).toEqual([[[1, 1], [2, 2]]]);
+  });
+});
+
+/**
+ * A visit called off is not a place somebody was working. Drawing it would put
+ * a pin on the map for a pocket tap, and a day of them would be a route
+ * through shops nobody went to.
+ */
+describe("visits that were called off", () => {
+  const cancelled = (at: string) =>
+    ({ ...call(at), cancelled_at: "2026-09-03T12:00:00Z" });
+
+  it("get no pin", () => {
+    const pins = pinsFor([call("03T08:00:00"), cancelled("03T10:00:00")], "2026-09-03");
+    expect(pins).toHaveLength(1);
+  });
+
+  it("and do not shift the numbering of the ones that stand", () => {
+    const pins = pinsFor([
+      cancelled("03T07:00:00"),
+      call("03T08:00:00"),
+      call("03T09:00:00"),
+    ], "2026-09-03");
+    expect(pins.map((p) => p.order)).toEqual([1, 2]);
+  });
+
+  it("and a day of nothing but cancellations is not worth opening a map on", () => {
+    expect(mappableDays([cancelled("03T08:00:00")])).toEqual([]);
+    expect(mappableDays([cancelled("03T08:00:00"), call("04T08:00:00")]))
+      .toEqual(["2026-09-04"]);
   });
 });

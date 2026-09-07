@@ -57,6 +57,7 @@ export function VisitReport({
         userId: visit.user_id,
         checkedInAt: visit.checked_in_at,
         checkedOutAt: visit.checked_out_at,
+        cancelledAt: visit.cancelled_at,
       })),
     ).get(chosen);
     return spans ? attendanceDays(spans, nowMs) : [];

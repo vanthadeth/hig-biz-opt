@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { VisitOption } from "@/lib/visits";
 import { VisitFields, fromLocalInput, toLocalInput, type VisitDraft } from "./VisitFields";
@@ -22,28 +22,57 @@ describe("the record of a call", () => {
     render(<VisitFields draft={EMPTY} options={OPTIONS} onChange={() => {}} />);
 
     for (const label of ["Type of visit", "Visit status", "Order status", "Payment status"]) {
-      expect(screen.getByLabelText(new RegExp(label))).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: label })).toBeInTheDocument();
     }
+  });
+
+  /**
+   * A native select on a phone costs three interactions and hides every option
+   * until the first of them. Standing in a shop with the owner waiting, that
+   * is the difference between a record filled in and a record skipped.
+   */
+  it("offers every answer as a button, visible without touching anything", () => {
+    render(<VisitFields draft={EMPTY} options={OPTIONS} onChange={() => {}} />);
+
+    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+    const group = screen.getByRole("group", { name: "Type of visit" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent))
+      .toEqual(["Sales call", "Delivery"]);
+  });
+
+  it("marks the chosen one, and tapping it again clears it", () => {
+    const onChange = vi.fn();
+    render(
+      <VisitFields draft={{ ...EMPTY, visit_type_id: "t1" }} options={OPTIONS}
+        onChange={onChange} />,
+    );
+
+    const group = screen.getByRole("group", { name: "Type of visit" });
+    const chosen = within(group).getByRole("button", { name: "Sales call" });
+    expect(chosen).toHaveAttribute("aria-pressed", "true");
+
+    // Nothing here is required, so there has to be a way back to unanswered.
+    fireEvent.click(chosen);
+    expect(onChange).toHaveBeenCalledWith({ ...EMPTY, visit_type_id: null });
   });
 
   it("and never offers a word that has been retired", () => {
     render(<VisitFields draft={EMPTY} options={OPTIONS} onChange={() => {}} />);
-    expect(screen.queryByRole("option", { name: "Retired wording" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retired wording" })).toBeNull();
   });
 
-  it("leaves a dropdown out entirely when the business has no words for it", () => {
+  it("leaves a question out entirely when the business has no words for it", () => {
     const only = OPTIONS.filter((o) => o.kind === "visit_type");
     render(<VisitFields draft={EMPTY} options={only} onChange={() => {}} />);
 
-    expect(screen.getByLabelText(/Type of visit/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Payment status/)).toBeNull();
+    expect(screen.getByRole("group", { name: "Type of visit" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Payment status" })).toBeNull();
   });
 
-  it("requires nothing, because a rep walking in does not know yet how it went", () => {
+  it("starts with nothing chosen, because a rep walking in does not know yet", () => {
     render(<VisitFields draft={EMPTY} options={OPTIONS} onChange={() => {}} />);
-    for (const control of screen.getAllByRole("combobox")) {
-      expect(control).not.toBeRequired();
-      expect((control as HTMLSelectElement).value).toBe("");
+    for (const button of screen.getAllByRole("button")) {
+      expect(button).toHaveAttribute("aria-pressed", "false");
     }
   });
 
@@ -51,19 +80,8 @@ describe("the record of a call", () => {
     const onChange = vi.fn();
     render(<VisitFields draft={EMPTY} options={OPTIONS} onChange={onChange} />);
 
-    fireEvent.change(screen.getByLabelText(/Type of visit/), { target: { value: "t2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Delivery" }));
     expect(onChange).toHaveBeenCalledWith({ ...EMPTY, visit_type_id: "t2" });
-  });
-
-  it("and clearing one back to nothing is null, not an empty string", () => {
-    const onChange = vi.fn();
-    render(
-      <VisitFields draft={{ ...EMPTY, visit_type_id: "t2" }} options={OPTIONS}
-        onChange={onChange} />,
-    );
-
-    fireEvent.change(screen.getByLabelText(/Type of visit/), { target: { value: "" } });
-    expect(onChange).toHaveBeenCalledWith({ ...EMPTY, visit_type_id: null });
   });
 
   it("takes remarks as words and null as no words", () => {
@@ -84,7 +102,7 @@ describe("the record of a call", () => {
   it("goes read-only in one piece, so a closed visit cannot be typed into", () => {
     render(<VisitFields draft={EMPTY} options={OPTIONS} disabled onChange={() => {}} />);
 
-    for (const control of [...screen.getAllByRole("combobox"), ...screen.getAllByRole("textbox")]) {
+    for (const control of [...screen.getAllByRole("button"), ...screen.getAllByRole("textbox")]) {
       expect(control).toBeDisabled();
     }
     expect(screen.getByLabelText(/Next appointment/)).toBeDisabled();

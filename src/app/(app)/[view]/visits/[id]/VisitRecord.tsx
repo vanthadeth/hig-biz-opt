@@ -12,16 +12,19 @@ import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf } from "@/lib/time";
 import {
+  cancelChange,
+  cancellable,
   distanceLabel,
-  shopNameOf,
   editWindowLeft,
   editable,
   rangeNote,
+  shopNameOf,
   visitLength,
   type VisitOption,
   type VisitRow,
 } from "@/lib/visits";
 import { VisitFields, type VisitDraft } from "../VisitFields";
+import { CancelVisit } from "./CancelVisit";
 
 const draftOf = (visit: VisitRow): VisitDraft => ({
   visit_type_id: visit.visit_type_id,
@@ -65,10 +68,33 @@ export function VisitRecord({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canEdit = editable(visit, nowMs);
+  const cancelled = visit.cancelled_at !== null;
+  // A cancelled visit is finished being written to: what it says is why it was
+  // called off, and editing it afterwards would blur that.
+  const canEdit = editable(visit, nowMs) && !cancelled;
   const left = editWindowLeft(visit, nowMs);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const note = rangeNote(visit);
+
+  async function cancelVisit(reason: string) {
+    setBusy(true);
+    setError(null);
+
+    const { data, error: failed } = await createClient()
+      .from("visits")
+      .update(cancelChange(reason))
+      .eq("id", visit.id)
+      .select("id");
+
+    setBusy(false);
+    if (failed || !data?.length) {
+      haptic("error");
+      setError(failed?.message ?? "That visit was not cancelled. You may not have permission.");
+      return;
+    }
+    haptic("success");
+    router.refresh();
+  }
 
   async function save() {
     setBusy(true);
@@ -119,8 +145,8 @@ export function VisitRecord({
             </h1>
             <p className="text-xs text-muted">{dayHeading(visit.checked_in_at)}</p>
           </div>
-          <Chip tone={visit.out_of_range ? "warn" : "accent"}>
-            {distanceLabel(visit.distance_m)}
+          <Chip tone={cancelled ? "danger" : visit.out_of_range ? "warn" : "accent"}>
+            {cancelled ? "Cancelled" : distanceLabel(visit.distance_m)}
           </Chip>
         </div>
 
@@ -133,7 +159,18 @@ export function VisitRecord({
           <Fact label="Length" value={hoursMinutes(visitLength(visit, nowMs))} />
         </dl>
 
-        {note && <p className="text-xs text-muted">{note}</p>}
+        {cancelled ? (
+          <p className="text-xs text-muted">
+            Cancelled {visit.cancel_reason ? `— ${visit.cancel_reason}` : ""}. It
+            counts towards no hours.
+          </p>
+        ) : (
+          note && <p className="text-xs text-muted">{note}</p>
+        )}
+
+        {cancellable(visit, nowMs) && (
+          <CancelVisit busy={busy} onCancel={cancelVisit} />
+        )}
       </Card>
 
       <div className="space-y-3">
@@ -173,7 +210,9 @@ export function VisitRecord({
             </>
           ) : (
             <p className="text-center text-xs text-muted">
-              This visit closed more than a day ago. What it says is now the record.
+              {cancelled
+                ? "This visit was cancelled. What it says is now the record."
+                : "This visit closed more than a day ago. What it says is now the record."}
             </p>
           )}
         </Card>

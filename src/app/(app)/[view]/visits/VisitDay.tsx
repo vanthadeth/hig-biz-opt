@@ -9,11 +9,9 @@ import { Chip } from "@/components/ui/Chip";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { attendanceDays, hoursMinutes } from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
-import type { CartCustomer } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf } from "@/lib/time";
 import { openVisit, shopNameOf, visitLength, visitsByDay, type VisitRow } from "@/lib/visits";
-import { CheckInPanel } from "./CheckInPanel";
 import { useFix } from "./useFix";
 
 /**
@@ -33,15 +31,11 @@ export function VisitDay({
   viewKey,
   userId,
   visits,
-  customers,
-  radiusM,
   now,
 }: {
   viewKey: string;
   userId: string;
   visits: VisitRow[];
-  customers: CartCustomer[];
-  radiusM: number;
   now: string;
 }) {
   const router = useRouter();
@@ -60,13 +54,22 @@ export function VisitDay({
     return () => clearInterval(timer);
   }, []);
 
-  async function checkIn(customer: CartCustomer | null) {
+  /**
+   * One tap starts the visit.
+   *
+   * The record is written now, with this moment and this position, and the
+   * shop is named on the screen that opens next. The other way round — pick a
+   * shop from a list, then check in — stamps the visit with whenever the rep
+   * finished scrolling, which is not when they arrived. The time and the place
+   * are the evidence; the shop is a detail that can wait thirty seconds.
+   */
+  async function startVisit() {
     setBusy(true);
     setError(null);
 
     // The row comes back, so the screen that opens next is that visit's own.
     const { data, error: failed } = await createClient().rpc("check_in", {
-      p_customer: customer?.id ?? null,
+      p_customer: null,
       p_latitude: fix?.latitude ?? null,
       p_longitude: fix?.longitude ?? null,
     });
@@ -88,7 +91,11 @@ export function VisitDay({
   const mine = useMemo(() => visits.filter((v) => v.user_id === userId), [visits, userId]);
   const today = useMemo(() => {
     const days = attendanceDays(
-      mine.map((v) => ({ checkedInAt: v.checked_in_at, checkedOutAt: v.checked_out_at })),
+      mine.map((v) => ({
+        checkedInAt: v.checked_in_at,
+        checkedOutAt: v.checked_out_at,
+        cancelledAt: v.cancelled_at,
+      })),
       nowMs,
     );
     return days.find((day) => day.key === dayKey(nowMs)) ?? null;
@@ -132,19 +139,28 @@ export function VisitDay({
         </Link>
       ) : (
         <div className="space-y-3">
-          {fixProblem && (
-            <Card className="flex items-start gap-2 p-3 text-xs text-muted">
-              <Icon name="pin" className="mt-0.5 size-4 shrink-0" />
-              <span>{fixProblem}</span>
-            </Card>
-          )}
-          <CheckInPanel
-            customers={customers}
-            fix={fix}
-            radiusM={radiusM}
-            busy={busy}
-            onCheckIn={checkIn}
-          />
+          <button
+            type="button"
+            onClick={() => {
+              haptic("tap");
+              void startVisit();
+            }}
+            disabled={busy}
+            className="pressable flex min-h-20 w-full items-center justify-center gap-3 rounded-2xl bg-brand text-lg font-semibold text-brand-fg disabled:opacity-60"
+          >
+            <Icon name="pin" className="size-6" />
+            {busy ? "Starting…" : "New visit"}
+          </button>
+
+          <p className="text-center text-xs text-muted">
+            {/* Said before the tap, not after: a rep who knows the shop comes
+                second will not go looking for it first. */}
+            {fixProblem
+              ? fixProblem
+              : fix
+                ? "Starts now, where you are. Choose the shop on the next screen."
+                : "Finding where you are…"}
+          </p>
         </div>
       )}
 
@@ -195,7 +211,11 @@ export function VisitDay({
                             {hoursMinutes(visitLength(visit, nowMs))}
                           </span>
                         </span>
-                        {visit.out_of_range && <Chip tone="warn">Out of range</Chip>}
+                        {visit.cancelled_at !== null ? (
+                          <Chip tone="danger">Cancelled</Chip>
+                        ) : (
+                          visit.out_of_range && <Chip tone="warn">Out of range</Chip>
+                        )}
                         <Icon name="chevron" className="size-4 shrink-0 text-muted" />
                       </Card>
                     </Link>

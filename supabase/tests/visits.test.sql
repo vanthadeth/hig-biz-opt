@@ -19,7 +19,17 @@
 -- afterwards, and never swapped, because "we went to A" becoming "we went to B"
 -- is falsification while "we went somewhere, and it was A" is not.
 --
--- The third is whether the distance is honest. It is recorded, never
+-- The third is whether a visit made by mistake can be undone without lying.
+-- The check-in now fires on one tap, so that the time and the position are the
+-- real ones rather than whatever the clock said after somebody finished
+-- scrolling a list of shops — and the price of that is pocket taps. Cancelling
+-- is the remedy, and it is an annotation rather than a delete: the row keeps
+-- both its timestamps and its position and simply stops counting. A reason is
+-- required, because "cancelled" on its own cannot be told apart from a second
+-- mistake. Most importantly a cancelled visit stops blocking the next
+-- check-in, or one mis-tap would lock a rep out of the feature for good.
+--
+-- The fourth is whether the distance is honest. It is recorded, never
 -- enforced: a check-in eleven kilometres away is accepted and flagged, and a
 -- shop with no pin gives a null distance — unknown, which the report has to
 -- read differently from far away — while still keeping the rep's own position,
@@ -32,7 +42,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  VISITS OK - 66 assertions passed (rls: ran)
+--     ERROR:  VISITS OK - 81 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -127,6 +137,7 @@ declare
   v_visit public.visits;
   v_old   uuid;   -- a visit closed two days ago
   v_none  uuid;   -- a visit to nowhere in particular
+  v_two   public.visits;  -- the one made after a mistake was called off
   v_rls   text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -344,6 +355,83 @@ begin
   delete from public.visits where id = v_none;
 
   ----------------------------------------------------------------------------
+  -- A visit that should not have been
+  ----------------------------------------------------------------------------
+  perform pg_temp.rejects('a cancellation with no reason is a shrug',
+    format('insert into public.visits (user_id, customer_id, cancelled_at)
+            values (%L, %L, now())', v_rep, v_cus));
+  perform pg_temp.rejects('and a reason with no cancellation is the wrong field',
+    format('insert into public.visits (user_id, customer_id, cancel_reason)
+            values (%L, %L, ''oops'')', v_rep, v_cus));
+  perform pg_temp.rejects('nor is whitespace a reason',
+    format('insert into public.visits (user_id, customer_id, cancelled_at, cancel_reason)
+            values (%L, %L, now(), ''   '')', v_rep, v_cus));
+
+  if v_rls = 'ran' then
+    begin
+      execute 'set local role authenticated';
+      perform pg_temp.act_as(v_rep);
+
+      v_visit := public.check_in(v_cus, v_near_lat, v_near_lng);
+      perform pg_temp.rejects('a second check-in is refused while one is open',
+        format('select public.check_in(%L, %s, %s)', v_far, v_near_lat, v_near_lng));
+
+      update public.visits
+         set cancelled_at = now(), cancel_reason = 'Tapped by mistake'
+       where id = v_visit.id;
+      perform pg_temp.eq('a visit can be called off while it is open',
+        (select cancel_reason from public.visits where id = v_visit.id),
+        'Tapped by mistake');
+
+      -- The reason this exists at all: one mis-tap must not lock somebody out
+      -- of the feature for the rest of the day.
+      v_two := public.check_in(v_far, v_near_lat, v_near_lng);
+      perform pg_temp.ok('and checking in again is no longer blocked by it',
+        v_two.id is not null);
+
+      perform pg_temp.rejects('a cancelled visit cannot be checked out of',
+        format('select public.check_out(%L, null, null)', v_visit.id));
+
+      -- The row survives entire: that is what makes this an annotation rather
+      -- than a delete, and what a delete would have taken with it.
+      perform pg_temp.ok('the cancelled visit keeps its check-in time',
+        (select checked_in_at is not null from public.visits where id = v_visit.id));
+      perform pg_temp.ok('and where it happened',
+        (select in_latitude is not null from public.visits where id = v_visit.id));
+      perform pg_temp.ok('and the distance it was measured at',
+        (select distance_m is not null from public.visits where id = v_visit.id));
+
+      -- A time that is genuinely different. `now()` inside a transaction is the
+      -- transaction's own clock, so setting it on a row created in the same
+      -- transaction changes nothing, and the trigger rightly allows it.
+      perform pg_temp.rejects('and its check-in time still cannot be moved',
+        format('update public.visits set checked_in_at = now() - interval ''3 hours''
+                where id = %L', v_visit.id));
+
+      perform pg_temp.ok('closing the second visit',
+        (public.check_out(v_two.id, v_near_lat, v_near_lng)).id is not null);
+
+      update public.visits
+         set cancelled_at = now(), cancel_reason = 'Wrong shop'
+       where id = v_two.id;
+      perform pg_temp.eq('a closed visit can be called off the same day',
+        (select cancel_reason from public.visits where id = v_two.id), 'Wrong shop');
+
+      execute 'reset role';
+    exception when insufficient_privilege then
+      execute 'reset role';
+    end;
+  end if;
+
+  -- Cancelled visits sit open without blocking anything, which is what the
+  -- partial index is for.
+  insert into public.visits (user_id, customer_id, cancelled_at, cancel_reason)
+    values (v_rep, v_cus, now(), 'one'), (v_rep, v_far, now(), 'two');
+  perform pg_temp.eq('any number of cancelled visits may sit open at once',
+    (select count(*)::text from public.visits
+      where user_id = v_rep and cancelled_at is not null and checked_out_at is null), '3');
+
+  ----------------------------------------------------------------------------
   -- Two days later
   --
   -- The trigger is switched off to age a visit, because it refuses exactly the
@@ -361,6 +449,9 @@ begin
 
   perform pg_temp.rejects('a visit closed two days ago is closed for good',
     format('update public.visits set remarks = ''tidied up'' where id = %L', v_old));
+  perform pg_temp.rejects('and can no longer be called off either',
+    format('update public.visits set cancelled_at = now(), cancel_reason = ''late''
+            where id = %L', v_old));
   perform pg_temp.eq('and still says what it said',
     (select remarks from public.visits where id = v_old), 'Last week');
 
@@ -382,7 +473,8 @@ begin
   insert into public.visits (user_id, customer_id) values (v_rep, v_cus);
   perform pg_temp.rejects('one open visit per person, index or no function',
     format('insert into public.visits (user_id, customer_id) values (%L, %L)', v_rep, v_far));
-  delete from public.visits where user_id = v_rep and checked_out_at is null;
+  delete from public.visits
+   where user_id = v_rep and checked_out_at is null and cancelled_at is null;
 
   -- A shop somebody has visited cannot simply vanish; the visit would be to
   -- nowhere, and where the rep was is the record.

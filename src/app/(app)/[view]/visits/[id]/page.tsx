@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { CART_CUSTOMER_COLUMNS, type CartCustomer } from "@/lib/catalog";
 import { OPTION_COLUMNS, VISIT_COLUMNS, type VisitOption, type VisitRow } from "@/lib/visits";
 import { OpenVisitPage } from "./OpenVisitPage";
 import { VisitRecord } from "./VisitRecord";
@@ -19,9 +20,10 @@ export default async function Page({
   const { view, id } = await params;
   const supabase = await createClient();
 
-  const [visit, options] = await Promise.all([
+  const [visit, options, customers] = await Promise.all([
     supabase.from("visits").select(VISIT_COLUMNS).eq("id", id).maybeSingle(),
     supabase.from("visit_options").select(OPTION_COLUMNS),
+    supabase.from("customers").select(CART_CUSTOMER_COLUMNS).eq("status", "active"),
   ]);
 
   if (!visit.data) notFound();
@@ -35,7 +37,13 @@ export default async function Page({
   // matters is the way out being under their thumb.
   if (row.checked_out_at === null) {
     return (
-      <OpenVisitPage viewKey={view} visit={row} options={visitOptions} now={now} />
+      <OpenVisitPage
+        viewKey={view}
+        visit={row}
+        options={visitOptions}
+        customers={(customers.data ?? []) as CartCustomer[]}
+        now={now}
+      />
     );
   }
 

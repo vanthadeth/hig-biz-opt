@@ -62,13 +62,15 @@ export type VisitRow = {
   payment_status_id: string | null;
   next_appointment: string | null;
   remarks: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
   customer: { shop_name: string; latitude: number | null; longitude: number | null } | null;
 };
 
 // One literal, not a concatenation: supabase-js reads this string in the type
 // system to work out the row shape.
 export const VISIT_COLUMNS =
-  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, out_latitude, out_longitude, distance_m, out_of_range, radius_m, visit_type_id, visit_status_id, order_status_id, payment_status_id, next_appointment, remarks, customer:customers (shop_name, latitude, longitude)";
+  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, out_latitude, out_longitude, distance_m, out_of_range, radius_m, visit_type_id, visit_status_id, order_status_id, payment_status_id, next_appointment, remarks, cancelled_at, cancel_reason, customer:customers (shop_name, latitude, longitude)";
 
 /**
  * A visit as a report reads it: who, when, and where they stood.
@@ -88,12 +90,13 @@ export type ReportVisit = {
   in_longitude: number | null;
   distance_m: number | null;
   out_of_range: boolean;
+  cancelled_at: string | null;
   user: { full_name: string } | null;
   customer: { shop_name: string; latitude: number | null; longitude: number | null } | null;
 };
 
 export const REPORT_COLUMNS =
-  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, distance_m, out_of_range, user:users (full_name), customer:customers (shop_name, latitude, longitude)";
+  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, distance_m, out_of_range, cancelled_at, user:users (full_name), customer:customers (shop_name, latitude, longitude)";
 
 /**
  * Who appears in a report, and what to call them.
@@ -152,9 +155,10 @@ export function shopNameOf(
 
 /** Whether a shop can still be filled in: never had one, and still correctable. */
 export function canNameShop(
-  visit: Pick<VisitRow, "customer_id" | "checked_out_at">,
+  visit: Pick<VisitRow, "customer_id" | "checked_out_at" | "cancelled_at">,
   nowMs: number,
 ): boolean {
+  if (visit.cancelled_at !== null) return false;
   return visit.customer_id === null && editable(visit, nowMs);
 }
 
@@ -232,11 +236,50 @@ export function locationProblem(code: number | null): string {
   }
 }
 
-/** The visit somebody is in the middle of, if there is one. */
-export function openVisit<T extends { checked_out_at: string | null }>(
+/**
+ * The visit somebody is in the middle of, if there is one.
+ *
+ * A cancelled visit is not one, whatever its check-out column says — that is
+ * the point of cancelling a check-in that should not have happened, and the
+ * database's own index agrees.
+ */
+export function openVisit<T extends { checked_out_at: string | null; cancelled_at: string | null }>(
   visits: T[],
 ): T | null {
-  return visits.find((visit) => visit.checked_out_at === null) ?? null;
+  return visits.find(
+    (visit) => visit.checked_out_at === null && visit.cancelled_at === null,
+  ) ?? null;
+}
+
+// Calling a visit off ----------------------------------------------------------------
+
+/**
+ * A cancellation is an annotation, not an erasure.
+ *
+ * The row stays, with both its timestamps and its position; it stops counting.
+ * The reason is required because "cancelled" with nothing beside it cannot be
+ * told apart from a second mistake, and the person reading this next has to be
+ * able to tell the difference.
+ */
+export const CANCEL_REASON_MIN = 3;
+
+export function cancelProblem(reason: string): string | null {
+  const trimmed = reason.trim();
+  if (trimmed === "") return "Say why this visit is being cancelled.";
+  if (trimmed.length < CANCEL_REASON_MIN) return "A few more words than that.";
+  return null;
+}
+
+export function cancelChange(reason: string) {
+  return { cancelled_at: new Date().toISOString(), cancel_reason: reason.trim() };
+}
+
+/** Whether a visit can still be called off: same day-long window as any correction. */
+export function cancellable(
+  visit: Pick<VisitRow, "cancelled_at" | "checked_out_at">,
+  nowMs: number,
+): boolean {
+  return visit.cancelled_at === null && editable(visit, nowMs);
 }
 
 /**

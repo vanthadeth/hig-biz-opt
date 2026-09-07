@@ -6,6 +6,9 @@ import {
   editWindowLeft,
   editable,
   canNameShop,
+  cancelChange,
+  cancelProblem,
+  cancellable,
   locationProblem,
   NO_SHOP,
   openVisit,
@@ -133,16 +136,23 @@ describe("whether a shop can still be named", () => {
   const at = (h: number) => Date.parse(closed) + h * 3_600_000;
 
   it("yes, while a shopless visit is still open", () => {
-    expect(canNameShop({ customer_id: null, checked_out_at: null }, at(1000))).toBe(true);
+    expect(canNameShop({ customer_id: null, checked_out_at: null, cancelled_at: null }, at(1000))).toBe(true);
   });
 
   it("and for the day after it closes", () => {
-    expect(canNameShop({ customer_id: null, checked_out_at: closed }, at(23))).toBe(true);
-    expect(canNameShop({ customer_id: null, checked_out_at: closed }, at(25))).toBe(false);
+    expect(canNameShop({ customer_id: null, checked_out_at: closed, cancelled_at: null }, at(23))).toBe(true);
+    expect(canNameShop({ customer_id: null, checked_out_at: closed, cancelled_at: null }, at(25))).toBe(false);
+  });
+
+  it("never once the visit has been called off", () => {
+    expect(canNameShop(
+      { customer_id: null, checked_out_at: null, cancelled_at: "2026-09-03T02:30:00Z" },
+      at(1),
+    )).toBe(false);
   });
 
   it("never when the visit already names one — that would be a swap", () => {
-    expect(canNameShop({ customer_id: "c1", checked_out_at: null }, at(1))).toBe(false);
+    expect(canNameShop({ customer_id: "c1", checked_out_at: null, cancelled_at: null }, at(1))).toBe(false);
   });
 });
 
@@ -186,15 +196,63 @@ describe("why the phone would not say where it is", () => {
 describe("the visit somebody is in the middle of", () => {
   it("is the one with no check-out on it", () => {
     const visits = [
-      { id: "a", checked_out_at: "2026-09-03T02:00:00Z" },
-      { id: "b", checked_out_at: null },
+      { id: "a", checked_out_at: "2026-09-03T02:00:00Z", cancelled_at: null },
+      { id: "b", checked_out_at: null, cancelled_at: null },
     ];
     expect(openVisit(visits)?.id).toBe("b");
   });
 
   it("and there need not be one", () => {
-    expect(openVisit([{ id: "a", checked_out_at: "2026-09-03T02:00:00Z" }])).toBeNull();
+    expect(openVisit([{ id: "a", checked_out_at: "2026-09-03T02:00:00Z", cancelled_at: null }]))
+      .toBeNull();
     expect(openVisit([])).toBeNull();
+  });
+
+  /**
+   * A mistaken check-in that was cancelled but never closed must not read as
+   * "you are still out somewhere", or it would lock the rep out of checking in
+   * again for good. The database's own partial index agrees.
+   */
+  it("and a cancelled one is not open, whatever its check-out column says", () => {
+    expect(openVisit([
+      { id: "a", checked_out_at: null, cancelled_at: "2026-09-03T02:00:00Z" },
+    ])).toBeNull();
+
+    expect(openVisit([
+      { id: "a", checked_out_at: null, cancelled_at: "2026-09-03T02:00:00Z" },
+      { id: "b", checked_out_at: null, cancelled_at: null },
+    ])?.id).toBe("b");
+  });
+});
+
+describe("calling a visit off", () => {
+  const closed = "2026-09-03T02:00:00Z";
+  const at2 = (h: number) => Date.parse(closed) + h * 3_600_000;
+
+  it("insists on a reason, because a bare cancellation explains nothing", () => {
+    expect(cancelProblem("")).toMatch(/Say why/);
+    expect(cancelProblem("   ")).toMatch(/Say why/);
+    expect(cancelProblem("x")).toMatch(/few more words/);
+    expect(cancelProblem("Tapped by mistake")).toBeNull();
+  });
+
+  it("writes the reason trimmed, with the moment it happened", () => {
+    const change = cancelChange("  Wrong shop  ");
+    expect(change.cancel_reason).toBe("Wrong shop");
+    expect(Number.isNaN(Date.parse(change.cancelled_at))).toBe(false);
+  });
+
+  it("can be done while the visit is open", () => {
+    expect(cancellable({ cancelled_at: null, checked_out_at: null }, at2(1000))).toBe(true);
+  });
+
+  it("and for the day after it closes, like any other correction", () => {
+    expect(cancellable({ cancelled_at: null, checked_out_at: closed }, at2(23))).toBe(true);
+    expect(cancellable({ cancelled_at: null, checked_out_at: closed }, at2(25))).toBe(false);
+  });
+
+  it("but not twice", () => {
+    expect(cancellable({ cancelled_at: closed, checked_out_at: closed }, at2(1))).toBe(false);
   });
 });
 

@@ -14,6 +14,10 @@
  *   Never more than the working hours, and the gap between the two is the
  *   travelling.
  *
+ * A cancelled visit counts towards nothing at all — not its hours, not its
+ * tally, not the "somebody forgot to check out" flag. It was called off, and
+ * the reason is on the row for whoever wants to know why.
+ *
  * Three things this refuses to guess at.
  *
  * A visit that crosses midnight belongs to both days, split at the boundary,
@@ -42,6 +46,12 @@ export type VisitSpan = {
   customerId?: string;
   checkedInAt: string;
   checkedOutAt: string | null;
+  /**
+   * A visit called off. It keeps its timestamps as a record of what happened
+   * and counts towards nothing — the excluding is done here rather than by
+   * each caller, because a caller that forgets reports hours nobody worked.
+   */
+  cancelledAt?: string | null;
 };
 
 export type AttendanceDay = {
@@ -110,6 +120,8 @@ export function attendanceDays(spans: VisitSpan[], nowMs: number): AttendanceDay
   };
 
   for (const span of spans) {
+    if (span.cancelledAt) continue;
+
     const from = Date.parse(span.checkedInAt);
     if (Number.isNaN(from)) continue;
 

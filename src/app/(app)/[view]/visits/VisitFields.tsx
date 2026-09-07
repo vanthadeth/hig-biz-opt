@@ -1,10 +1,16 @@
 "use client";
 
-import { Field, SelectField } from "@/components/ui/Field";
+import { Field } from "@/components/ui/Field";
+import { OptionButtons } from "@/components/ui/OptionButtons";
 import { OPTION_KINDS, optionsOf, type VisitOption, type VisitOptionKind } from "@/lib/visits";
 
 /**
  * What happened on the call.
+ *
+ * Buttons rather than dropdowns. A rep fills this standing in a shop with the
+ * owner waiting, and a native select costs three interactions and hides every
+ * option until the first of them; a row of buttons costs one and can be read
+ * without touching anything.
  *
  * Nothing here is required. A rep opens this the moment they walk in, before
  * they know how it went, and a form that refuses to be left half-filled is a
@@ -74,13 +80,12 @@ export function VisitFields({
         const list = optionsOf(options, kind);
         if (list.length === 0) return null;
         return (
-          <SelectField
+          <OptionButtons
             key={kind}
             label={label}
-            optional
             disabled={disabled}
-            value={(draft[field] as string | null) ?? ""}
-            onChange={(value) => set({ [field]: value || null } as Partial<VisitDraft>)}
+            value={(draft[field] as string | null) ?? null}
+            onChange={(value) => set({ [field]: value } as Partial<VisitDraft>)}
             options={list.map((option) => ({ value: option.id, label: option.label }))}
           />
         );

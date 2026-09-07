@@ -171,13 +171,25 @@ export function SyncList({
       </Card>
 
       {canAdd && (
-        <Link
-          href={`/${viewKey}/data-sync/new`}
-          className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
-        >
-          <Icon name="plus" className="size-4" />
-          New sync
-        </Link>
+        <div className="space-y-2">
+          <Link
+            href={`/${viewKey}/data-sync/new`}
+            className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
+          >
+            <Icon name="plus" className="size-4" />
+            New sync
+          </Link>
+          {/* Its own way in, because the customer tab is not one sync: a
+              location in one cell and three phones in the customer's row make
+              four, and the ordinary form cannot say either. */}
+          <Link
+            href={`/${viewKey}/data-sync/customer`}
+            className="pressable flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium text-muted transition-colors hover:bg-subtle hover:text-fg"
+          >
+            <Icon name="building" className="size-4" />
+            Set up the customer sync
+          </Link>
+        </div>
       )}
 
       {error && (

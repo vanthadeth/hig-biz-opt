@@ -245,9 +245,19 @@ cannot tell the difference. **`require_column`** on the sync can: set it to
 `name` and a row with no contact name is not written. It is not counted as a
 skip, because nobody meant to enter one.
 
-**Not yet in the form.** The mapping screen still pairs one sheet column with
-one target column, so these three rows are set on `sync_column_maps` directly.
-Teaching the form to hold several mappings per column is its own piece of work.
+**Set up the customer sync** on the data-sync page does all of this in one pass.
+The ordinary mapping screen pairs one sheet column with one target column, which
+the customer tab breaks twice, so this asks only which column is which and writes
+the several syncs that result: one for the customers, and one per phone slot —
+because "Phone 1" and "Phone 2" are different sheet columns feeding the same
+target column, which is not one sync however it is arranged.
+
+It plans before it writes. `planCustomerSync` turns the picks into the rows that
+would be created and nothing else, so the screen can count them, show them, and
+be tested without a database or a spreadsheet anywhere near it. A slot with no
+phone chosen is left out; a phone with no label is refused before anything is
+written, because a contact's name is NOT NULL and a run that discovered that
+halfway would leave half a sheet imported.
 
 ### Clearing what a sync imported
 

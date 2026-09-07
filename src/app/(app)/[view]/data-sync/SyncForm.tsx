@@ -197,6 +197,12 @@ export function SyncForm({
     target_column: pairs[header]?.target || null,
     value_kind: pairs[header]?.kind ?? "text",
     reference_table: pairs[header]?.reference ?? null,
+    // The form pairs one sheet column with one target column. Splitting a cell
+    // across two columns, and deriving a child's id from its parent's, are set
+    // on the mapping rows themselves — see 0046 — and this draft view of them
+    // carries the plain case.
+    transform: "none" as const,
+    transform_arg: null,
     sort_order: i,
   }));
 

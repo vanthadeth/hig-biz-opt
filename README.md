@@ -201,6 +201,59 @@ may simply not be synced yet. Run the parent's sync, run the child's again, and
 the link appears — which is why the order syncs run in does not have to be got
 right the first time.
 
+### When the sheet and the database disagree about shape
+
+The sheet is the system of record until everything has moved over, so the
+disagreements are ours to resolve rather than something to ask a busy person to
+restructure while they are still working in it. Three of them, all on the
+customer tab:
+
+**A province that points at another tab** needs nothing new: map the column and
+set its `reference_table`, and the ID is looked up the way any parent is. A
+reference that finds nothing writes null, so the order the syncs run in does not
+have to be right the first time.
+
+**A location kept as one cell** — `11.5564, 104.9282` — where this database
+keeps `latitude` and `longitude` apart, because half a coordinate locates
+nothing and a constraint says so. Two mappings now read the *same* sheet column
+with different transforms:
+
+| sheet_column | target_column | transform |
+| --- | --- | --- |
+| `Pin` | `latitude` | `latitude` |
+| `Pin` | `longitude` | `longitude` |
+
+A comma or a semicolon separates them, any amount of space is fine, and a cell
+that is not two numbers on the planet writes null to both rather than half a
+pin. (Mappings used to be keyed by sheet column, so the second of those two
+silently replaced the first — one half of every location was being dropped.)
+
+**Contacts kept in the customer's row**, where here they are rows of their own.
+That is a second sync over the same tab, targeting `customer_contacts`, with the
+customer resolved by reference exactly as the province is. The problem is
+identity: a contact sitting in its customer's row has no ID, so a second run
+would insert it again. `suffix` gives it one.
+
+| sheet_column | target_column | transform | transform_arg |
+| --- | --- | --- | --- |
+| `Customer ID` | `customer_id` | — (reference `customers`) | |
+| `Customer ID` | `sheet_id` | `suffix` | `#1` |
+| `Contact 1 Name` | `name` | | |
+| `Contact 1 Phone` | `phone` | | |
+
+Contact one is always contact one, so re-running rewrites it. A second slot is
+the same four rows with `#2` and the other columns.
+
+Most customers have one contact, so the second slot is usually blank — and the
+synthesised ID is there whether or not anybody filled it in, so the key check
+cannot tell the difference. **`require_column`** on the sync can: set it to
+`name` and a row with no contact name is not written. It is not counted as a
+skip, because nobody meant to enter one.
+
+**Not yet in the form.** The mapping screen still pairs one sheet column with
+one target column, so these three rows are set on `sync_column_maps` directly.
+Teaching the form to hold several mappings per column is its own piece of work.
+
 ### Clearing what a sync imported
 
 Mapping somebody else's spreadsheet is a guess, and the second guess is better.

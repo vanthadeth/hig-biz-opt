@@ -129,7 +129,7 @@ export async function runSync(
       });
     }
 
-    const built = buildRows(headers, rows, mapping, keyColumn);
+    const built = buildRows(headers, rows, mapping, keyColumn, sync.require_column);
 
     if (built.records.length === 0) {
       return await finish({

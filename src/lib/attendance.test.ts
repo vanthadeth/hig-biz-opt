@@ -266,6 +266,20 @@ describe("weeks and months", () => {
     expect(groupByMonth(days)[0].unclosed).toBe(false);
   });
 
+  /**
+   * A week shown as a calendar has the days off in it. They are days, but they
+   * are not days worked, and an average that divided by seven would report a
+   * five-day week as short rather than as a five-day week.
+   */
+  it("counts only the days something happened on, even in a filled calendar", () => {
+    const week = fillDays(days, "2026-09-01", "2026-09-07");
+    expect(week).toHaveLength(7);
+
+    const [first] = groupByWeek(week.filter((d) => d.key <= "2026-09-06"));
+    expect(first.days).toHaveLength(6);   // the calendar
+    expect(first.daysWorked).toBe(2);     // the 1st and the 3rd
+  });
+
   it("periods come back newest first as well", () => {
     expect(groupByWeek(days)[0].key).toBe("2026-09-07");
   });

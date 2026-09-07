@@ -8,8 +8,11 @@ import {
   daysBetween,
   longDay,
   monthKey,
+  monthLabel,
+  shortDay,
   timeOf,
   weekKey,
+  weekLabel,
 } from "./time";
 
 /**
@@ -117,5 +120,24 @@ describe("a day written out", () => {
   it("and does not slide across a month end while being formatted", () => {
     expect(longDay("2026-09-01")).toBe("Tuesday 1 September 2026");
     expect(longDay("2026-08-31")).toBe("Monday 31 August 2026");
+  });
+});
+
+describe("naming a stretch of time", () => {
+  it("writes a day short, for a line of them", () => {
+    expect(shortDay("2026-08-31")).toBe("31 Aug");
+  });
+
+  it("a week by the days at each end", () => {
+    expect(weekLabel("2026-08-31")).toBe("31 Aug – 6 Sept");
+  });
+
+  it("and a week that crosses a month says both months", () => {
+    expect(weekLabel("2026-09-28")).toBe("28 Sept – 4 Oct");
+  });
+
+  it("a month by its name and year", () => {
+    expect(monthLabel("2026-09")).toBe("September 2026");
+    expect(monthLabel("2027-01")).toBe("January 2027");
   });
 });

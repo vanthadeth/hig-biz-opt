@@ -182,12 +182,31 @@ export function VisitDay({
       )}
 
       {today && (
-        <Card className="grid grid-cols-3 divide-x divide-line p-0">
-          <Figure label="Working" value={hoursMinutes(today.workingMs)} />
-          <Figure label="Active" value={hoursMinutes(today.activeMs)} />
-          <Figure label="Visits" value={String(today.visits)} />
-        </Card>
+        <Link href={`/${viewKey}/visits/reports`} className="pressable block">
+          <Card className="grid grid-cols-3 divide-x divide-line p-0">
+            <Figure label="Working" value={hoursMinutes(today.workingMs)} />
+            <Figure label="Active" value={hoursMinutes(today.activeMs)} />
+            <Figure label="Visits" value={String(today.visits)} />
+          </Card>
+        </Link>
       )}
+
+      <div className="flex gap-2">
+        <Link
+          href={`/${viewKey}/visits/reports`}
+          className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
+        >
+          <Icon name="chart" className="size-4" />
+          Report
+        </Link>
+        <Link
+          href={`/${viewKey}/visits/map`}
+          className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
+        >
+          <Icon name="pin" className="size-4" />
+          Map
+        </Link>
+      </div>
 
       {grouped.length > 0 && (
         <div className="space-y-4">

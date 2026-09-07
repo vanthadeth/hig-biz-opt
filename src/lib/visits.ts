@@ -70,6 +70,50 @@ export const VISIT_COLUMNS =
   "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, out_latitude, out_longitude, distance_m, out_of_range, radius_m, visit_type_id, visit_status_id, order_status_id, payment_status_id, next_appointment, remarks, customer:customers (shop_name, latitude, longitude)";
 
 /**
+ * A visit as a report reads it: who, when, and where they stood.
+ *
+ * Thinner than `VisitRow` on purpose — a report over three months of a
+ * department's calls is a lot of rows, and the four dropdown ids and the
+ * remarks are not on any of its screens. The coordinates are here because the
+ * map draws from the same query.
+ */
+export type ReportVisit = {
+  id: string;
+  user_id: string;
+  checked_in_at: string;
+  checked_out_at: string | null;
+  in_latitude: number | null;
+  in_longitude: number | null;
+  distance_m: number | null;
+  out_of_range: boolean;
+  user: { full_name: string } | null;
+  customer: { shop_name: string; latitude: number | null; longitude: number | null } | null;
+};
+
+export const REPORT_COLUMNS =
+  "id, user_id, checked_in_at, checked_out_at, in_latitude, in_longitude, distance_m, out_of_range, user:users (full_name), customer:customers (shop_name, latitude, longitude)";
+
+/**
+ * Who appears in a report, and what to call them.
+ *
+ * Built from the visits themselves rather than from a list of employees: the
+ * policy decides whose visits came back, so the people in the result are
+ * exactly the people this person may report on. Asking the users table
+ * separately would risk offering a name with nothing behind it.
+ */
+export function peopleIn(visits: ReportVisit[]): { id: string; name: string }[] {
+  const names = new Map<string, string>();
+  for (const visit of visits) {
+    if (!names.has(visit.user_id)) {
+      names.set(visit.user_id, visit.user?.full_name ?? "Removed employee");
+    }
+  }
+  return [...names.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * How far away, in words.
  *
  * Null is "unknown", never "0 m" — the shop has no pin, and a screen that

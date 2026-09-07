@@ -145,3 +145,43 @@ export function longDay(key: string, { year = true }: { year?: boolean } = {}): 
   const written = `${get("weekday")} ${get("day")} ${get("month")}`;
   return year ? `${written} ${get("year")}` : written;
 }
+
+/**
+ * A day in a line of them: "31 Aug".
+ *
+ * Assembled from parts for the same reason as `longDay` — engines disagree
+ * about the punctuation, not the names.
+ */
+const shortDayFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  day: "numeric",
+  month: "short",
+});
+
+export function shortDay(key: string): string {
+  const parts = shortDayFormat.formatToParts(new Date(`${key}T12:00:00Z`));
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  // "Sept" is what en-GB actually abbreviates September to; left as the
+  // formatter gives it, since shortening it further would be our invention.
+  return `${get("day")} ${get("month")}`;
+}
+
+/** A month: "September 2026". Takes "2026-09". */
+const monthFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  month: "long",
+  year: "numeric",
+});
+
+export function monthLabel(month: string): string {
+  const parts = monthFormat.formatToParts(new Date(`${month}-15T12:00:00Z`));
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("month")} ${get("year")}`;
+}
+
+/** A week, named by the days at each end: "31 Aug – 6 Sept". */
+export function weekLabel(monday: string): string {
+  return `${shortDay(monday)} – ${shortDay(addDays(monday, 6))}`;
+}

@@ -1,0 +1,146 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { VisitOption, VisitRow } from "@/lib/visits";
+import { VisitRecord } from "./VisitRecord";
+
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+
+const update = vi.fn();
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    from: () => ({
+      update: (patch: unknown) => {
+        update(patch);
+        return { eq: () => ({ select: async () => ({ data: [{ id: "v1" }], error: null }) }) };
+      },
+    }),
+  }),
+}));
+
+const OPTIONS: VisitOption[] = [
+  { id: "t1", kind: "visit_type", label: "Sales call", sort_order: 1, active: true },
+  { id: "o1", kind: "order_status", label: "Ordered", sort_order: 1, active: true },
+];
+
+const HOUR = 3_600_000;
+const CLOSED = "2026-09-03T02:00:00Z";
+
+const visit = (over: Partial<VisitRow> = {}): VisitRow => ({
+  id: "v1",
+  user_id: "u1",
+  customer_id: "c1",
+  checked_in_at: "2026-09-03T01:00:00Z",
+  checked_out_at: CLOSED,
+  in_latitude: 11.5564, in_longitude: 104.9282,
+  out_latitude: null, out_longitude: null,
+  distance_m: 90, out_of_range: false, radius_m: 200,
+  visit_type_id: null, visit_status_id: null,
+  order_status_id: null, payment_status_id: null,
+  next_appointment: null, remarks: null,
+  customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282 },
+  ...over,
+});
+
+const at = (hours: number) => new Date(Date.parse(CLOSED) + hours * HOUR).toISOString();
+
+beforeEach(() => {
+  refresh.mockClear();
+  update.mockClear();
+});
+
+describe("a visit, and the day there is to correct it", () => {
+  it("shows the two timestamps but offers no way to change them", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(1)} />);
+
+    expect(screen.getByText("08:00")).toBeInTheDocument(); // 01:00Z here
+    expect(screen.getByText("09:00")).toBeInTheDocument(); // 02:00Z here
+    // Nothing on the page can edit them: the only inputs are the record's.
+    for (const box of screen.getAllByRole("textbox")) {
+      expect(box).not.toHaveValue("08:00");
+    }
+    expect(screen.queryByLabelText(/Arrived/)).toBeNull();
+    expect(screen.queryByLabelText(/Left/)).toBeNull();
+  });
+
+  it("lets the record be corrected within the day", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(23)} />);
+
+    const orderStatus = screen.getByLabelText(/Order status/);
+    expect(orderStatus).not.toBeDisabled();
+
+    fireEvent.change(orderStatus, { target: { value: "o1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ order_status_id: "o1" }),
+    );
+  });
+
+  it("and says how long is left, so nobody is surprised by the cut-off", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(23)} />);
+    expect(screen.getByText("1h left to correct this.")).toBeInTheDocument();
+  });
+
+  it("closes the record when the day is up", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(25)} />);
+
+    expect(screen.getByLabelText(/Order status/)).toBeDisabled();
+    expect(screen.getByLabelText(/Remarks/)).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
+    expect(screen.getByText(/now the record/)).toBeInTheDocument();
+  });
+
+  it("exactly at the day, not a minute after it", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(24)} />);
+    expect(screen.getByLabelText(/Order status/)).toBeDisabled();
+  });
+
+  it("a visit still open is always open to writing", () => {
+    render(
+      <VisitRecord visit={visit({ checked_out_at: null })} options={OPTIONS}
+        now={at(1000)} />,
+    );
+
+    expect(screen.getByLabelText(/Order status/)).not.toBeDisabled();
+    expect(screen.getByText("Still open")).toBeInTheDocument();
+    // No countdown, because nothing is counting down yet.
+    expect(screen.queryByText(/left to correct/)).toBeNull();
+  });
+
+  it("will not save what has not changed", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(1)} />);
+    expect(screen.getByRole("button", { name: "Saved" })).toBeDisabled();
+  });
+
+  it("says a check-in landed outside the radius, and how far outside", () => {
+    render(
+      <VisitRecord
+        visit={visit({ distance_m: 1500, out_of_range: true })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+
+    expect(screen.getByText("1.5 km away")).toBeInTheDocument();
+    expect(screen.getByText(/outside 200 m/)).toBeInTheDocument();
+  });
+
+  it("and calls an unpinned shop unknown rather than nought metres", () => {
+    render(
+      <VisitRecord
+        visit={visit({ distance_m: null, in_latitude: null, in_longitude: null })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+
+    expect(screen.getByText("Distance unknown")).toBeInTheDocument();
+    expect(screen.getByText(/no location saved yet/)).toBeInTheDocument();
+  });
+
+  it("names a shop that has since been removed rather than showing nothing", () => {
+    render(<VisitRecord visit={visit({ customer: null })} options={OPTIONS} now={at(1)} />);
+    expect(screen.getByText("Shop removed")).toBeInTheDocument();
+  });
+});

@@ -6,6 +6,7 @@ import {
   dayKey,
   dayStartMs,
   daysBetween,
+  longDay,
   monthKey,
   timeOf,
   weekKey,
@@ -88,5 +89,33 @@ describe("weeks and months", () => {
   it("a month is the month", () => {
     expect(monthKey("2026-09-30")).toBe("2026-09");
     expect(monthKey("2026-10-01")).toBe("2026-10");
+  });
+});
+
+/**
+ * The separator, not the names, is what differs between engines: Node's ICU
+ * writes "Monday, 7 September 2026" and Chromium's writes it without the
+ * comma. A heading built from `Intl.format()` therefore rendered one string on
+ * the server and hydrated another in the browser. These assertions pin the
+ * form we supply ourselves, which is the same in both.
+ */
+describe("a day written out", () => {
+  it("has no punctuation an engine could disagree about", () => {
+    expect(longDay("2026-09-07")).toBe("Monday 7 September 2026");
+    expect(longDay("2026-09-07")).not.toContain(",");
+  });
+
+  it("drops the year when a heading does not need one", () => {
+    expect(longDay("2026-09-07", { year: false })).toBe("Monday 7 September");
+  });
+
+  it("names the day it is here, not the day it is in UTC", () => {
+    // The 30th of August 2026 is a Sunday in Phnom Penh.
+    expect(longDay("2026-08-30")).toBe("Sunday 30 August 2026");
+  });
+
+  it("and does not slide across a month end while being formatted", () => {
+    expect(longDay("2026-09-01")).toBe("Tuesday 1 September 2026");
+    expect(longDay("2026-08-31")).toBe("Monday 31 August 2026");
   });
 });

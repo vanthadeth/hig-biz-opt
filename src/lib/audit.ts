@@ -8,7 +8,7 @@
  * row is titled by whatever it calls itself rather than by its uuid.
  */
 
-import { TIME_ZONE, dayKey } from "./time";
+import { dayKey, longDay } from "./time";
 
 export type AuditAction = "insert" | "update" | "delete";
 
@@ -255,14 +255,6 @@ export function filterEntries(
   );
 }
 
-const headingFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: TIME_ZONE,
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
-
 /**
  * "Today", "Yesterday", or the date written out.
  *
@@ -277,9 +269,7 @@ export function dayLabel(key: string, now: Date): string {
   const yesterday = new Date(now.getTime() - 86_400_000);
   if (key === dayKey(yesterday)) return "Yesterday";
 
-  // Midday, so the date cannot slide across a boundary while being formatted
-  // back into the same zone it was derived in.
-  return headingFormat.format(new Date(`${key}T12:00:00Z`));
+  return longDay(key);
 }
 
 export type AuditDay = { key: string; label: string; entries: AuditEntry[] };

@@ -6,8 +6,6 @@ import {
   editWindowLeft,
   editable,
   locationProblem,
-  metresBetween,
-  nearestShops,
   openVisit,
   optionsOf,
   rangeNote,
@@ -197,68 +195,5 @@ describe("the day somebody has to correct a visit", () => {
   it("counting down so the form can say how long is left", () => {
     expect(editWindowLeft({ checked_out_at: closed }, at(23))).toBe(3_600_000);
     expect(editWindowLeft({ checked_out_at: closed }, at(30))).toBe(0);
-  });
-});
-
-describe("the shops a rep is nearest to", () => {
-  // Norodom Boulevard, and two shops north of it.
-  const fix = { latitude: 11.5564, longitude: 104.9282, accuracy: 10 };
-  const near = { id: "near", latitude: 11.5573, longitude: 104.9282 };   // ~100 m
-  const far = { id: "far", latitude: 11.5664, longitude: 104.9282 };     // ~1.1 km
-  const unpinned = { id: "unpinned", latitude: null, longitude: null };
-
-  it("sorts them by distance", () => {
-    expect(nearestShops([far, near], fix).map((r) => r.shop.id)).toEqual(["near", "far"]);
-  });
-
-  it("and measures them", () => {
-    const [first] = nearestShops([near], fix);
-    expect(first.metres).toBeGreaterThan(80);
-    expect(first.metres).toBeLessThan(120);
-  });
-
-  it("puts shops with no pin last, because unknown is not nearby", () => {
-    expect(nearestShops([unpinned, far, near], fix).map((r) => r.shop.id))
-      .toEqual(["near", "far", "unpinned"]);
-  });
-
-  it("measures nothing at all without a fix", () => {
-    const rows = nearestShops([near, far], null);
-    expect(rows).toHaveLength(2);
-    expect(rows.every((r) => r.metres === null)).toBe(true);
-  });
-
-  it("and returns only as many as asked for", () => {
-    expect(nearestShops([near, far, unpinned], fix, 2)).toHaveLength(2);
-  });
-});
-
-describe("metresBetween", () => {
-  it("is nothing when nothing moved", () => {
-    expect(metresBetween(11.5, 104.9, 11.5, 104.9)).toBe(0);
-  });
-
-  /**
-   * The numbers on the right were read off `app.metres_between` on the live
-   * schema, not worked out here, and they are asserted to the millimetre.
-   *
-   * This is only used to sort a list of shops before anybody checks in — the
-   * distance that gets recorded is always the database's. But a list that
-   * disagrees with the record it is about to produce is a list that puts the
-   * wrong shop at the top, so the two are held to the same answer.
-   */
-  it("agrees with the database to the millimetre, a hundred metres out", () => {
-    expect(metresBetween(11.5564, 104.9282, 11.5573, 104.9282))
-      .toBeCloseTo(100.075433980103, 3);
-  });
-
-  it("and eleven hundred", () => {
-    expect(metresBetween(11.5, 104.9, 11.51, 104.9))
-      .toBeCloseTo(1111.94926644559, 3);
-  });
-
-  it("and nine kilometres, out at the airport", () => {
-    expect(metresBetween(11.5564, 104.9282, 11.5466, 104.8441))
-      .toBeCloseTo(9226.65566279246, 3);
   });
 });

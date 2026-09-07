@@ -116,3 +116,32 @@ export function weekKey(key: string): string {
 export function monthKey(key: string): string {
   return key.slice(0, 7);
 }
+
+/**
+ * A day written out: "Monday 7 September 2026".
+ *
+ * Assembled from the formatter's parts rather than taken from `format()`,
+ * because the separators are not the same everywhere. Node's ICU writes
+ * "Monday, 7 September 2026" and Chromium's writes it without the comma — so a
+ * heading rendered on the server and hydrated in the browser was two different
+ * strings, and React threw the whole tree away and drew it again. The names of
+ * the days and months are stable; only the punctuation between them was not,
+ * so this supplies the punctuation itself.
+ */
+const longDayFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+export function longDay(key: string, { year = true }: { year?: boolean } = {}): string {
+  // Midday, so the date cannot slide across a boundary while being formatted
+  // back into the zone it was derived in.
+  const parts = longDayFormat.formatToParts(new Date(`${key}T12:00:00Z`));
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const written = `${get("weekday")} ${get("day")} ${get("month")}`;
+  return year ? `${written} ${get("year")}` : written;
+}

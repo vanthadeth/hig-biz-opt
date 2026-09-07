@@ -8,6 +8,7 @@
  * into a settings page for the other.
  */
 
+import { metresBetween } from "./geo";
 import type { ChipTone } from "@/components/ui/Chip";
 
 /** One row of public.item_catalogue, as the catalogue screen reads it. */
@@ -575,15 +576,7 @@ export function distanceMetres(
   to: { latitude: number | null; longitude: number | null },
 ): number | null {
   if (to.latitude === null || to.longitude === null) return null;
-
-  const R = 6_371_000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(to.latitude - from.latitude);
-  const dLon = toRad(to.longitude - from.longitude);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(from.latitude)) * Math.cos(toRad(to.latitude)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+  return metresBetween(from.latitude, from.longitude, to.latitude, to.longitude);
 }
 
 /** "120 m" or "4.3 km" — near enough for choosing between shops. */

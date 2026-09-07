@@ -307,8 +307,16 @@ describe("dayLabel", () => {
     expect(dayLabel("2026-09-02", now)).toBe("Yesterday");
   });
 
+  /**
+   * No comma. The heading used to come straight from `Intl.format()`, which
+   * writes "Sunday, 30 August 2026" under Node's ICU and "Sunday 30 August
+   * 2026" under Chromium's — so this list rendered one string on the server,
+   * hydrated a different one in the browser, and React threw the tree away and
+   * drew it again. The separator is supplied by us now, which is why the comma
+   * is gone.
+   */
   it("writes any other day out in full", () => {
-    expect(dayLabel("2026-08-30", now)).toBe("Sunday, 30 August 2026");
+    expect(dayLabel("2026-08-30", now)).toBe("Sunday 30 August 2026");
   });
 });
 

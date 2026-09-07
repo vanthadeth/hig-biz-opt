@@ -28,12 +28,26 @@
 -- required, because "cancelled" on its own cannot be told apart from a second
 -- mistake. Most importantly a cancelled visit stops blocking the next
 -- check-in, or one mis-tap would lock a rep out of the feature for good.
+-- And because cancelling is itself a tap somebody can get wrong, it comes
+-- back off again: clearing the moment and the reason together puts the visit
+-- back, while clearing either one alone leaves half a state and is refused.
 --
--- The fourth is whether the distance is honest. It is recorded, never
+-- The fourth is whether both ends of the visit are measured. The check-in has
+-- always recorded how far the rep was from the shop; the check-out recorded
+-- nothing, which left the pattern most worth catching invisible — arriving at
+-- the shop and closing the visit from the next district.
+--
+-- The fifth is whether the distance is honest. It is recorded, never
 -- enforced: a check-in eleven kilometres away is accepted and flagged, and a
 -- shop with no pin gives a null distance — unknown, which the report has to
 -- read differently from far away — while still keeping the rep's own position,
 -- so the shop can be pinned later from where its visitors stood.
+--
+-- The sixth is whether a day has a shape to meet. Visits, working hours and
+-- active hours each get a daily and a weekly target, all of them unset until
+-- somebody decides one, because a made-up quota is worse than none. Active
+-- time is time inside shops and the working day contains it, so a pair that
+-- says otherwise is refused rather than displayed as an impossible bar.
 --
 -- Everything happens inside one transaction that is deliberately rolled back,
 -- so a run leaves no trace.
@@ -42,7 +56,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  VISITS OK - 81 assertions passed (rls: ran)
+--     ERROR:  VISITS OK - 103 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -138,6 +152,7 @@ declare
   v_old   uuid;   -- a visit closed two days ago
   v_none  uuid;   -- a visit to nowhere in particular
   v_two   public.visits;  -- the one made after a mistake was called off
+  v_mine  integer;        -- how many of the rep's visits actually exist
   v_rls   text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -174,8 +189,14 @@ begin
   ----------------------------------------------------------------------------
   -- How far is close enough
   ----------------------------------------------------------------------------
+  -- What the radius *starts* at is the column's default; what it *is* is a
+  -- business setting somebody may have moved since, so the rest of this file
+  -- pins it rather than reading it and hoping.
   perform pg_temp.eq('the radius starts at two hundred metres',
-    (select checkin_radius_m::text from public.app_settings), '200');
+    (select column_default from information_schema.columns
+      where table_schema = 'public' and table_name = 'app_settings'
+        and column_name = 'checkin_radius_m'), '200');
+  update public.app_settings set checkin_radius_m = 200;
   perform pg_temp.rejects('a radius of one metre is not a setting, it is a bug',
     'update public.app_settings set checkin_radius_m = 1');
   perform pg_temp.rejects('nor is one that spans the country',
@@ -275,7 +296,8 @@ begin
     perform pg_temp.eq('so the visit is flagged, not refused',
       v_visit.out_of_range::text, 'true');
     perform pg_temp.ok('and it is a visit all the same', v_visit.id is not null);
-    perform pg_temp.ok('closing it', public.check_out(v_visit.id, null, null).id is not null);
+    perform pg_temp.ok('closing it',
+      (public.check_out(v_visit.id, null, null)).id is not null);
 
     v_visit := public.check_in(v_blind, v_near_lat, v_near_lng);
     perform pg_temp.ok('an unpinned shop gives no distance', v_visit.distance_m is null);
@@ -284,7 +306,7 @@ begin
     perform pg_temp.eq('and the rep''s position is kept, so the shop can be pinned',
       v_visit.in_longitude::text, v_near_lng::text);
     perform pg_temp.ok('closing it too',
-      public.check_out(v_visit.id, v_near_lat, v_near_lng).id is not null);
+      (public.check_out(v_visit.id, v_near_lat, v_near_lng)).id is not null);
 
     perform pg_temp.rejects('checking in at a shop that does not exist',
       format('select public.check_in(%L, %s, %s)',
@@ -432,6 +454,104 @@ begin
       where user_id = v_rep and cancelled_at is not null and checked_out_at is null), '3');
 
   ----------------------------------------------------------------------------
+  -- Where the leaving happened
+  --
+  -- The half that catches somebody arriving at the shop and closing the visit
+  -- from somewhere else. Measured against the radius in force at the moment of
+  -- the check-out, not the one the check-in was judged against: it is a second
+  -- measurement at a second moment, and dressing it in the older number would
+  -- make it look like part of the first.
+  ----------------------------------------------------------------------------
+  insert into public.visits (user_id, customer_id, in_latitude, in_longitude,
+                             distance_m, radius_m)
+    values (v_rep, v_cus, v_near_lat, v_near_lng, 100, 200) returning * into v_visit;
+  perform pg_temp.ok('an open visit has measured no check-out yet',
+    v_visit.checkout_distance_m is null and not v_visit.checkout_out_of_range);
+
+  v_visit := app.check_out(v_visit.id, 11.546600, 104.844100);
+  perform pg_temp.ok('closing from the airport is measured',
+    v_visit.checkout_distance_m > 9000);
+  perform pg_temp.eq('and flagged', v_visit.checkout_out_of_range::text, 'true');
+  perform pg_temp.eq('while the check-in it began with is untouched',
+    v_visit.distance_m::text, '100');
+  perform pg_temp.eq('and that end stays in range',
+    v_visit.out_of_range::text, 'false');
+
+  -- Evidence, on the same terms as the other end.
+  perform pg_temp.rejects('a check-out distance cannot be edited afterwards',
+    format('update public.visits set checkout_distance_m = 5 where id = %L', v_visit.id));
+  perform pg_temp.rejects('nor the flag that came of it',
+    format('update public.visits set checkout_out_of_range = false where id = %L', v_visit.id));
+  perform pg_temp.rejects('nor where the rep was when they left',
+    format('update public.visits set out_latitude = 11.5 where id = %L', v_visit.id));
+
+  -- Unknown at this end too, for the same two reasons as at the other.
+  insert into public.visits (user_id, customer_id) values (v_rep, v_blind)
+    returning * into v_visit;
+  v_visit := app.check_out(v_visit.id, v_near_lat, v_near_lng);
+  perform pg_temp.ok('an unpinned shop gives no check-out distance either',
+    v_visit.checkout_distance_m is null);
+  perform pg_temp.eq('which is unknown, not out of range',
+    v_visit.checkout_out_of_range::text, 'false');
+
+  insert into public.visits (user_id, customer_id) values (v_rep, v_cus)
+    returning * into v_visit;
+  v_visit := app.check_out(v_visit.id, null, null);
+  perform pg_temp.ok('nor does a check-out with no fix at all',
+    v_visit.checkout_distance_m is null);
+
+  ----------------------------------------------------------------------------
+  -- What a day is supposed to look like
+  ----------------------------------------------------------------------------
+  -- Unset is the shipped state, which is the column default rather than
+  -- whatever the one row holds today.
+  perform pg_temp.ok('a quota starts unset, because nobody has decided one yet',
+    (select count(*) = 6 from information_schema.columns
+      where table_schema = 'public' and table_name = 'app_settings'
+        and column_name in ('daily_visit_target', 'daily_working_hours',
+                            'daily_active_hours', 'weekly_visit_target',
+                            'weekly_working_hours', 'weekly_active_hours')
+        and column_default is null));
+  update public.app_settings
+     set daily_visit_target = 8, daily_working_hours = 8.5, daily_active_hours = 4,
+         weekly_visit_target = 44, weekly_working_hours = 48, weekly_active_hours = 22;
+  perform pg_temp.eq('and can be set',
+    (select daily_visit_target::text from public.app_settings), '8');
+  perform pg_temp.rejects('a target of nothing is not a target',
+    'update public.app_settings set daily_visit_target = 0');
+  perform pg_temp.rejects('nor is a day longer than a day',
+    'update public.app_settings set daily_working_hours = 25');
+  -- Active time is time inside shops; the working day contains it. A pair that
+  -- says otherwise is a typo somebody would spend an afternoon explaining.
+  perform pg_temp.rejects('active hours may not exceed working hours',
+    'update public.app_settings set daily_active_hours = 9');
+  perform pg_temp.rejects('and the same holds for the week',
+    'update public.app_settings set weekly_active_hours = 60');
+
+  ----------------------------------------------------------------------------
+  -- Changing your mind about calling one off
+  ----------------------------------------------------------------------------
+  insert into public.visits (user_id, customer_id) values (v_rep, v_cus)
+    returning * into v_visit;
+  update public.visits set cancelled_at = now(), cancel_reason = 'Tapped by mistake'
+   where id = v_visit.id;
+
+  -- Half a cancellation is not a state.
+  perform pg_temp.rejects('a reason cannot be cleared on its own',
+    format('update public.visits set cancel_reason = null where id = %L', v_visit.id));
+  perform pg_temp.rejects('nor the moment, leaving a reason behind',
+    format('update public.visits set cancelled_at = null where id = %L', v_visit.id));
+
+  update public.visits set cancelled_at = null, cancel_reason = null where id = v_visit.id;
+  perform pg_temp.ok('but both together put the visit back',
+    (select cancelled_at is null and cancel_reason is null
+       from public.visits where id = v_visit.id));
+  perform pg_temp.ok('with its times untouched by the round trip',
+    (select checked_in_at is not null from public.visits where id = v_visit.id));
+  perform pg_temp.ok('closing it again',
+    (public.check_out(v_visit.id, v_near_lat, v_near_lng)).id is not null);
+
+  ----------------------------------------------------------------------------
   -- Two days later
   --
   -- The trigger is switched off to age a visit, because it refuses exactly the
@@ -487,15 +607,19 @@ begin
   -- The sales role holds view, add and edit at 'own' — a rep records their own
   -- calls and reads their own day. A colleague is not the office.
   ----------------------------------------------------------------------------
+  select count(*) into v_mine from public.visits where user_id = v_rep;
+
   if v_rls = 'ran' then
     begin
       execute 'set local role authenticated';
 
       perform pg_temp.act_as(v_rep);
-      -- Three by now: the first call, the shopless one that was given this
-      -- shop afterwards, and the one aged two days above.
-      perform pg_temp.eq('the rep sees the calls they made',
-        (select count(*)::text from public.visits where user_id = v_rep and customer_id = v_cus), '3');
+      -- Against what the administrator can see, rather than a number written
+      -- down here: the count is incidental to everything else this file does,
+      -- and pinning it made unrelated additions above break this assertion.
+      -- What is being tested is that the rep sees all of their own, not some.
+      perform pg_temp.eq('the rep sees every call they made',
+        (select count(*)::text from public.visits where user_id = v_rep), v_mine::text);
 
       perform pg_temp.act_as(v_rep2);
       perform pg_temp.eq('a colleague sees none of them',

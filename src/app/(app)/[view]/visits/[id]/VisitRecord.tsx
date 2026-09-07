@@ -15,17 +15,21 @@ import { dayKey, longDay, timeOf } from "@/lib/time";
 import {
   cancelChange,
   cancellable,
+  checkoutNote,
   distanceLabel,
   editWindowLeft,
   editable,
   rangeNote,
   shopNameOf,
+  uncancelChange,
+  uncancellable,
   visitLength,
   type VisitOption,
   type VisitRow,
 } from "@/lib/visits";
 import { VisitFields, type VisitDraft } from "../VisitFields";
 import { CancelVisit } from "./CancelVisit";
+import { RestoreVisit } from "./RestoreVisit";
 
 const draftOf = (visit: VisitRow): VisitDraft => ({
   visit_type_id: visit.visit_type_id,
@@ -78,21 +82,33 @@ export function VisitRecord({
   const left = editWindowLeft(visit, nowMs);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const note = rangeNote(visit, lang);
+  const leftNote = checkoutNote(visit, lang);
 
-  async function cancelVisit(reason: string) {
+  /**
+   * Calling a visit off, and taking that back.
+   *
+   * One write path for both directions, because they are the same write with
+   * different values and the same two ways of failing: the policy refusing it,
+   * which matches no rows and raises nothing, or the guard trigger refusing
+   * it, which raises. `.select()` is what tells the first case from success.
+   */
+  async function setCancelled(
+    change: ReturnType<typeof cancelChange> | ReturnType<typeof uncancelChange>,
+    wrong: string,
+  ) {
     setBusy(true);
     setError(null);
 
     const { data, error: failed } = await createClient()
       .from("visits")
-      .update(cancelChange(reason))
+      .update(change)
       .eq("id", visit.id)
       .select("id");
 
     setBusy(false);
     if (failed || !data?.length) {
       haptic("error");
-      setError(failed?.message ?? "That visit was not cancelled. You may not have permission.");
+      setError(failed?.message ?? wrong);
       return;
     }
     haptic("success");
@@ -163,6 +179,16 @@ export function VisitRecord({
           </Chip>
         </div>
 
+        {/* The chip above is about arriving. A visit that arrived at the door
+            and was closed from the next district would otherwise wear a green
+            chip and look fine, so the other end gets said out loud — but only
+            when it has something to say that the first chip has not. */}
+        {!cancelled && visit.checkout_out_of_range && !visit.out_of_range && (
+          <div>
+            <Chip tone="warn">{t("visit.away")}</Chip>
+          </div>
+        )}
+
         <dl className="grid grid-cols-3 gap-2 text-center">
           <Fact label={t("visit.arrived")} value={timeOf(visit.checked_in_at)} />
           <Fact
@@ -174,15 +200,42 @@ export function VisitRecord({
 
         {cancelled ? (
           <p className="text-xs text-muted">
-            Cancelled {visit.cancel_reason ? `— ${visit.cancel_reason}` : ""}. It
-            counts towards no hours.
+            {visit.cancel_reason
+              ? t("visit.cancelledBecause", { reason: visit.cancel_reason })
+              : t("visit.cancelledPlain")}
           </p>
         ) : (
-          note && <p className="text-xs text-muted">{note}</p>
+          <>
+            {note && <p className="text-xs text-muted">{note}</p>}
+            {/* Where the rep was when they left, which is the half that catches
+                a visit checked in at the door and closed from the next
+                district. Silent when there is nothing to say. */}
+            {leftNote && <p className="text-xs text-muted">{leftNote}</p>}
+          </>
         )}
 
         {cancellable(visit, nowMs) && (
-          <CancelVisit busy={busy} onCancel={cancelVisit} />
+          <CancelVisit
+            busy={busy}
+            onCancel={(reason) =>
+              setCancelled(
+                cancelChange(reason),
+                "That visit was not cancelled. You may not have permission.",
+              )
+            }
+          />
+        )}
+
+        {uncancellable(visit, nowMs) && (
+          <RestoreVisit
+            busy={busy}
+            onRestore={() =>
+              setCancelled(
+                uncancelChange(),
+                "That visit was not restored. You may not have permission.",
+              )
+            }
+          />
         )}
       </Card>
 

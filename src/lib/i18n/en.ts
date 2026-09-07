@@ -99,6 +99,19 @@ export const en = {
   "visit.frozen": "This visit closed more than a day ago. What it says is now the record.",
   "visit.frozenCancelled": "This visit was cancelled. What it says is now the record.",
 
+  "visit.noteLeftOutside": "Checked out {distance} from the shop, outside {radius} m.",
+  "visit.noteLeftOutsideUnknown": "Checked out {distance} from the shop.",
+  "visit.away": "Away",
+  "visit.restore": "Restore this visit",
+  "visit.restoreAsk": "Restore this visit?",
+  "visit.restoreBody":
+    "It counts towards the day's hours again, exactly as it was recorded. The reason it was cancelled is removed.",
+  "visit.restoreKeep": "Leave it cancelled",
+  "visit.restoreDo": "Restore it",
+  "visit.restoring": "Restoring…",
+  "visit.cancelledBecause": "Cancelled — {reason}. It counts towards no hours.",
+  "visit.cancelledPlain": "Cancelled. It counts towards no hours.",
+
   // The visit record's questions -----------------------------------------
   "visit.type": "Type of visit",
   "visit.status": "Visit status",
@@ -116,6 +129,16 @@ export const en = {
   "day.visits": "Visits",
   "day.report": "Report",
   "day.map": "Map",
+  "day.clockIn": "Clocked in",
+  "day.clockOut": "Clocked out",
+  "day.stillOut": "Still out",
+  "day.soFar": "Today so far",
+  "day.thisWeek": "This week",
+  "day.ofTarget": "{done} of {target}",
+  "day.targetMet": "Target met",
+  "day.noQuota": "Nobody has set a target yet.",
+  "day.nothingYet": "No visits recorded in the last fortnight.",
+
   "report.day": "Day",
   "report.week": "Week",
   "report.month": "Month",
@@ -130,6 +153,19 @@ export const en = {
   "report.dayNeverClosed": "A day was never closed",
   "report.nothing": "No visits recorded in the last ninety days.",
   "report.nothingFor": "Nothing recorded for {name} in the last ninety days.",
+
+
+  // Targets, on the settings screen -------------------------------------
+  "quota.title": "Daily and weekly targets",
+  "quota.caption": "An empty box is a figure nobody manages.",
+  "quota.daily": "A day",
+  "quota.weekly": "A week",
+  "quota.visits": "Visits",
+  "quota.workingHours": "Working hours",
+  "quota.activeHours": "Active hours",
+  "quota.activeMeaning":
+    "Active hours are the time inside shops; working hours are the whole day, travelling included.",
+  "quota.notManaged": "Not managed",
 
   // Customers -------------------------------------------------------------
   "customer.all": "All customers",

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACCURACY_LIMIT_M,
+  checkoutNote,
+  dayEnds,
   distanceLabel,
   editWindowLeft,
   editable,
@@ -12,11 +14,16 @@ import {
   locationProblem,
   openVisit,
   optionsOf,
+  provinceOf,
+  rangeFlag,
   rangeNote,
   shopNameOf,
+  uncancelChange,
+  uncancellable,
   usableFix,
   visitLength,
   visitsByDay,
+  type PlacedShop,
   type VisitOption,
 } from "./visits";
 
@@ -325,5 +332,183 @@ describe("the day somebody has to correct a visit", () => {
   it("counting down so the form can say how long is left", () => {
     expect(editWindowLeft({ checked_out_at: closed }, at(23))).toBe(3_600_000);
     expect(editWindowLeft({ checked_out_at: closed }, at(30))).toBe(0);
+  });
+});
+
+describe("where the leaving happened", () => {
+  const closed = {
+    checkout_out_of_range: true,
+    checkout_distance_m: 9600,
+    radius_m: 200,
+  };
+
+  it("says nothing when the visit was closed at the shop", () => {
+    expect(checkoutNote({ ...closed, checkout_out_of_range: false }, "en")).toBeNull();
+  });
+
+  it("and nothing when there was no distance to measure", () => {
+    // Whatever caused that has already been said once about the check-in, and
+    // saying it twice makes one problem look like two.
+    expect(checkoutNote({ ...closed, checkout_distance_m: null }, "en")).toBeNull();
+  });
+
+  it("but names the distance and the radius when the rep left from elsewhere", () => {
+    expect(checkoutNote(closed, "en"))
+      .toBe("Checked out 9.6 km from the shop, outside 200 m.");
+  });
+
+  it("and leaves the radius out when the visit never recorded one", () => {
+    expect(checkoutNote({ ...closed, radius_m: null }, "en"))
+      .toBe("Checked out 9.6 km from the shop.");
+  });
+});
+
+describe("the one flag a timeline row has room for", () => {
+  const both = {
+    customer_id: "c1",
+    out_of_range: false,
+    checkout_out_of_range: false,
+    distance_m: 40,
+    checkout_distance_m: 60,
+  };
+
+  it("is silent when both ends were at the shop", () => {
+    expect(rangeFlag(both)).toBe("none");
+  });
+
+  it("flags a check-in from somewhere else", () => {
+    expect(rangeFlag({ ...both, out_of_range: true })).toBe("away");
+  });
+
+  // The pattern the check-out measurement was added to catch: at the door on
+  // arrival, and gone by the time the visit was closed.
+  it("and a check-out from somewhere else just as loudly", () => {
+    expect(rangeFlag({ ...both, checkout_out_of_range: true })).toBe("away");
+  });
+
+  it("calls an unmeasured visit unknown, which is not the same as away", () => {
+    expect(rangeFlag({ ...both, distance_m: null, checkout_distance_m: null }))
+      .toBe("unknown");
+  });
+
+  it("but one measured end is enough to know", () => {
+    expect(rangeFlag({ ...both, distance_m: null })).toBe("none");
+  });
+
+  it("and a visit to nowhere in particular is not unknown, it is not to a shop",
+    () => {
+      expect(
+        rangeFlag({
+          ...both, customer_id: null, distance_m: null, checkout_distance_m: null,
+        }),
+      ).toBe("none");
+    });
+});
+
+describe("which province a shop is in", () => {
+  const provinces = new Map([["12", "Phnom Penh"]]);
+  const shop = (over: Partial<PlacedShop>): { customer: PlacedShop } => ({
+    customer: {
+      shop_name: "Corner Mart", latitude: null, longitude: null,
+      province_code: null, province_text: null, ...over,
+    },
+  });
+
+  it("comes from the code, which spells it the same everywhere", () => {
+    expect(provinceOf(shop({ province_code: "12", province_text: "PP" }), provinces))
+      .toBe("Phnom Penh");
+  });
+
+  it("falls back to what somebody wrote when there is no code", () => {
+    expect(provinceOf(shop({ province_text: "Kampot" }), provinces)).toBe("Kampot");
+  });
+
+  it("and to that too when the code matches no province we know", () => {
+    expect(provinceOf(shop({ province_code: "99", province_text: "Kampot" }), provinces))
+      .toBe("Kampot");
+  });
+
+  it("is null rather than blank when nobody has said", () => {
+    expect(provinceOf(shop({}), provinces)).toBeNull();
+    expect(provinceOf(shop({ province_text: "   " }), provinces)).toBeNull();
+    expect(provinceOf({ customer: null }, provinces)).toBeNull();
+  });
+});
+
+describe("the two ends of a listed day", () => {
+  const visit = (
+    id: string, inAt: string, outAt: string | null, cancelledAt: string | null = null,
+  ) => ({ id, checked_in_at: inAt, checked_out_at: outAt, cancelled_at: cancelledAt });
+
+  it("brackets the day with the first arrival and the last leaving", () => {
+    expect(
+      dayEnds([
+        visit("b", "2026-09-03T03:00:00Z", "2026-09-03T04:00:00Z"),
+        visit("a", "2026-09-03T01:00:00Z", "2026-09-03T02:00:00Z"),
+      ]),
+    ).toEqual({
+      clockIn: "2026-09-03T01:00:00Z",
+      clockOut: "2026-09-03T04:00:00Z",
+      open: false,
+    });
+  });
+
+  it("leaves the day open rather than guessing when somebody left", () => {
+    expect(
+      dayEnds([
+        visit("a", "2026-09-03T01:00:00Z", "2026-09-03T02:00:00Z"),
+        visit("b", "2026-09-03T03:00:00Z", null),
+      ]),
+    ).toEqual({ clockIn: "2026-09-03T01:00:00Z", clockOut: null, open: true });
+  });
+
+  it("ignores a visit that was called off, at either end", () => {
+    expect(
+      dayEnds([
+        visit("a", "2026-09-03T00:30:00Z", "2026-09-03T00:40:00Z", "2026-09-03T00:45:00Z"),
+        visit("b", "2026-09-03T01:00:00Z", "2026-09-03T02:00:00Z"),
+      ]),
+    ).toEqual({
+      clockIn: "2026-09-03T01:00:00Z",
+      clockOut: "2026-09-03T02:00:00Z",
+      open: false,
+    });
+  });
+
+  it("and a day of nothing but cancellations has no ends at all", () => {
+    expect(
+      dayEnds([
+        visit("a", "2026-09-03T00:30:00Z", null, "2026-09-03T00:45:00Z"),
+      ]),
+    ).toEqual({ clockIn: null, clockOut: null, open: false });
+  });
+});
+
+describe("taking a cancellation back", () => {
+  const closed = "2026-09-03T02:00:00Z";
+  const at = (h: number) => Date.parse(closed) + h * 3_600_000;
+
+  it("clears both columns together, because half a state is refused", () => {
+    expect(uncancelChange()).toEqual({ cancelled_at: null, cancel_reason: null });
+  });
+
+  it("is offered on a cancelled visit inside the correction window", () => {
+    expect(
+      uncancellable({ cancelled_at: closed, checked_out_at: closed }, at(1)),
+    ).toBe(true);
+  });
+
+  it("and not on one that was never cancelled", () => {
+    expect(
+      uncancellable({ cancelled_at: null, checked_out_at: closed }, at(1)),
+    ).toBe(false);
+  });
+
+  // Measured from the check-out, not from the cancelling: a visit that closed
+  // two days ago is settled, and calling it off yesterday does not reopen it.
+  it("nor once the day to correct the visit has run out", () => {
+    expect(
+      uncancellable({ cancelled_at: at(23).toString(), checked_out_at: closed }, at(25)),
+    ).toBe(false);
   });
 });

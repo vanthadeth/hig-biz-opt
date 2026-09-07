@@ -43,6 +43,28 @@ export function optionsOf(options: VisitOption[], kind: VisitOptionKind): VisitO
     .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label));
 }
 
+/**
+ * The shop, as a visit carries it.
+ *
+ * Two shapes rather than one: a report over a department's quarter embeds only
+ * what its map and its list need, and typing every function against the wider
+ * shape would make the thin query un-passable to any of them. What each
+ * function asks for is the fields it actually reads.
+ */
+export type VisitShop = {
+  shop_name: string;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+/** The same shop with the geography a single day's screens have room to show. */
+export type PlacedShop = VisitShop & {
+  /** The province code, when the shop was placed against the geography. */
+  province_code: string | null;
+  /** The province as somebody wrote it, when it was not. */
+  province_text: string | null;
+};
+
 export type VisitRow = {
   id: string;
   user_id: string;
@@ -56,6 +78,9 @@ export type VisitRow = {
   out_longitude: number | null;
   distance_m: number | null;
   out_of_range: boolean;
+  /** How far from the shop the visit was *closed*. Null is unknown, not zero. */
+  checkout_distance_m: number | null;
+  checkout_out_of_range: boolean;
   radius_m: number | null;
   visit_type_id: string | null;
   visit_status_id: string | null;
@@ -65,13 +90,13 @@ export type VisitRow = {
   remarks: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
-  customer: { shop_name: string; latitude: number | null; longitude: number | null } | null;
+  customer: PlacedShop | null;
 };
 
 // One literal, not a concatenation: supabase-js reads this string in the type
 // system to work out the row shape.
 export const VISIT_COLUMNS =
-  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, out_latitude, out_longitude, distance_m, out_of_range, radius_m, visit_type_id, visit_status_id, order_status_id, payment_status_id, next_appointment, remarks, cancelled_at, cancel_reason, customer:customers (shop_name, latitude, longitude)";
+  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, out_latitude, out_longitude, distance_m, out_of_range, checkout_distance_m, checkout_out_of_range, radius_m, visit_type_id, visit_status_id, order_status_id, payment_status_id, next_appointment, remarks, cancelled_at, cancel_reason, customer:customers (shop_name, latitude, longitude, province_code, province_text)";
 
 /**
  * A visit as a report reads it: who, when, and where they stood.
@@ -93,7 +118,7 @@ export type ReportVisit = {
   out_of_range: boolean;
   cancelled_at: string | null;
   user: { full_name: string } | null;
-  customer: { shop_name: string; latitude: number | null; longitude: number | null } | null;
+  customer: VisitShop | null;
 };
 
 export const REPORT_COLUMNS =
@@ -163,7 +188,7 @@ export function distanceLabel(metres: number | null, lang: Lang = DEFAULT_LANG):
 
 
 export function shopNameOf(
-  visit: Pick<VisitRow, "customer_id" | "customer">,
+  visit: { customer_id: string | null; customer: VisitShop | null },
   lang: Lang = DEFAULT_LANG,
 ): string {
   if (visit.customer_id === null) return translate(lang, "visit.somewhereElse");
@@ -191,10 +216,14 @@ export function canNameShop(
  * and a note on every visit is a note nobody reads.
  */
 export function rangeNote(
-  visit: Pick<
-    VisitRow,
-    "out_of_range" | "distance_m" | "radius_m" | "customer_id" | "in_latitude" | "customer"
-  >,
+  visit: {
+    out_of_range: boolean;
+    distance_m: number | null;
+    radius_m: number | null;
+    customer_id: string | null;
+    in_latitude: number | null;
+    customer: VisitShop | null;
+  },
   lang: Lang = DEFAULT_LANG,
 ): string | null {
   if (visit.customer_id === null) return translate(lang, "visit.noteNoShop");
@@ -215,6 +244,78 @@ export function rangeNote(
         distance: distanceOnly(visit.distance_m, lang),
         radius: visit.radius_m,
       });
+}
+
+/**
+ * What to say about where the visit was *closed*.
+ *
+ * Silent unless there is something to say, on the same terms as the check-in
+ * note: a check-out inside the radius is the good case, and a line on every
+ * visit is a line nobody reads. Null distance says nothing here at all —
+ * whatever caused it has already been explained once by `rangeNote`, and
+ * saying it twice makes the screen look like it found two problems.
+ */
+export function checkoutNote(
+  visit: Pick<VisitRow, "checkout_out_of_range" | "checkout_distance_m" | "radius_m">,
+  lang: Lang = DEFAULT_LANG,
+): string | null {
+  if (!visit.checkout_out_of_range || visit.checkout_distance_m === null) return null;
+  return visit.radius_m === null
+    ? translate(lang, "visit.noteLeftOutsideUnknown", {
+        distance: distanceOnly(visit.checkout_distance_m, lang),
+      })
+    : translate(lang, "visit.noteLeftOutside", {
+        distance: distanceOnly(visit.checkout_distance_m, lang),
+        radius: visit.radius_m,
+      });
+}
+
+/**
+ * The one word a list has room for about a visit's distance.
+ *
+ * A timeline row is a line of text on a phone, so the two ends collapse into
+ * a single flag — and they collapse towards the bad news, because a visit
+ * checked in at the door and closed from the next district is the pattern this
+ * whole measurement exists to surface. "Unknown" stays its own answer rather
+ * than being folded into either, since a shop with no pin is nobody having
+ * done anything wrong.
+ */
+export type RangeFlag = "none" | "away" | "unknown";
+
+export function rangeFlag(
+  visit: Pick<
+    VisitRow,
+    "customer_id" | "out_of_range" | "checkout_out_of_range" | "distance_m" | "checkout_distance_m"
+  >,
+): RangeFlag {
+  // Not to a shop at all: there was never a distance to measure, so there is
+  // nothing to flag and nothing unknown about it.
+  if (visit.customer_id === null) return "none";
+  if (visit.out_of_range || visit.checkout_out_of_range) return "away";
+  if (visit.distance_m === null && visit.checkout_distance_m === null) return "unknown";
+  return "none";
+}
+
+/**
+ * Which province the shop is in, for a list that has room for one word of
+ * context after the name.
+ *
+ * Two shops called "Sok Heng" three provinces apart are two shops, and a
+ * timeline that shows only the name makes them look like one. The code is
+ * preferred over the written text because it resolves to the same spelling
+ * everywhere, and the written text is the fallback for a shop somebody typed
+ * in before the geography was synced.
+ */
+export function provinceOf(
+  visit: { customer: PlacedShop | null },
+  provinces: Map<string, string>,
+): string | null {
+  const customer = visit.customer;
+  if (!customer) return null;
+  const named = customer.province_code === null ? null : provinces.get(customer.province_code);
+  if (named) return named;
+  const written = customer.province_text?.trim();
+  return written ? written : null;
 }
 
 /**
@@ -292,6 +393,37 @@ export function cancelChange(reason: string) {
   return { cancelled_at: new Date().toISOString(), cancel_reason: reason.trim() };
 }
 
+/**
+ * And taking that back.
+ *
+ * Cancelling is itself a tap somebody can get wrong — the wrong row in a list,
+ * a reason typed about a different visit — and a mistake with no way back is
+ * how a rep loses an afternoon's hours for good. Both columns clear together
+ * because the database refuses half a state, and refusing it here too means
+ * the screen never sends a write that cannot land.
+ *
+ * What comes back is the visit exactly as it was: the timestamps, the
+ * position and the distances were never touched by the cancelling, which is
+ * the whole point of it being an annotation rather than a delete.
+ */
+export function uncancelChange() {
+  return { cancelled_at: null, cancel_reason: null };
+}
+
+/**
+ * Whether a cancellation can still be taken back.
+ *
+ * The same day-long window as every other correction, measured from the
+ * check-out — not from the cancelling. A visit that closed two days ago is
+ * settled, and cancelling it yesterday does not reopen it for editing.
+ */
+export function uncancellable(
+  visit: Pick<VisitRow, "cancelled_at" | "checked_out_at">,
+  nowMs: number,
+): boolean {
+  return visit.cancelled_at !== null && editable(visit, nowMs);
+}
+
 /** Whether a visit can still be called off: same day-long window as any correction. */
 export function cancellable(
   visit: Pick<VisitRow, "cancelled_at" | "checked_out_at">,
@@ -334,6 +466,40 @@ export function visitsByDay<T extends { checked_in_at: string }>(
       visits: [...list].sort((a, b) => (a.checked_in_at < b.checked_in_at ? 1 : -1)),
     }))
     .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+}
+
+/**
+ * Where a day of listed visits starts and stops.
+ *
+ * The timeline is bracketed by a clocking-in and a clocking-out rather than
+ * just beginning with the earliest card, because that is how the day is
+ * actually lived: you arrive, you make calls, you finish. The two ends are the
+ * first check-in and the last check-out of the visits on screen.
+ *
+ * Deliberately simpler than `attendanceDays`, which splits a visit at midnight
+ * and is the authority on hours. This is about the list in front of somebody:
+ * the visits shown are the visits bracketed, so the times at the two ends
+ * always belong to rows they can see.
+ *
+ * `open` is a day still being worked — a visit with no check-out — and it
+ * comes back with a null clock-out rather than a guessed one, because
+ * pretending somebody left is how a day acquires hours nobody worked.
+ */
+export function dayEnds<
+  T extends { checked_in_at: string; checked_out_at: string | null; cancelled_at: string | null },
+>(visits: T[]): { clockIn: string | null; clockOut: string | null; open: boolean } {
+  let clockIn: string | null = null;
+  let clockOut: string | null = null;
+  let open = false;
+
+  for (const visit of visits) {
+    if (visit.cancelled_at !== null) continue; // called off: it happened to nobody
+    if (clockIn === null || visit.checked_in_at < clockIn) clockIn = visit.checked_in_at;
+    if (visit.checked_out_at === null) open = true;
+    else if (clockOut === null || visit.checked_out_at > clockOut) clockOut = visit.checked_out_at;
+  }
+
+  return { clockIn, clockOut: open ? null : clockOut, open };
 }
 
 /**

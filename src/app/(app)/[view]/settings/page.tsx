@@ -3,7 +3,9 @@ import { can, getMyPermissions } from "@/lib/access";
 import { PRINTER_COLUMNS, type Printer } from "@/lib/printers";
 import { createClient } from "@/lib/supabase/server";
 import { primaryCurrency } from "@/lib/money.server";
+import { NO_QUOTA, QUOTA_COLUMNS, type Quota } from "@/lib/quota";
 import { CheckInSettings } from "./CheckInSettings";
+import { QuotaSettings } from "./QuotaSettings";
 import { CurrencySettings } from "./CurrencySettings";
 import { PrinterSettings } from "./PrinterSettings";
 
@@ -14,7 +16,10 @@ export default async function Page() {
     supabase.from("printers").select(PRINTER_COLUMNS).eq("active", true).order("sort_order"),
     getMyPermissions(),
     primaryCurrency(),
-    supabase.from("app_settings").select("checkin_radius_m").maybeSingle(),
+    supabase
+      .from("app_settings")
+      .select(`checkin_radius_m, ${QUOTA_COLUMNS}`)
+      .maybeSingle(),
   ]);
 
   const canEdit = can(mine, "settings", "edit");
@@ -25,6 +30,10 @@ export default async function Page() {
       <CurrencySettings current={currency} canEdit={canEdit} />
       <CheckInSettings
         current={settings.data?.checkin_radius_m ?? 200}
+        canEdit={canEdit}
+      />
+      <QuotaSettings
+        current={(settings.data as Quota | null) ?? NO_QUOTA}
         canEdit={canEdit}
       />
       <PrinterSettings

@@ -99,6 +99,19 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "visit.frozen": "ការចុះជួបនេះបានបិទលើសមួយថ្ងៃហើយ។ អ្វីដែលកត់ត្រាគឺជាកំណត់ត្រាចុងក្រោយ។",
   "visit.frozenCancelled": "ការចុះជួបនេះត្រូវបានបោះបង់។ អ្វីដែលកត់ត្រាគឺជាកំណត់ត្រាចុងក្រោយ។",
 
+  "visit.noteLeftOutside": "បានចេញនៅចម្ងាយ {distance} ពីហាង ក្រៅរង្វង់ {radius} ម៉ែត្រ។",
+  "visit.noteLeftOutsideUnknown": "បានចេញនៅចម្ងាយ {distance} ពីហាង។",
+  "visit.away": "នៅឆ្ងាយ",
+  "visit.restore": "ស្ដារការចុះជួបនេះឡើងវិញ",
+  "visit.restoreAsk": "ស្ដារការចុះជួបនេះឡើងវិញ?",
+  "visit.restoreBody":
+    "វានឹងរាប់បញ្ចូលក្នុងម៉ោងធ្វើការវិញ ដូចដែលបានកត់ត្រាដើម។ មូលហេតុនៃការបោះបង់នឹងត្រូវលុប។",
+  "visit.restoreKeep": "ទុកឲ្យបោះបង់ចោល",
+  "visit.restoreDo": "ស្ដារឡើងវិញ",
+  "visit.restoring": "កំពុងស្ដារ…",
+  "visit.cancelledBecause": "បានបោះបង់ — {reason}។ វាមិនរាប់បញ្ចូលក្នុងម៉ោងធ្វើការទេ។",
+  "visit.cancelledPlain": "បានបោះបង់។ វាមិនរាប់បញ្ចូលក្នុងម៉ោងធ្វើការទេ។",
+
   // The visit record's questions -----------------------------------------
   "visit.type": "ប្រភេទការចុះជួប",
   "visit.status": "ស្ថានភាពការចុះជួប",
@@ -116,6 +129,16 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "day.visits": "ការចុះជួប",
   "day.report": "របាយការណ៍",
   "day.map": "ផែនទី",
+  "day.clockIn": "ចាប់ផ្ដើមថ្ងៃ",
+  "day.clockOut": "បញ្ចប់ថ្ងៃ",
+  "day.stillOut": "នៅតែធ្វើការ",
+  "day.soFar": "ថ្ងៃនេះរហូតមកដល់ពេលនេះ",
+  "day.thisWeek": "សប្ដាហ៍នេះ",
+  "day.ofTarget": "{done} លើ {target}",
+  "day.targetMet": "សម្រេចគោលដៅ",
+  "day.noQuota": "មិនទាន់មានអ្នកកំណត់គោលដៅនៅឡើយទេ។",
+  "day.nothingYet": "គ្មានការចុះជួបត្រូវបានកត់ត្រាក្នុងរយៈពេលពីរសប្ដាហ៍កន្លងមក។",
+
   "report.day": "ថ្ងៃ",
   "report.week": "សប្តាហ៍",
   "report.month": "ខែ",
@@ -130,6 +153,19 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "report.dayNeverClosed": "មានថ្ងៃមួយមិនបានបិទ",
   "report.nothing": "គ្មានការចុះជួបកត់ត្រាក្នុងកំឡុង ៩០ ថ្ងៃចុងក្រោយទេ។",
   "report.nothingFor": "គ្មានកំណត់ត្រាសម្រាប់ {name} ក្នុងកំឡុង ៩០ ថ្ងៃចុងក្រោយទេ។",
+
+
+  // Targets, on the settings screen -------------------------------------
+  "quota.title": "គោលដៅប្រចាំថ្ងៃ និងប្រចាំសប្ដាហ៍",
+  "quota.caption": "ប្រអប់ទទេ គឺជាតួលេខដែលមិនគ្រប់គ្រង។",
+  "quota.daily": "មួយថ្ងៃ",
+  "quota.weekly": "មួយសប្ដាហ៍",
+  "quota.visits": "ការចុះជួប",
+  "quota.workingHours": "ម៉ោងធ្វើការ",
+  "quota.activeHours": "ម៉ោងសកម្ម",
+  "quota.activeMeaning":
+    "ម៉ោងសកម្មគឺជាពេលវេលានៅក្នុងហាង។ ម៉ោងធ្វើការគឺពេញមួយថ្ងៃ រាប់បញ្ចូលទាំងការធ្វើដំណើរ។",
+  "quota.notManaged": "មិនគ្រប់គ្រង",
 
   // Customers -------------------------------------------------------------
   "customer.all": "អតិថិជនទាំងអស់",

@@ -40,7 +40,8 @@ const visit = (over: Partial<VisitRow> = {}): VisitRow => ({
   order_status_id: null, payment_status_id: null,
   next_appointment: null, remarks: null,
   cancelled_at: null, cancel_reason: null,
-  customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282 },
+  checkout_distance_m: null, checkout_out_of_range: false,
+  customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282, province_code: "12", province_text: null },
   ...over,
 });
 
@@ -155,7 +156,7 @@ describe("a visit, and the day there is to correct it", () => {
       <VisitRecord
         visit={visit({
           distance_m: null,
-          customer: { shop_name: "Corner Mart", latitude: null, longitude: null },
+          customer: { shop_name: "Corner Mart", latitude: null, longitude: null, province_code: null, province_text: null },
         })}
         options={OPTIONS}
         now={at(1)}
@@ -179,5 +180,98 @@ describe("a visit, and the day there is to correct it", () => {
   it("names a shop that has since been removed rather than showing nothing", () => {
     render(<VisitRecord visit={visit({ customer: null })} options={OPTIONS} now={at(1)} />);
     expect(screen.getByText("Shop removed")).toBeInTheDocument();
+  });
+});
+
+describe("where the rep was when they left", () => {
+  it("says nothing when the visit was closed at the shop", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(1)} />);
+    expect(screen.queryByText(/Checked out/)).not.toBeInTheDocument();
+  });
+
+  it("but names the distance when it was closed from somewhere else", () => {
+    render(
+      <VisitRecord
+        visit={visit({ checkout_out_of_range: true, checkout_distance_m: 9800 })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+    expect(
+      screen.getByText("Checked out 9.8 km from the shop, outside 200 m."),
+    ).toBeInTheDocument();
+  });
+
+  // The chip at the top is about arriving. A visit that arrived at the door
+  // and was closed from the next district would otherwise wear a green chip
+  // and look fine.
+  it("and flags it, so a green arrival chip cannot speak for the whole visit", () => {
+    render(
+      <VisitRecord
+        visit={visit({ checkout_out_of_range: true, checkout_distance_m: 9800 })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+    expect(screen.getByText("Away")).toBeInTheDocument();
+  });
+
+  it("without saying it twice when the arrival was already out of range", () => {
+    render(
+      <VisitRecord
+        visit={visit({
+          out_of_range: true, distance_m: 9600,
+          checkout_out_of_range: true, checkout_distance_m: 9800,
+        })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+    expect(screen.queryByText("Away")).not.toBeInTheDocument();
+    expect(screen.getByText("9.6 km away")).toBeInTheDocument();
+  });
+});
+
+describe("taking a cancellation back", () => {
+  const cancelled = () =>
+    visit({ cancelled_at: CLOSED, cancel_reason: "Tapped by mistake" });
+
+  it("is offered on a cancelled visit, and cancelling is not offered twice", () => {
+    render(<VisitRecord visit={cancelled()} options={OPTIONS} now={at(1)} />);
+    expect(screen.getByText("Restore this visit")).toBeInTheDocument();
+    expect(screen.queryByText("Cancel this visit")).not.toBeInTheDocument();
+  });
+
+  it("and is not offered on one that was never cancelled", () => {
+    render(<VisitRecord visit={visit()} options={OPTIONS} now={at(1)} />);
+    expect(screen.queryByText("Restore this visit")).not.toBeInTheDocument();
+  });
+
+  // Measured from the check-out, not from the cancelling: a visit that closed
+  // two days ago is settled, and the database refuses the write either way.
+  it("nor once the day to correct the visit has run out", () => {
+    render(<VisitRecord visit={cancelled()} options={OPTIONS} now={at(25)} />);
+    expect(screen.queryByText("Restore this visit")).not.toBeInTheDocument();
+  });
+
+  it("asks before it does it, the same as cancelling does", () => {
+    render(<VisitRecord visit={cancelled()} options={OPTIONS} now={at(1)} />);
+    fireEvent.click(screen.getByText("Restore this visit"));
+    expect(screen.getByText("Restore this visit?")).toBeInTheDocument();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("clears both columns together, because half a state is refused", () => {
+    render(<VisitRecord visit={cancelled()} options={OPTIONS} now={at(1)} />);
+    fireEvent.click(screen.getByText("Restore this visit"));
+    fireEvent.click(screen.getByText("Restore it"));
+    expect(update).toHaveBeenCalledWith({ cancelled_at: null, cancel_reason: null });
+  });
+
+  it("says why the visit was called off while it is still called off", () => {
+    render(<VisitRecord visit={cancelled()} options={OPTIONS} now={at(1)} />);
+    expect(
+      screen.getByText("Cancelled — Tapped by mistake. It counts towards no hours."),
+    ).toBeInTheDocument();
   });
 });

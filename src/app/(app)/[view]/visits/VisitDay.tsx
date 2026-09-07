@@ -8,11 +8,14 @@ import { useI18n, useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { attendanceDays, hoursMinutes } from "@/lib/attendance";
+import { attendanceDays, groupByWeek, hoursMinutes } from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
-import { dayKey, longDay, timeOf } from "@/lib/time";
+import { dayKey, longDay, timeOf, weekKey } from "@/lib/time";
+import { anyTarget, totalsOfDay, totalsOfPeriod, type Quota } from "@/lib/quota";
 import { openVisit, shopNameOf, visitLength, visitsByDay, type VisitRow } from "@/lib/visits";
+import { DaySnapshot } from "./DaySnapshot";
+import { VisitTimeline } from "./VisitTimeline";
 import { useFix } from "./useFix";
 
 /**
@@ -32,11 +35,16 @@ export function VisitDay({
   viewKey,
   userId,
   visits,
+  quota,
+  provinces,
   now,
 }: {
   viewKey: string;
   userId: string;
   visits: VisitRow[];
+  quota: Quota;
+  /** Province code to name, so a timeline row can say which one a shop is in. */
+  provinces: [string, string][];
   now: string;
 }) {
   const router = useRouter();
@@ -92,22 +100,36 @@ export function VisitDay({
   // The day's figures come from the same maths the reports use, so a rep and
   // the office never see two different answers for the same day.
   const mine = useMemo(() => visits.filter((v) => v.user_id === userId), [visits, userId]);
-  const today = useMemo(() => {
-    const days = attendanceDays(
-      mine.map((v) => ({
-        checkedInAt: v.checked_in_at,
-        checkedOutAt: v.checked_out_at,
-        cancelledAt: v.cancelled_at,
-      })),
-      nowMs,
-    );
-    return days.find((day) => day.key === dayKey(nowMs)) ?? null;
-  }, [mine, nowMs]);
-
-  const grouped = useMemo(
-    () => visitsByDay(visits.filter((v) => v.checked_out_at !== null)),
-    [visits],
+  const days = useMemo(
+    () =>
+      attendanceDays(
+        mine.map((v) => ({
+          checkedInAt: v.checked_in_at,
+          checkedOutAt: v.checked_out_at,
+          cancelledAt: v.cancelled_at,
+        })),
+        nowMs,
+      ),
+    [mine, nowMs],
   );
+
+  const today = useMemo(
+    () => days.find((day) => day.key === dayKey(nowMs)) ?? null,
+    [days, nowMs],
+  );
+
+  // The week the day belongs to, from the same maths, so the two bars never
+  // disagree about a visit.
+  const week = useMemo(
+    () => groupByWeek(days).find((period) => period.key === weekKey(dayKey(nowMs))) ?? null,
+    [days, nowMs],
+  );
+
+  // Every visit, cancelled and open alike: the timeline is what the day was,
+  // and a call somebody made and then called off is part of that.
+  const grouped = useMemo(() => visitsByDay(visits), [visits]);
+  const provinceNames = useMemo(() => new Map(provinces), [provinces]);
+  const hasTargets = anyTarget(quota, "daily") || anyTarget(quota, "weekly");
 
   return (
     <div className="space-y-5">
@@ -167,14 +189,31 @@ export function VisitDay({
         </div>
       )}
 
-      {today && (
+      {/* The day so far, and the two ways of showing it. Where somebody has
+          decided what a day should look like, the bars say both halves at once
+          — "3h 8m of 8h 30m" — and repeating the bare figures above them would
+          be printing the same sentence twice on a screen a rep holds in one
+          hand. Where nobody has, the figures stand on their own, because
+          inventing a target to have a bar to draw would be the app telling the
+          office what to manage by. */}
+      {hasTargets ? (
         <Link href={`/${viewKey}/visits/reports`} className="pressable block">
-          <Card className="grid grid-cols-3 divide-x divide-line p-0">
-            <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
-            <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
-            <Figure label={t("day.visits")} value={String(today.visits)} />
-          </Card>
+          <DaySnapshot
+            quota={quota}
+            today={totalsOfDay(today)}
+            week={totalsOfPeriod(week)}
+          />
         </Link>
+      ) : (
+        today && (
+          <Link href={`/${viewKey}/visits/reports`} className="pressable block">
+            <Card className="grid grid-cols-3 divide-x divide-line p-0">
+              <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
+              <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
+              <Figure label={t("day.visits")} value={String(today.visits)} />
+            </Card>
+          </Link>
+        )
       )}
 
       <div className="flex gap-2">
@@ -194,40 +233,23 @@ export function VisitDay({
         </Link>
       </div>
 
-      {grouped.length > 0 && (
-        <div className="space-y-4">
+      {grouped.length > 0 ? (
+        <div className="space-y-5">
           {grouped.map((day) => (
             <section key={day.key} className="space-y-2">
               <SectionHeader title={dayHeading(day.key, nowMs, t)} />
-              <ul className="space-y-2">
-                {day.visits.map((visit) => (
-                  <li key={visit.id}>
-                    <Link href={`/${viewKey}/visits/${visit.id}`} className="pressable block">
-                      <Card className="flex items-center gap-3 p-3">
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
-                            {shopNameOf(visit, lang)}
-                          </span>
-                          <span className="block truncate text-xs text-muted">
-                            {timeOf(visit.checked_in_at)}
-                            {visit.checked_out_at && `–${timeOf(visit.checked_out_at)}`} ·{" "}
-                            {hoursMinutes(visitLength(visit, nowMs))}
-                          </span>
-                        </span>
-                        {visit.cancelled_at !== null ? (
-                          <Chip tone="danger">{t("visit.cancelled")}</Chip>
-                        ) : (
-                          visit.out_of_range && <Chip tone="warn">{t("visit.outOfRange")}</Chip>
-                        )}
-                        <Icon name="chevron" className="size-4 shrink-0 text-muted" />
-                      </Card>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <VisitTimeline
+                viewKey={viewKey}
+                day={day.key}
+                visits={day.visits}
+                provinces={provinceNames}
+                nowMs={nowMs}
+              />
             </section>
           ))}
         </div>
+      ) : (
+        <Card className="p-6 text-center text-sm text-muted">{t("day.nothingYet")}</Card>
       )}
     </div>
   );

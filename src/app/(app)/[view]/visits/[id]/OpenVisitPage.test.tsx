@@ -53,7 +53,8 @@ const visit = (over: Partial<VisitRow> = {}): VisitRow => ({
   order_status_id: null, payment_status_id: null,
   next_appointment: null, remarks: null,
   cancelled_at: null, cancel_reason: null,
-  customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282 },
+  checkout_distance_m: null, checkout_out_of_range: false,
+  customer: { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282, province_code: "12", province_text: null },
   ...over,
 });
 

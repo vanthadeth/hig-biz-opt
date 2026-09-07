@@ -210,9 +210,16 @@ begin
   perform pg_temp.rejects('two sheet columns may not feed one table column',
     format('insert into public.sync_column_maps (sync_id, sheet_column, target_column)
               values (%L, ''Name Again'', ''name'')', v_sync));
-  perform pg_temp.rejects('nor may one sheet column appear twice',
-    format('insert into public.sync_column_maps (sync_id, sheet_column, target_column)
-              values (%L, ''Code'', ''name_alt'')', v_sync));
+  -- But one sheet column feeding two target columns is the whole point of a
+  -- transform: one cell holds "11.5564, 104.9282" and two mappings read it,
+  -- one taking each half. An index used to forbid this, which is what made
+  -- the customer sync impossible to create — the definition was written, the
+  -- mappings were not, and the second of the two GPS rows collided.
+  insert into public.sync_column_maps (sync_id, sheet_column, target_column)
+    values (v_sync, 'Code', 'description');
+  perform pg_temp.eq('but one sheet column may feed two target columns',
+    (select count(*)::text from public.sync_column_maps
+      where sync_id = v_sync and sheet_column = 'Code'), '2');
   insert into public.sync_column_maps (sync_id, sheet_column, target_column)
     values (v_sync, 'Notes 2', null);
   perform pg_temp.eq('but a sheet may have many columns nobody wants',

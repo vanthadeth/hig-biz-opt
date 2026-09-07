@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/ui/Sheet";
+import { useT } from "@/components/I18nProvider";
 import { haptic } from "@/lib/haptics";
 import { KIOSK_SESSION_KEY } from "@/lib/kiosk";
 import { quickTiles, splitTiles, type QuickTile } from "@/lib/quickActions";
@@ -18,6 +19,7 @@ import { useState } from "react";
  */
 export function QuickActions({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { nav, permissions, view } = useShell();
+  const t = useT();
   const [locking, setLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
   // The catalogue tile is only offered where there is a catalogue to browse;
@@ -76,12 +78,18 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
         </span>
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">
-            {tile.key === "catalog" && locking ? "Locking…" : tile.label}
+            {tile.key === "catalog" && locking
+              ? t("quick.locking")
+              : tile.labelKey
+                ? t(tile.labelKey)
+                : tile.label}
           </span>
-          {tile.hint && (
+          {tile.hintKey && (
             // Wrapped rather than truncated: a hint cut off mid-word is worse
             // than no hint, and these are three or four words.
-            <span className="block text-xs leading-tight text-muted">{tile.hint}</span>
+            <span className="block text-xs leading-tight text-muted">
+              {t(tile.hintKey)}
+            </span>
           )}
         </span>
       </>
@@ -118,7 +126,7 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Quick actions">
+    <Sheet open={open} onClose={onClose} title={t("quick.title")}>
       <div className="space-y-4 p-3">
         {lead.length > 0 && (
           <div className="stagger grid grid-cols-2 gap-2">
@@ -144,7 +152,7 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
         {rest.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-              Also
+              {t("quick.also")}
             </p>
             <ul className="stagger grid grid-cols-2 gap-2">
               {rest.map((tile, i) => (
@@ -158,7 +166,7 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
 
         {lead.length === 0 && rest.length === 0 && (
           <p className="py-4 text-center text-sm text-muted">
-            You do not have permission to create anything in {view.name}.
+            {t("quick.none", { view: view.name })}
           </p>
         )}
       </div>

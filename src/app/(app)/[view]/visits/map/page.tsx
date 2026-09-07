@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { serverT } from "@/lib/i18n/server";
 import { createClient } from "@/lib/supabase/server";
 import { REPORT_COLUMNS, type ReportVisit } from "@/lib/visits";
 import { VisitMapView } from "./VisitMapView";
@@ -18,6 +19,7 @@ export default async function Page({
 }) {
   const { view } = await params;
   const supabase = await createClient();
+  const t = await serverT();
   const now = new Date();
 
   const { data } = await supabase
@@ -34,7 +36,7 @@ export default async function Page({
         className="pressable inline-flex min-h-9 items-center gap-1 text-sm text-muted"
       >
         <Icon name="chevron" className="size-4 rotate-180" />
-        All visits
+        {t("visit.allVisits")}
       </Link>
 
       <VisitMapView visits={(data ?? []) as unknown as ReportVisit[]} />

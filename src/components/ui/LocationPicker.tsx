@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useT } from "@/components/I18nProvider";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
 import { loadMaps, mapsKey, mapsProblem } from "@/lib/googleMaps";
@@ -31,6 +32,7 @@ export function LocationPicker({
   disabled?: boolean;
   onPick: (latitude: number, longitude: number) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   const key = mapsKey();
@@ -47,10 +49,10 @@ export function LocationPicker({
         className="pressable flex min-h-10 items-center gap-1.5 rounded-xl border border-dashed border-brand/50 px-3 text-sm font-medium text-brand disabled:opacity-60"
       >
         <Icon name="pin" className="size-4" />
-        {latitude === null ? "Pick on the map" : "Move the pin"}
+        {latitude === null ? t("customer.pickOnMap") : t("customer.movePin")}
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Where is the shop?">
+      <Sheet open={open} onClose={() => setOpen(false)} title={t("customer.whereIsShop")}>
         {key === null ? (
           <p role="status" className="p-6 text-center text-sm text-muted">
             {mapsProblem(null, false)}
@@ -85,6 +87,7 @@ function PickerMap({
   onPick: (latitude: number, longitude: number) => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   const holder = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   // What the marker is on right now. Held here rather than read back off the
@@ -175,14 +178,14 @@ function PickerMap({
       <div
         ref={holder}
         role="application"
-        aria-label="Map for choosing the shop's location"
+        aria-label={t("customer.whereIsShop")}
         className="h-[45vh] min-h-64 w-full overflow-hidden rounded-2xl border border-line bg-subtle"
       />
 
       <p className="text-center text-xs tabular-nums text-muted">
         {at
           ? `${at.lat.toFixed(6)}, ${at.lng.toFixed(6)}`
-          : "Tap the map to drop a pin, then drag it to nudge."}
+          : t("customer.dropAPin")}
       </p>
 
       <div className="flex gap-2">
@@ -191,7 +194,7 @@ function PickerMap({
           onClick={onCancel}
           className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           type="button"
@@ -199,7 +202,7 @@ function PickerMap({
           onClick={() => at && onPick(at.lat, at.lng)}
           className="pressable min-h-11 flex-[2] rounded-xl bg-brand text-sm font-semibold text-brand-fg disabled:opacity-50"
         >
-          Use this spot
+          {t("customer.useThisSpot")}
         </button>
       </div>
     </div>

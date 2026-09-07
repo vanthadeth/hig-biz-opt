@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useI18n, useT } from "@/components/I18nProvider";
 import { Chip } from "@/components/ui/Chip";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
@@ -36,6 +37,8 @@ export function ShopPicker({
   busy: boolean;
   onChoose: (customer: CartCustomer) => void;
 }) {
+  const t = useT();
+  const { lang } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -67,10 +70,10 @@ export function ShopPicker({
         className="pressable flex min-h-11 w-full items-center gap-2 rounded-xl border border-dashed border-brand px-3 text-sm font-medium text-brand disabled:opacity-60"
       >
         <Icon name="building" className="size-4" />
-        Choose the shop
+        {t("visit.chooseShop")}
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="Which shop?">
+      <Sheet open={open} onClose={() => setOpen(false)} title={t("visit.whichShop")}>
         <div className="space-y-3 p-4">
           <div className="relative">
             <Icon
@@ -81,14 +84,14 @@ export function ShopPicker({
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Find a shop"
-              aria-label="Find a shop"
+              placeholder={t("visit.findShop")}
+              aria-label={t("visit.findShop")}
               className="min-h-11 w-full rounded-xl border border-line bg-bg pl-9 pr-3 text-sm outline-none placeholder:text-muted focus:border-brand"
             />
           </div>
 
           {matches.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted">No shop matches that.</p>
+            <p className="py-6 text-center text-sm text-muted">{t("visit.noShopMatches")}</p>
           ) : (
             <ul className="max-h-[50vh] space-y-1 overflow-y-auto">
               {matches.map((customer) => {
@@ -115,7 +118,7 @@ export function ShopPicker({
                       </span>
                       {fix && (
                         <Chip tone={metres === null ? "neutral" : "accent"}>
-                          {metres === null ? "No pin" : distanceLabel(metres)}
+                          {metres === null ? t("visit.noPin") : distanceLabel(metres, lang)}
                         </Chip>
                       )}
                     </button>

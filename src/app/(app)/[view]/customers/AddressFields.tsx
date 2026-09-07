@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useT } from "@/components/I18nProvider";
 import { LocationPicker } from "@/components/ui/LocationPicker";
 import { Field, SelectField } from "@/components/ui/Field";
 import { haptic } from "@/lib/haptics";
@@ -58,6 +59,7 @@ export function AddressFields({
   disabled: boolean;
   onChange: (next: AddressDraft) => void;
 }) {
+  const t = useT();
   const set = (changes: Partial<AddressDraft>) => onChange({ ...draft, ...changes });
 
   const [locating, setLocating] = useState(false);
@@ -232,7 +234,7 @@ export function AddressFields({
           className="pressable flex min-h-10 items-center gap-1.5 rounded-xl border border-dashed border-brand/50 px-3 text-sm font-medium text-brand disabled:opacity-60"
         >
           <Icon name="bolt" className="size-4" />
-          {locating ? "Finding you…" : "Use my location"}
+          {locating ? t("customer.findingYou") : t("customer.useMyLocation")}
         </button>
 
         {/* The other case: the shop was added from a phone call at the office,

@@ -24,6 +24,7 @@ import { useLongPress } from "@/hooks/useLongPress";
 import { haptic } from "@/lib/haptics";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { QuickActions } from "./QuickActions";
+import { useT } from "@/components/I18nProvider";
 import { useShell } from "./ShellContext";
 
 /**
@@ -95,6 +96,7 @@ export function BottomNav() {
   const router = useRouter();
   const hidden = useScrollHidden();
   const { view, modules } = useShell();
+  const t = useT();
   const [quickOpen, setQuickOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   // "centre" is not a slot in the same sense — it holds an action rather than a
@@ -140,7 +142,7 @@ export function BottomNav() {
   // Home is fixed on the left and Menu on the right; the three between them are
   // the ones somebody arranges.
   const slots = [
-    { key: "home", name: "Home", icon: "home", href: "home" },
+    { key: "home", name: t("nav.home"), icon: "home", href: "home" },
     ...chosen.map((m) => ({
       key: m.module_key,
       name: m.name,
@@ -263,7 +265,7 @@ export function BottomNav() {
             >
               <Icon name="menu" className="size-6" />
               <span className="w-full truncate text-center text-[11px] font-medium leading-none">
-                Menu
+                {t("nav.menu")}
               </span>
             </button>
           </li>
@@ -381,7 +383,7 @@ export function BottomNav() {
         </div>
       </Sheet>
 
-      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu">
+      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title={t("nav.menu")}>
         {/* Capped and scrollable: the list grows with the person's permissions,
             and an administrator's runs past the height of a phone. */}
         <div className="max-h-[60vh] overflow-y-auto px-1 pb-2">

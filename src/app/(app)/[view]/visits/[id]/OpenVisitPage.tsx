@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useI18n, useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -65,6 +66,8 @@ export function OpenVisitPage({
   now: string;
 }) {
   const router = useRouter();
+  const t = useT();
+  const { lang } = useI18n();
   const { fix, problem } = useFix();
 
   const [nowMs, setNowMs] = useState(() => Date.parse(now));
@@ -75,7 +78,7 @@ export function OpenVisitPage({
   const [error, setError] = useState<string | null>(null);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const note = rangeNote(visit);
+  const note = rangeNote(visit, lang);
 
   // A minute is enough: the time is shown to the minute, and a ticking second
   // hand on a page somebody is typing into is a distraction.
@@ -191,7 +194,7 @@ export function OpenVisitPage({
     router.push(`/${viewKey}/visits`);
   }
 
-  const shopName = shopNameOf(visit);
+  const shopName = shopNameOf(visit, lang);
 
   return (
     <div className="space-y-5">
@@ -200,7 +203,7 @@ export function OpenVisitPage({
         className="pressable inline-flex min-h-9 items-center gap-1 text-sm text-muted"
       >
         <Icon name="chevron" className="size-4 rotate-180" />
-        All visits
+        {t("visit.allVisits")}
       </Link>
 
       {/* When you arrived, and where ---------------------------------------
@@ -213,13 +216,13 @@ export function OpenVisitPage({
             <Icon name="pin" className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted">Checked in</p>
+            <p className="text-xs text-muted">{t("visit.checkedIn")}</p>
             <div className="flex items-end gap-2">
               <h1 className="text-3xl font-semibold tabular-nums text-brand">
                 {timeOf(visit.checked_in_at)}
               </h1>
               <p className="pb-1 text-sm text-muted">
-                {hoursMinutes(visitLength(visit, nowMs))} ago
+                {t("visit.ago", { length: hoursMinutes(visitLength(visit, nowMs)) })}
               </p>
             </div>
           </div>
@@ -230,7 +233,7 @@ export function OpenVisitPage({
               visit.distance_m === null ? "neutral" : visit.out_of_range ? "warn" : "accent"
             }
           >
-            {distanceLabel(visit.distance_m)}
+            {distanceLabel(visit.distance_m, lang)}
           </Chip>
         </div>
 
@@ -258,7 +261,7 @@ export function OpenVisitPage({
 
       {/* What happened ---------------------------------------------------- */}
       <div className="space-y-3">
-        <SectionHeader title="Visit record" />
+        <SectionHeader title={t("visit.record")} />
 
         {error && (
           <div role="alert">
@@ -277,7 +280,7 @@ export function OpenVisitPage({
             disabled={busy || !dirty}
             className="pressable min-h-11 w-full rounded-xl border border-line text-sm font-medium disabled:opacity-50"
           >
-            {dirty ? "Save" : "Saved"}
+            {dirty ? t("visit.save") : t("visit.saved")}
           </button>
         </Card>
       </div>
@@ -295,16 +298,18 @@ export function OpenVisitPage({
           disabled={busy}
           className="pressable min-h-12 w-full rounded-xl bg-brand text-base font-semibold text-brand-fg disabled:opacity-60"
         >
-          Check out
+          {t("visit.checkOut")}
         </button>
       </div>
 
-      <Sheet open={asking} onClose={() => !busy && setAsking(false)} title="Check out?">
+      <Sheet open={asking} onClose={() => !busy && setAsking(false)} title={t("visit.checkOutAsk")}>
         <div className="space-y-4 p-4">
           <p className="text-sm text-muted">
-            This closes the visit to {shopName}, {hoursMinutes(visitLength(visit, nowMs))}{" "}
-            after checking in. The time it writes cannot be changed afterwards.
-            {dirty && " Anything you have typed will be saved first."}
+            {t("visit.checkOutBody", {
+              shop: shopName,
+              length: hoursMinutes(visitLength(visit, nowMs)),
+            })}
+            {dirty && t("visit.checkOutSaveFirst")}
           </p>
 
           <div className="flex gap-2">
@@ -314,7 +319,7 @@ export function OpenVisitPage({
               disabled={busy}
               className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium disabled:opacity-50"
             >
-              Not yet
+              {t("visit.notYet")}
             </button>
             <button
               type="button"
@@ -322,7 +327,7 @@ export function OpenVisitPage({
               disabled={busy}
               className="pressable min-h-11 flex-[2] rounded-xl bg-brand text-sm font-semibold text-brand-fg disabled:opacity-60"
             >
-              {busy ? "Checking out…" : "Check out"}
+              {busy ? t("visit.checkingOut") : t("visit.checkOut")}
             </button>
           </div>
         </div>

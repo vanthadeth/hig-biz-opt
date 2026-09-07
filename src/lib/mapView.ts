@@ -14,6 +14,7 @@
 import { metresBetween } from "./geo";
 import { dayKey } from "./time";
 import { shopNameOf, type ReportVisit } from "./visits";
+import { DEFAULT_LANG, type Lang } from "./i18n";
 
 export type MapPin = {
   visitId: string;
@@ -38,7 +39,11 @@ export type Bounds = { south: number; west: number; north: number; east: number 
  * because a route is read from where somebody started, not from where they
  * finished.
  */
-export function pinsFor(visits: ReportVisit[], day: string): MapPin[] {
+export function pinsFor(
+  visits: ReportVisit[],
+  day: string,
+  lang: Lang = DEFAULT_LANG,
+): MapPin[] {
   return visits
     // A visit called off is not a place somebody was working; drawing it would
     // put a pin on the map for a pocket tap.
@@ -55,7 +60,7 @@ export function pinsFor(visits: ReportVisit[], day: string): MapPin[] {
         visit.customer?.latitude != null && visit.customer?.longitude != null
           ? { latitude: visit.customer.latitude, longitude: visit.customer.longitude }
           : null,
-      shopName: shopNameOf(visit),
+      shopName: shopNameOf(visit, lang),
       order: index + 1,
       checkedInAt: visit.checked_in_at,
       outOfRange: visit.out_of_range,

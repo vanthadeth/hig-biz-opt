@@ -10,6 +10,7 @@
  * got is good enough to send.
  */
 
+import { translate, DEFAULT_LANG, type Lang, type MessageKey } from "./i18n";
 import { dayKey } from "./time";
 
 export type VisitOptionKind =
@@ -28,12 +29,12 @@ export type VisitOption = {
 
 export const OPTION_COLUMNS = "id, kind, label, sort_order, active";
 
-/** The four dropdowns, in the order the check-in form asks them. */
-export const OPTION_KINDS: { kind: VisitOptionKind; label: string }[] = [
-  { kind: "visit_type", label: "Type of visit" },
-  { kind: "visit_status", label: "Visit status" },
-  { kind: "order_status", label: "Order status" },
-  { kind: "payment_status", label: "Payment status" },
+/** The four questions, in the order the check-in form asks them. */
+export const OPTION_KINDS: { kind: VisitOptionKind; labelKey: MessageKey }[] = [
+  { kind: "visit_type", labelKey: "visit.type" },
+  { kind: "visit_status", labelKey: "visit.status" },
+  { kind: "order_status", labelKey: "visit.orderStatus" },
+  { kind: "payment_status", labelKey: "visit.paymentStatus" },
 ];
 
 export function optionsOf(options: VisitOption[], kind: VisitOptionKind): VisitOption[] {
@@ -128,11 +129,26 @@ export function peopleIn(visits: ReportVisit[]): { id: string; name: string }[] 
  * and often much worse; "at the shop" and "180 m away" are the two things
  * anybody acts on, and "183.4 m" is precision the number does not have.
  */
-export function distanceLabel(metres: number | null): string {
-  if (metres === null || !Number.isFinite(metres)) return "Distance unknown";
-  if (metres < 30) return "At the shop";
-  if (metres < 1000) return `${Math.round(metres / 10) * 10} m away`;
-  return `${(metres / 1000).toFixed(metres < 10_000 ? 1 : 0)} km away`;
+/**
+ * The bare distance — "180 m", "1.5 km" — for a sentence that supplies its own
+ * words around it. Separate from `distanceLabel` rather than that one with
+ * " away" stripped off: the two languages do not put the word in the same
+ * place, and a string-replace can only be right in one of them.
+ */
+export function distanceOnly(metres: number, lang: Lang = DEFAULT_LANG): string {
+  if (metres < 1000) return translate(lang, "visit.metres", { n: Math.round(metres / 10) * 10 });
+  return translate(lang, "visit.km", {
+    n: (metres / 1000).toFixed(metres < 10_000 ? 1 : 0),
+  });
+}
+
+export function distanceLabel(metres: number | null, lang: Lang = DEFAULT_LANG): string {
+  if (metres === null || !Number.isFinite(metres)) return translate(lang, "visit.distanceUnknown");
+  if (metres < 30) return translate(lang, "visit.atTheShop");
+  if (metres < 1000) return translate(lang, "visit.metresAway", { n: Math.round(metres / 10) * 10 });
+  return translate(lang, "visit.kmAway", {
+    n: (metres / 1000).toFixed(metres < 10_000 ? 1 : 0),
+  });
 }
 
 /**
@@ -144,13 +160,14 @@ export function distanceLabel(metres: number | null): string {
  * record has gone, which should not happen — the foreign key refuses to delete
  * a customer with visits — but is worth saying plainly if it ever does.
  */
-export const NO_SHOP = "Somewhere else";
+
 
 export function shopNameOf(
   visit: Pick<VisitRow, "customer_id" | "customer">,
+  lang: Lang = DEFAULT_LANG,
 ): string {
-  if (visit.customer_id === null) return NO_SHOP;
-  return visit.customer?.shop_name ?? "Shop removed";
+  if (visit.customer_id === null) return translate(lang, "visit.somewhereElse");
+  return visit.customer?.shop_name ?? translate(lang, "visit.shopRemoved");
 }
 
 /** Whether a shop can still be filled in: never had one, and still correctable. */
@@ -178,25 +195,26 @@ export function rangeNote(
     VisitRow,
     "out_of_range" | "distance_m" | "radius_m" | "customer_id" | "in_latitude" | "customer"
   >,
+  lang: Lang = DEFAULT_LANG,
 ): string | null {
-  if (visit.customer_id === null) {
-    return "This visit is not to a shop, so there is no distance to measure.";
-  }
+  if (visit.customer_id === null) return translate(lang, "visit.noteNoShop");
   if (visit.distance_m === null) {
-    if (visit.in_latitude === null) {
-      return "No location was recorded at check-in, so there is no distance.";
-    }
-    if (visit.customer?.latitude == null) {
-      return "The shop has no location saved yet.";
-    }
+    if (visit.in_latitude === null) return translate(lang, "visit.noteNoFix");
+    if (visit.customer?.latitude == null) return translate(lang, "visit.noteNoPin");
     // The shop was attached after the fact. It was not there to be measured
     // against at the time, and computing it now from today's coordinates
     // would be inventing evidence.
-    return "The shop was named after the check-in, so no distance was measured.";
+    return translate(lang, "visit.noteNamedLater");
   }
   if (!visit.out_of_range) return null;
-  const radius = visit.radius_m === null ? "the allowed distance" : `${visit.radius_m} m`;
-  return `Checked in ${distanceLabel(visit.distance_m).replace(" away", "")} from the shop, outside ${radius}.`;
+  return visit.radius_m === null
+    ? translate(lang, "visit.noteOutsideUnknown", {
+        distance: distanceOnly(visit.distance_m, lang),
+      })
+    : translate(lang, "visit.noteOutside", {
+        distance: distanceOnly(visit.distance_m, lang),
+        radius: visit.radius_m,
+      });
 }
 
 /**

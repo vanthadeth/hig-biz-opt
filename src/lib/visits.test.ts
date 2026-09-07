@@ -10,7 +10,6 @@ import {
   cancelProblem,
   cancellable,
   locationProblem,
-  NO_SHOP,
   openVisit,
   optionsOf,
   rangeNote,
@@ -20,6 +19,11 @@ import {
   visitsByDay,
   type VisitOption,
 } from "./visits";
+
+// These assertions are about wording that has an English original; the Khmer
+// is checked in the i18n tests, where the dictionary is the subject.
+const distanceLabelEn = (m: number | null) => distanceLabel(m, "en");
+const rangeNoteEn = (v: Parameters<typeof rangeNote>[0]) => rangeNote(v, "en");
 
 const option = (
   kind: VisitOption["kind"], label: string, sort_order: number, active = true,
@@ -51,22 +55,22 @@ describe("the dropdowns", () => {
 
 describe("saying a distance", () => {
   it("does not pretend a shop with no pin is underfoot", () => {
-    expect(distanceLabel(null)).toBe("Distance unknown");
+    expect(distanceLabelEn(null)).toBe("Distance unknown");
   });
 
   it("calls anything close enough 'at the shop'", () => {
-    expect(distanceLabel(0)).toBe("At the shop");
-    expect(distanceLabel(29)).toBe("At the shop");
+    expect(distanceLabelEn(0)).toBe("At the shop");
+    expect(distanceLabelEn(29)).toBe("At the shop");
   });
 
   it("rounds metres to something a phone can actually claim", () => {
-    expect(distanceLabel(183)).toBe("180 m away");
-    expect(distanceLabel(30)).toBe("30 m away");
+    expect(distanceLabelEn(183)).toBe("180 m away");
+    expect(distanceLabelEn(30)).toBe("30 m away");
   });
 
   it("and switches to kilometres when it is a journey", () => {
-    expect(distanceLabel(1500)).toBe("1.5 km away");
-    expect(distanceLabel(11_200)).toBe("11 km away");
+    expect(distanceLabelEn(1500)).toBe("1.5 km away");
+    expect(distanceLabelEn(11_200)).toBe("11 km away");
   });
 });
 
@@ -84,50 +88,52 @@ describe("what to say about the distance", () => {
   };
 
   it("says nothing at all when the check-in landed inside the radius", () => {
-    expect(rangeNote(base)).toBeNull();
+    expect(rangeNoteEn(base)).toBeNull();
   });
 
   it("names the radius it missed, since the visit was still recorded", () => {
-    expect(rangeNote({ ...base, out_of_range: true, distance_m: 1500 }))
+    expect(rangeNoteEn({ ...base, out_of_range: true, distance_m: 1500 }))
       .toBe("Checked in 1.5 km from the shop, outside 200 m.");
   });
 
   it("a visit to no shop has nothing to measure to", () => {
-    expect(rangeNote({ ...base, customer_id: null, customer: null, distance_m: null }))
+    expect(rangeNoteEn({ ...base, customer_id: null, customer: null, distance_m: null }))
       .toBe("This visit is not to a shop, so there is no distance to measure.");
   });
 
   it("a phone that gave no position is the rep's to fix", () => {
-    expect(rangeNote({ ...base, in_latitude: null, distance_m: null }))
+    expect(rangeNoteEn({ ...base, in_latitude: null, distance_m: null }))
       .toBe("No location was recorded at check-in, so there is no distance.");
   });
 
   it("an unpinned shop is the office's to fix", () => {
-    expect(rangeNote({
+    expect(rangeNoteEn({
       ...base, distance_m: null,
       customer: { ...shop, latitude: null, longitude: null },
     })).toBe("The shop has no location saved yet.");
   });
 
   it("and a shop named afterwards is nobody's: it was not there to measure against", () => {
-    expect(rangeNote({ ...base, distance_m: null }))
+    expect(rangeNoteEn({ ...base, distance_m: null }))
       .toBe("The shop was named after the check-in, so no distance was measured.");
   });
 });
 
 describe("what a visit calls where it was", () => {
   it("a shop by its name", () => {
-    expect(shopNameOf({ customer_id: "c1", customer: { shop_name: "Corner Mart", latitude: null, longitude: null } }))
+    expect(shopNameOf({ customer_id: "c1", customer: { shop_name: "Corner Mart", latitude: null, longitude: null } }, "en"))
       .toBe("Corner Mart");
   });
 
   it("no shop as a deliberate answer, not a missing one", () => {
-    expect(shopNameOf({ customer_id: null, customer: null })).toBe("Somewhere else");
-    expect(shopNameOf({ customer_id: null, customer: null })).toBe(NO_SHOP);
+    // English here because the default language is Khmer and these assertions
+    // are about the shape, not the dictionary; the Khmer path is covered in
+    // the i18n tests.
+    expect(shopNameOf({ customer_id: null, customer: null }, "en")).toBe("Somewhere else");
   });
 
   it("and a shop whose record has gone as exactly that", () => {
-    expect(shopNameOf({ customer_id: "c1", customer: null })).toBe("Shop removed");
+    expect(shopNameOf({ customer_id: "c1", customer: null }, "en")).toBe("Shop removed");
   });
 });
 

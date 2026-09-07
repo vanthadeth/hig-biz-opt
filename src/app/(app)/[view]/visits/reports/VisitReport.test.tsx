@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {fireEvent, screen, within } from "@testing-library/react";
+import { render } from "@/test/i18n";
 import { describe, expect, it } from "vitest";
 import type { ReportVisit } from "@/lib/visits";
 import { VisitReport } from "./VisitReport";

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { render } from "@/test/i18n";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CartCustomer } from "@/lib/catalog";
 import type { VisitOption, VisitRow } from "@/lib/visits";

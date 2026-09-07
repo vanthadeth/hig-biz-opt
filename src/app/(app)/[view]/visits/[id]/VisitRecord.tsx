@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useI18n, useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -61,6 +62,8 @@ export function VisitRecord({
   now: string;
 }) {
   const router = useRouter();
+  const t = useT();
+  const { lang } = useI18n();
   const nowMs = Date.parse(now);
 
   const [draft, setDraft] = useState<VisitDraft>(() => draftOf(visit));
@@ -74,7 +77,7 @@ export function VisitRecord({
   const canEdit = editable(visit, nowMs) && !cancelled;
   const left = editWindowLeft(visit, nowMs);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
-  const note = rangeNote(visit);
+  const note = rangeNote(visit, lang);
 
   async function cancelVisit(reason: string) {
     setBusy(true);
@@ -130,7 +133,7 @@ export function VisitRecord({
           className="pressable inline-flex min-h-9 items-center gap-1 text-sm text-muted"
         >
           <Icon name="chevron" className="size-4 rotate-180" />
-          All visits
+          {t("visit.allVisits")}
         </Link>
       )}
 
@@ -141,7 +144,7 @@ export function VisitRecord({
           </span>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-semibold">
-              {shopNameOf(visit)}
+              {shopNameOf(visit, lang)}
             </h1>
             <p className="text-xs text-muted">{dayHeading(visit.checked_in_at)}</p>
           </div>
@@ -156,17 +159,17 @@ export function VisitRecord({
                     : "accent"
             }
           >
-            {cancelled ? "Cancelled" : distanceLabel(visit.distance_m)}
+            {cancelled ? t("visit.cancelled") : distanceLabel(visit.distance_m, lang)}
           </Chip>
         </div>
 
         <dl className="grid grid-cols-3 gap-2 text-center">
-          <Fact label="Arrived" value={timeOf(visit.checked_in_at)} />
+          <Fact label={t("visit.arrived")} value={timeOf(visit.checked_in_at)} />
           <Fact
-            label="Left"
-            value={visit.checked_out_at ? timeOf(visit.checked_out_at) : "Still open"}
+            label={t("visit.left")}
+            value={visit.checked_out_at ? timeOf(visit.checked_out_at) : t("visit.stillOpen")}
           />
-          <Fact label="Length" value={hoursMinutes(visitLength(visit, nowMs))} />
+          <Fact label={t("visit.length")} value={hoursMinutes(visitLength(visit, nowMs))} />
         </dl>
 
         {cancelled ? (
@@ -184,7 +187,7 @@ export function VisitRecord({
       </Card>
 
       <div className="space-y-3">
-        <SectionHeader title="The record" />
+        <SectionHeader title={t("visit.record")} />
 
         {error && (
           <div role="alert">
@@ -210,19 +213,17 @@ export function VisitRecord({
                 disabled={busy || !dirty}
                 className="pressable min-h-11 w-full rounded-xl bg-brand text-sm font-semibold text-brand-fg disabled:opacity-50"
               >
-                {dirty ? "Save" : "Saved"}
+                {dirty ? t("visit.save") : t("visit.saved")}
               </button>
               {left !== null && (
                 <p className="text-center text-xs text-muted">
-                  {hoursMinutes(left)} left to correct this.
+                  {t("visit.editLeft", { length: hoursMinutes(left) })}
                 </p>
               )}
             </>
           ) : (
             <p className="text-center text-xs text-muted">
-              {cancelled
-                ? "This visit was cancelled. What it says is now the record."
-                : "This visit closed more than a day ago. What it says is now the record."}
+              {cancelled ? t("visit.frozenCancelled") : t("visit.frozen")}
             </p>
           )}
         </Card>

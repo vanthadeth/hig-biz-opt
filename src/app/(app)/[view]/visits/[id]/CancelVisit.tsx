@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/components/I18nProvider";
 import { Field } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
@@ -25,6 +26,7 @@ export function CancelVisit({
   busy: boolean;
   onCancel: (reason: string) => void;
 }) {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -42,22 +44,21 @@ export function CancelVisit({
         }}
         className="pressable min-h-9 text-sm font-medium text-danger disabled:opacity-60"
       >
-        Cancel this visit
+        {t("visit.cancel")}
       </button>
 
-      <Sheet open={asking} onClose={() => !busy && setAsking(false)} title="Cancel this visit?">
+      <Sheet open={asking} onClose={() => !busy && setAsking(false)} title={t("visit.cancelAsk")}>
         <div className="space-y-4 p-4">
           <p className="text-sm text-muted">
-            The visit stays on the record with its times and where it happened,
-            marked cancelled, and counts towards no hours.
+            {t("visit.cancelBody")}
           </p>
 
           <Field
-            label="Why"
+            label={t("visit.cancelWhy")}
             value={reason}
             onChange={setReason}
             disabled={busy}
-            placeholder="Tapped by mistake"
+            placeholder={t("visit.cancelPlaceholder")}
           />
 
           <div className="flex gap-2">
@@ -67,7 +68,7 @@ export function CancelVisit({
               disabled={busy}
               className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium disabled:opacity-50"
             >
-              Keep it
+              {t("visit.cancelKeep")}
             </button>
             <button
               type="button"
@@ -75,7 +76,7 @@ export function CancelVisit({
               disabled={busy || problem !== null}
               className="pressable min-h-11 flex-[2] rounded-xl bg-danger text-sm font-semibold text-white disabled:opacity-50"
             >
-              {busy ? "Cancelling…" : "Cancel the visit"}
+              {busy ? t("visit.cancelling") : t("visit.cancelDo")}
             </button>
           </div>
 

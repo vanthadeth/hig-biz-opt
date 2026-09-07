@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import {fireEvent, screen } from "@testing-library/react";
+import { render } from "@/test/i18n";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { VisitOption, VisitRow } from "@/lib/visits";
 import { VisitRecord } from "./VisitRecord";

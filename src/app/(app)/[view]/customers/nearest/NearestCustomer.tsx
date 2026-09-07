@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Icon } from "@/components/Icon";
+import { useI18n, useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import {
@@ -34,6 +35,8 @@ export function NearestCustomer({
   viewKey: string;
   customers: CartCustomer[];
 }) {
+  const t = useT();
+  const { lang } = useI18n();
   const { fix, problem } = useFix();
 
   const ranked = useMemo(() => {
@@ -47,7 +50,7 @@ export function NearestCustomer({
   if (customers.length === 0) {
     return (
       <Card className="p-6 text-center text-sm text-muted">
-        No shops to look up yet.
+        {t("customer.none")}
       </Card>
     );
   }
@@ -60,8 +63,7 @@ export function NearestCustomer({
         <Card className="flex items-start gap-2 p-3 text-xs text-muted">
           <Icon name="pin" className="mt-0.5 size-4 shrink-0" />
           <span>
-            {problem ?? "Finding where you are…"}
-            {problem && " Showing every shop by name instead."}
+            {problem ?? t("visit.findingYou")}
           </span>
         </Card>
       )}
@@ -76,10 +78,10 @@ export function NearestCustomer({
               {top.customer.shop_name}
             </span>
             <span className="block truncate text-xs text-muted">
-              {customerWhere(top.customer) ?? "No address recorded"}
+              {customerWhere(top.customer) ?? t("customer.noAddress")}
             </span>
           </span>
-          {top.metres !== null && <Chip tone="accent">{distanceLabel(top.metres)}</Chip>}
+          {top.metres !== null && <Chip tone="accent">{distanceLabel(top.metres, lang)}</Chip>}
           <Icon name="chevron" className="size-4 shrink-0 text-muted" />
         </Card>
       </Link>
@@ -95,11 +97,11 @@ export function NearestCustomer({
                       {customer.shop_name}
                     </span>
                     <span className="block truncate text-xs text-muted">
-                      {customerWhere(customer) ?? "No address recorded"}
+                      {customerWhere(customer) ?? t("customer.noAddress")}
                     </span>
                   </span>
                   {metres !== null && (
-                    <Chip tone="neutral">{distanceLabel(metres)}</Chip>
+                    <Chip tone="neutral">{distanceLabel(metres, lang)}</Chip>
                   )}
                   <Icon name="chevron" className="size-4 shrink-0 text-muted" />
                 </Card>
@@ -113,7 +115,7 @@ export function NearestCustomer({
         href={`/${viewKey}/customers`}
         className="pressable block w-full rounded-xl border border-line py-2 text-center text-sm text-muted"
       >
-        All customers
+        {t("customer.all")}
       </Link>
     </div>
   );

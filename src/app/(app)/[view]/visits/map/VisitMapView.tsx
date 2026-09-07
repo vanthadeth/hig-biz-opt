@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
+import { useI18n } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { mappableDays, pinsFor } from "@/lib/mapView";
@@ -35,6 +36,7 @@ const VisitMapCanvas = dynamic(
  * shows the gap without deciding which.
  */
 export function VisitMapView({ visits }: { visits: ReportVisit[] }) {
+  const { lang, t } = useI18n();
   const people = useMemo(() => peopleIn(visits), [visits]);
   const [who, setWho] = useState(() => people[0]?.id ?? "");
   const chosen = people.some((person) => person.id === who) ? who : (people[0]?.id ?? "");
@@ -48,7 +50,10 @@ export function VisitMapView({ visits }: { visits: ReportVisit[] }) {
   const [day, setDay] = useState<string | null>(null);
   const shown = day && days.includes(day) ? day : (days[0] ?? null);
 
-  const pins = useMemo(() => (shown ? pinsFor(mine, shown) : []), [mine, shown]);
+  const pins = useMemo(
+    () => (shown ? pinsFor(mine, shown, lang) : []),
+    [mine, shown, lang],
+  );
 
   if (people.length === 0 || days.length === 0) {
     return (
@@ -67,7 +72,7 @@ export function VisitMapView({ visits }: { visits: ReportVisit[] }) {
       <div className="grid gap-3 sm:grid-cols-2">
         {people.length > 1 && (
           <label className="grid gap-1">
-            <span className="text-xs font-medium text-muted">Employee</span>
+            <span className="text-xs font-medium text-muted">{t("report.employee")}</span>
             <select
               value={chosen}
               onChange={(e) => {
@@ -84,7 +89,7 @@ export function VisitMapView({ visits }: { visits: ReportVisit[] }) {
         )}
 
         <label className="grid gap-1">
-          <span className="text-xs font-medium text-muted">Day</span>
+          <span className="text-xs font-medium text-muted">{t("report.day")}</span>
           <select
             value={shown ?? ""}
             onChange={(e) => setDay(e.target.value)}
@@ -114,9 +119,9 @@ export function VisitMapView({ visits }: { visits: ReportVisit[] }) {
                 <span className="block truncate text-sm font-medium">{pin.shopName}</span>
                 <span className="block text-xs text-muted">{timeOf(pin.checkedInAt)}</span>
               </span>
-              {!pin.at && <Chip tone="neutral">No fix</Chip>}
+              {!pin.at && <Chip tone="neutral">{t("visit.noPin")}</Chip>}
               {pin.at && <Chip tone={pin.outOfRange ? "warn" : "accent"}>
-                {distanceLabel(pin.distanceM)}
+                {distanceLabel(pin.distanceM, lang)}
               </Chip>}
             </Card>
           </li>

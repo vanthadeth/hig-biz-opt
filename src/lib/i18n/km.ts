@@ -1,0 +1,154 @@
+import type { en } from "./en";
+
+/**
+ * Khmer.
+ *
+ * Typed as a partial of the English dictionary, so every key here is checked
+ * against one that exists and a key with no Khmer yet falls through to English
+ * rather than showing a raw key. A half-translated app is a working app in two
+ * languages; a strict one would be a broken app in neither.
+ *
+ * These are working translations and should be read by a Khmer speaker before
+ * anybody relies on the wording. What is certain is the shape: the keys, the
+ * placeholders, and the fact that nothing is assembled from fragments.
+ */
+export const km: Partial<Record<keyof typeof en, string>> = {
+  // The shell -------------------------------------------------------------
+  "nav.home": "ទំព័រដើម",
+  "nav.menu": "ម៉ឺនុយ",
+  "nav.profile": "គណនីរបស់ខ្ញុំ",
+  "nav.signOut": "ចាកចេញ",
+  "nav.switchView": "ប្តូរកន្លែងធ្វើការ",
+  "nav.notifications": "ការជូនដំណឹង",
+  "nav.language": "ភាសា",
+  "nav.theme": "រូបរាង",
+  "theme.light": "ភ្លឺ",
+  "theme.dark": "ងងឹត",
+  "theme.system": "តាមប្រព័ន្ធ",
+
+  // Quick actions ---------------------------------------------------------
+  "quick.title": "សកម្មភាពរហ័ស",
+  "quick.also": "ផ្សេងទៀត",
+  "quick.none": "អ្នកមិនមានសិទ្ធិបង្កើតអ្វីនៅក្នុង {view} ទេ។",
+  "quick.catalog": "កាតាឡុក",
+  "quick.catalogHint": "ប្រគល់ទូរស័ព្ទឱ្យភ្ញៀវ",
+  "quick.newVisit": "ការចុះជួបថ្មី",
+  "quick.newVisitHint": "ចាប់ផ្តើមនៅកន្លែងអ្នកឈរ",
+  "quick.newCustomer": "អតិថិជនថ្មី",
+  "quick.newCustomerHint": "ហាងដែលមិនទាន់មានក្នុងបញ្ជី",
+  "quick.customerInfo": "ព័ត៌មានអតិថិជន",
+  "quick.customerInfoHint": "ហាងជិតបំផុត",
+  "quick.locking": "កំពុងចាក់សោ…",
+
+  // Visits ----------------------------------------------------------------
+  "visit.new": "ការចុះជួបថ្មី",
+  "visit.starting": "កំពុងចាប់ផ្តើម…",
+  "visit.startsHere": "ចាប់ផ្តើមឥឡូវនេះ នៅកន្លែងអ្នកឈរ។ ជ្រើសរើសហាងនៅអេក្រង់បន្ទាប់។",
+  "visit.findingYou": "កំពុងស្វែងរកទីតាំងរបស់អ្នក…",
+  "visit.allVisits": "ការចុះជួបទាំងអស់",
+  "visit.open": "កំពុងបើក",
+  "visit.checkedIn": "បានចូល",
+  "visit.checkedInAt": "បានចូលម៉ោង {time}",
+  "visit.ago": "{length} មុន",
+  "visit.soFar": "{length} រហូតមកដល់ពេលនេះ",
+  "visit.record": "កំណត់ត្រាការចុះជួប",
+  "visit.checkOut": "ចេញ",
+  "visit.checkingOut": "កំពុងចេញ…",
+  "visit.checkOutAsk": "ចេញមែនទេ?",
+  "visit.checkOutBody":
+    "នេះនឹងបិទការចុះជួប {shop} ក្រោយពេលចូល {length}។ ម៉ោងដែលកត់ត្រាមិនអាចកែបានទៀតទេ។",
+  "visit.checkOutSaveFirst": " អ្វីដែលអ្នកបានវាយបញ្ចូលនឹងត្រូវរក្សាទុកជាមុនសិន។",
+  "visit.notYet": "មិនទាន់",
+  "visit.save": "រក្សាទុក",
+  "visit.saved": "បានរក្សាទុក",
+  "visit.chooseShop": "ជ្រើសរើសហាង",
+  "visit.whichShop": "ហាងណាមួយ?",
+  "visit.findShop": "ស្វែងរកហាង",
+  "visit.noShopMatches": "រកមិនឃើញហាងត្រូវនឹងពាក្យនេះទេ។",
+  "visit.noPin": "គ្មានទីតាំង",
+  "visit.somewhereElse": "កន្លែងផ្សេង",
+  "visit.shopRemoved": "ហាងត្រូវបានលុប",
+  "visit.cancel": "បោះបង់ការចុះជួបនេះ",
+  "visit.cancelAsk": "បោះបង់ការចុះជួបនេះមែនទេ?",
+  "visit.cancelBody":
+    "ការចុះជួបនៅតែរក្សាទុកជាមួយម៉ោង និងទីតាំង ដោយសម្គាល់ថាបានបោះបង់ ហើយមិនរាប់បញ្ចូលក្នុងម៉ោងធ្វើការទេ។",
+  "visit.cancelWhy": "មូលហេតុ",
+  "visit.cancelPlaceholder": "ចុចដោយច្រឡំ",
+  "visit.cancelKeep": "រក្សាទុក",
+  "visit.cancelDo": "បោះបង់ការចុះជួប",
+  "visit.cancelling": "កំពុងបោះបង់…",
+  "visit.cancelled": "បានបោះបង់",
+  "visit.outOfRange": "ក្រៅចម្ងាយកំណត់",
+  "visit.distanceUnknown": "មិនដឹងចម្ងាយ",
+  "visit.atTheShop": "នៅឯហាង",
+  "visit.metresAway": "ឆ្ងាយ {n} ម",
+  "visit.metres": "{n} ម",
+  "visit.km": "{n} គម",
+  "visit.kmAway": "ឆ្ងាយ {n} គម",
+  "visit.noteNoShop": "ការចុះជួបនេះមិនមែនទៅហាងទេ ដូច្នេះគ្មានចម្ងាយត្រូវវាស់។",
+  "visit.noteNoFix": "គ្មានទីតាំងកត់ត្រាពេលចូល ដូច្នេះគ្មានចម្ងាយ។",
+  "visit.noteNoPin": "ហាងនេះមិនទាន់មានទីតាំងរក្សាទុកទេ។",
+  "visit.noteNamedLater": "ហាងត្រូវបានដាក់ឈ្មោះក្រោយពេលចូល ដូច្នេះគ្មានការវាស់ចម្ងាយ។",
+  "visit.noteOutside": "បានចូលនៅចម្ងាយ {distance} ពីហាង ក្រៅពី {radius} ម។",
+  "visit.noteOutsideUnknown": "បានចូលនៅចម្ងាយ {distance} ពីហាង ក្រៅចម្ងាយកំណត់។",
+  "visit.arrived": "ម៉ោងចូល",
+  "visit.left": "ម៉ោងចេញ",
+  "visit.length": "រយៈពេល",
+  "visit.stillOpen": "នៅតែបើក",
+  "visit.editLeft": "នៅសល់ {length} ដើម្បីកែតម្រូវ។",
+  "visit.frozen": "ការចុះជួបនេះបានបិទលើសមួយថ្ងៃហើយ។ អ្វីដែលកត់ត្រាគឺជាកំណត់ត្រាចុងក្រោយ។",
+  "visit.frozenCancelled": "ការចុះជួបនេះត្រូវបានបោះបង់។ អ្វីដែលកត់ត្រាគឺជាកំណត់ត្រាចុងក្រោយ។",
+
+  // The visit record's questions -----------------------------------------
+  "visit.type": "ប្រភេទការចុះជួប",
+  "visit.status": "ស្ថានភាពការចុះជួប",
+  "visit.orderStatus": "ស្ថានភាពការបញ្ជាទិញ",
+  "visit.paymentStatus": "ស្ថានភាពការទូទាត់",
+  "visit.nextAppointment": "ការណាត់ជួបលើកក្រោយ",
+  "visit.remarks": "កំណត់សម្គាល់",
+  "visit.remarksPlaceholder": "អ្វីដែលការិយាល័យគួរដឹង",
+
+  // The day, and reports --------------------------------------------------
+  "day.today": "ថ្ងៃនេះ",
+  "day.yesterday": "ម្សិលមិញ",
+  "day.working": "ម៉ោងធ្វើការ",
+  "day.active": "ម៉ោងសកម្ម",
+  "day.visits": "ការចុះជួប",
+  "day.report": "របាយការណ៍",
+  "day.map": "ផែនទី",
+  "report.day": "ថ្ងៃ",
+  "report.week": "សប្តាហ៍",
+  "report.month": "ខែ",
+  "report.employee": "បុគ្គលិក",
+  "report.aDay": "ក្នុងមួយថ្ងៃ",
+  "report.daysWorked": "ធ្វើការ {count} ថ្ងៃ",
+  "report.dayWorked": "ធ្វើការ ១ ថ្ងៃ",
+  "report.visitCount": "ចុះជួប {count} ដង",
+  "report.visitCountOne": "ចុះជួប ១ ដង",
+  "report.neverCheckedOut": "មិនបានចេញ",
+  "report.outNow": "កំពុងចេញក្រៅ",
+  "report.dayNeverClosed": "មានថ្ងៃមួយមិនបានបិទ",
+  "report.nothing": "គ្មានការចុះជួបកត់ត្រាក្នុងកំឡុង ៩០ ថ្ងៃចុងក្រោយទេ។",
+  "report.nothingFor": "គ្មានកំណត់ត្រាសម្រាប់ {name} ក្នុងកំឡុង ៩០ ថ្ងៃចុងក្រោយទេ។",
+
+  // Customers -------------------------------------------------------------
+  "customer.all": "អតិថិជនទាំងអស់",
+  "customer.none": "មិនទាន់មានហាងសម្រាប់ស្វែងរកទេ។",
+  "customer.noAddress": "គ្មានអាសយដ្ឋានកត់ត្រា",
+  "customer.pickOnMap": "ជ្រើសរើសលើផែនទី",
+  "customer.movePin": "ផ្លាស់ទីចំណុច",
+  "customer.whereIsShop": "ហាងនៅឯណា?",
+  "customer.useThisSpot": "ប្រើទីតាំងនេះ",
+  "customer.dropAPin": "ចុចលើផែនទីដើម្បីដាក់ចំណុច រួចអូសដើម្បីកែតម្រូវ។",
+  "customer.useMyLocation": "ប្រើទីតាំងរបស់ខ្ញុំ",
+  "customer.findingYou": "កំពុងស្វែងរក…",
+
+  // Everywhere ------------------------------------------------------------
+  "common.cancel": "បោះបង់",
+  "common.save": "រក្សាទុក",
+  "common.saved": "បានរក្សាទុក",
+  "common.search": "ស្វែងរក",
+  "common.optional": "មិនចាំបាច់",
+  "common.signIn": "ចូលប្រើ",
+  "common.somethingWrong": "មានបញ្ហាកើតឡើង។",
+};

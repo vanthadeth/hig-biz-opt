@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { LangSwitcher } from "@/components/LangSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { useT } from "@/components/I18nProvider";
 import { StoredPhoto } from "@/components/ui/StoredPhoto";
 import { Notifications } from "./Notifications";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +18,7 @@ export function TitleBar() {
   const router = useRouter();
   const hidden = useScrollHidden();
   const { viewer, view, views } = useShell();
+  const t = useT();
   const title = usePageTitle(pathname);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -85,6 +88,7 @@ export function TitleBar() {
 
               <div className="border-b border-line">
                 <ThemeSwitcher />
+                <LangSwitcher />
               </div>
 
               <Link
@@ -94,7 +98,7 @@ export function TitleBar() {
                 className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-subtle"
               >
                 <Icon name="user" className="size-4.5 text-muted" />
-                My profile
+                {t("nav.profile")}
               </Link>
 
               {views.length > 1 && (
@@ -116,7 +120,7 @@ export function TitleBar() {
                 className="flex w-full items-center gap-3 border-t border-line px-4 py-3 text-left text-sm text-danger hover:bg-subtle"
               >
                 <Icon name="logout" className="size-4.5" />
-                Sign out
+                {t("nav.signOut")}
               </button>
             </div>
           )}

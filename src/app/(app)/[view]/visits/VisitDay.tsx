@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useI18n, useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -39,6 +40,8 @@ export function VisitDay({
   now: string;
 }) {
   const router = useRouter();
+  const t = useT();
+  const { lang } = useI18n();
 
   const [nowMs, setNowMs] = useState(() => Date.parse(now));
   const { fix, problem: fixProblem } = useFix();
@@ -126,14 +129,14 @@ export function VisitDay({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
-                {shopNameOf(open)}
+                {shopNameOf(open, lang)}
               </span>
               <span className="block text-xs text-muted">
-                Checked in {timeOf(open.checked_in_at)} ·{" "}
-                {hoursMinutes(visitLength(open, nowMs))} ago
+                {t("visit.checkedInAt", { time: timeOf(open.checked_in_at) })} ·{" "}
+                {t("visit.ago", { length: hoursMinutes(visitLength(open, nowMs)) })}
               </span>
             </span>
-            <Chip tone="brand">Open</Chip>
+            <Chip tone="brand">{t("visit.open")}</Chip>
             <Icon name="chevron" className="size-4 shrink-0 text-muted" />
           </Card>
         </Link>
@@ -149,7 +152,7 @@ export function VisitDay({
             className="pressable flex min-h-20 w-full items-center justify-center gap-3 rounded-2xl bg-brand text-lg font-semibold text-brand-fg disabled:opacity-60"
           >
             <Icon name="pin" className="size-6" />
-            {busy ? "Starting…" : "New visit"}
+            {busy ? t("visit.starting") : t("visit.new")}
           </button>
 
           <p className="text-center text-xs text-muted">
@@ -158,8 +161,8 @@ export function VisitDay({
             {fixProblem
               ? fixProblem
               : fix
-                ? "Starts now, where you are. Choose the shop on the next screen."
-                : "Finding where you are…"}
+                ? t("visit.startsHere")
+                : t("visit.findingYou")}
           </p>
         </div>
       )}
@@ -167,9 +170,9 @@ export function VisitDay({
       {today && (
         <Link href={`/${viewKey}/visits/reports`} className="pressable block">
           <Card className="grid grid-cols-3 divide-x divide-line p-0">
-            <Figure label="Working" value={hoursMinutes(today.workingMs)} />
-            <Figure label="Active" value={hoursMinutes(today.activeMs)} />
-            <Figure label="Visits" value={String(today.visits)} />
+            <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
+            <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
+            <Figure label={t("day.visits")} value={String(today.visits)} />
           </Card>
         </Link>
       )}
@@ -180,14 +183,14 @@ export function VisitDay({
           className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
         >
           <Icon name="chart" className="size-4" />
-          Report
+          {t("day.report")}
         </Link>
         <Link
           href={`/${viewKey}/visits/map`}
           className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
         >
           <Icon name="pin" className="size-4" />
-          Map
+          {t("day.map")}
         </Link>
       </div>
 
@@ -195,7 +198,7 @@ export function VisitDay({
         <div className="space-y-4">
           {grouped.map((day) => (
             <section key={day.key} className="space-y-2">
-              <SectionHeader title={dayHeading(day.key, nowMs)} />
+              <SectionHeader title={dayHeading(day.key, nowMs, t)} />
               <ul className="space-y-2">
                 {day.visits.map((visit) => (
                   <li key={visit.id}>
@@ -203,7 +206,7 @@ export function VisitDay({
                       <Card className="flex items-center gap-3 p-3">
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">
-                            {shopNameOf(visit)}
+                            {shopNameOf(visit, lang)}
                           </span>
                           <span className="block truncate text-xs text-muted">
                             {timeOf(visit.checked_in_at)}
@@ -212,9 +215,9 @@ export function VisitDay({
                           </span>
                         </span>
                         {visit.cancelled_at !== null ? (
-                          <Chip tone="danger">Cancelled</Chip>
+                          <Chip tone="danger">{t("visit.cancelled")}</Chip>
                         ) : (
-                          visit.out_of_range && <Chip tone="warn">Out of range</Chip>
+                          visit.out_of_range && <Chip tone="warn">{t("visit.outOfRange")}</Chip>
                         )}
                         <Icon name="chevron" className="size-4 shrink-0 text-muted" />
                       </Card>
@@ -239,8 +242,14 @@ function Figure({ label, value }: { label: string; value: string }) {
   );
 }
 
-function dayHeading(key: string, nowMs: number): string {
-  if (key === dayKey(nowMs)) return "Today";
-  if (key === dayKey(nowMs - 86_400_000)) return "Yesterday";
+function dayHeading(
+  key: string,
+  nowMs: number,
+  t: (key: "day.today" | "day.yesterday") => string,
+): string {
+  if (key === dayKey(nowMs)) return t("day.today");
+  if (key === dayKey(nowMs - 86_400_000)) return t("day.yesterday");
+  // The date itself stays in English: month names have no Khmer form in this
+  // dictionary, and a half-Khmer date reads worse than an English one.
   return longDay(key, { year: false });
 }

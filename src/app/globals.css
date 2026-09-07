@@ -140,7 +140,33 @@
   --color-tint-2-fg: var(--tint-2-fg);
   --color-tint-3-fg: var(--tint-3-fg);
   --color-tint-4-fg: var(--tint-4-fg);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Inter has no Khmer, so the Khmer faces every phone here already ships
+     follow it: Noto Sans Khmer on Android, Khmer Sangam MN on iOS, Khmer OS on
+     older desktops. Named rather than left to the generic fallback, because
+     what a browser picks for unmatched Khmer is often a serif at the wrong
+     size beside the Latin, and on some Android builds is a row of boxes.
+
+     No webfont: this is a phone in a shop on mobile data, and a hundred
+     kilobytes of Khmer glyphs is a slower first paint every morning for
+     something the device already has. */
+  --font-sans: var(--font-inter), "Noto Sans Khmer", "Khmer Sangam MN",
+    "Khmer OS Battambang", "Khmer OS", ui-sans-serif, system-ui, -apple-system,
+    sans-serif;
+}
+
+/* Khmer has no capitals, taller glyphs and stacked marks. Uppercasing it does
+   nothing, and the extra line height is what keeps subscripts from colliding
+   with the line above. */
+:root[data-lang="km"] {
+  --leading-body: 1.7;
+}
+
+[data-lang="km"] .uppercase {
+  text-transform: none;
+}
+
+[data-lang="km"] body {
+  line-height: var(--leading-body, 1.7);
 }
 
 html {

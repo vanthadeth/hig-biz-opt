@@ -1,4 +1,5 @@
 import type { NavItem, Permission } from "@/lib/access";
+import type { MessageKey } from "@/lib/i18n";
 
 /**
  * What the centre button offers, as tiles.
@@ -20,10 +21,16 @@ import type { NavItem, Permission } from "@/lib/access";
 
 export type QuickTile = {
   key: string;
-  /** Full wording: "New customer". */
+  /**
+   * The message to show. The four that lead have words in both languages;
+   * a module added later has only the name its registry row carries, which
+   * nobody has translated, so that arrives as `label` instead.
+   */
+  labelKey?: MessageKey;
+  /** Full wording, in English, when there is no key for it. */
   label: string;
   /** What it does, when that is not obvious from two words. */
-  hint?: string;
+  hintKey?: MessageKey;
   icon: string;
   /** Null for the catalogue, which locks the app rather than navigating. */
   href: string | null;
@@ -62,8 +69,9 @@ export function quickTiles(
   if (can("product", "view")) {
     tiles.push({
       key: "catalog",
+      labelKey: "quick.catalog",
       label: "Catalog",
-      hint: "Hand the phone over",
+      hintKey: "quick.catalogHint",
       icon: "box",
       href: null,
       lead: true,
@@ -73,8 +81,9 @@ export function quickTiles(
   if (inNav.has("visit") && can("visit", "add")) {
     tiles.push({
       key: "visit",
+      labelKey: "quick.newVisit",
       label: "New visit",
-      hint: "Starts where you are",
+      hintKey: "quick.newVisitHint",
       icon: "pin",
       href: `/${viewKey}/visits`,
       lead: true,
@@ -84,8 +93,9 @@ export function quickTiles(
   if (inNav.has("customer") && can("customer", "add")) {
     tiles.push({
       key: "customer",
+      labelKey: "quick.newCustomer",
       label: "New customer",
-      hint: "A shop not on the books",
+      hintKey: "quick.newCustomerHint",
       icon: "building",
       href: `/${viewKey}/customers/new`,
       lead: true,
@@ -97,8 +107,9 @@ export function quickTiles(
   if (inNav.has("customer") && can("customer", "view")) {
     tiles.push({
       key: "nearest",
+      labelKey: "quick.customerInfo",
       label: "Customer info",
-      hint: "The nearest shop",
+      hintKey: "quick.customerInfoHint",
       icon: "search",
       href: `/${viewKey}/customers/nearest`,
       lead: true,

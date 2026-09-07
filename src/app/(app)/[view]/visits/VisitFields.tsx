@@ -1,5 +1,6 @@
 "use client";
 
+import { useT } from "@/components/I18nProvider";
 import { Field } from "@/components/ui/Field";
 import { OptionButtons } from "@/components/ui/OptionButtons";
 import { OPTION_KINDS, optionsOf, type VisitOption, type VisitOptionKind } from "@/lib/visits";
@@ -71,18 +72,19 @@ export function VisitFields({
   disabled?: boolean;
   onChange: (next: VisitDraft) => void;
 }) {
+  const t = useT();
   const set = (patch: Partial<VisitDraft>) => onChange({ ...draft, ...patch });
 
   return (
     <div className="grid gap-3">
-      {OPTION_KINDS.map(({ kind, label }) => {
+      {OPTION_KINDS.map(({ kind, labelKey }) => {
         const field = FIELD_OF[kind];
         const list = optionsOf(options, kind);
         if (list.length === 0) return null;
         return (
           <OptionButtons
             key={kind}
-            label={label}
+            label={t(labelKey)}
             disabled={disabled}
             value={(draft[field] as string | null) ?? null}
             onChange={(value) => set({ [field]: value } as Partial<VisitDraft>)}
@@ -93,7 +95,8 @@ export function VisitFields({
 
       <div className="grid gap-1">
         <label className="text-xs font-medium text-muted" htmlFor="next-appointment">
-          Next appointment <span className="font-normal">(optional)</span>
+          {t("visit.nextAppointment")}{" "}
+          <span className="font-normal">({t("common.optional")})</span>
         </label>
         <input
           id="next-appointment"
@@ -106,12 +109,12 @@ export function VisitFields({
       </div>
 
       <Field
-        label="Remarks"
+        label={t("visit.remarks")}
         optional
         disabled={disabled}
         value={draft.remarks ?? ""}
         onChange={(value) => set({ remarks: value || null })}
-        placeholder="Anything the office should know"
+        placeholder={t("visit.remarksPlaceholder")}
       />
     </div>
   );

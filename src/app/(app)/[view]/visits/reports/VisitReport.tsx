@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
@@ -13,16 +14,13 @@ import {
   type AttendanceDay,
   type Period,
 } from "@/lib/attendance";
+import type { MessageKey } from "@/lib/i18n";
 import { longDay, monthLabel, timeOf, weekLabel } from "@/lib/time";
 import { peopleIn, type ReportVisit } from "@/lib/visits";
 
 type Grain = "day" | "week" | "month";
 
-const GRAINS = [
-  { value: "day", label: "Day" },
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-];
+
 
 /**
  * Somebody's days, added up three ways.
@@ -43,7 +41,14 @@ export function VisitReport({
   visits: ReportVisit[];
   now: string;
 }) {
+  const t = useT();
   const nowMs = Date.parse(now);
+
+  const grains = [
+    { value: "day", label: t("report.day") },
+    { value: "week", label: t("report.week") },
+    { value: "month", label: t("report.month") },
+  ];
   const people = useMemo(() => peopleIn(visits), [visits]);
 
   const [grain, setGrain] = useState<Grain>("day");
@@ -72,7 +77,7 @@ export function VisitReport({
   if (people.length === 0) {
     return (
       <Card className="p-6 text-center text-sm text-muted">
-        No visits recorded in the last ninety days.
+        {t("report.nothing")}
       </Card>
     );
   }
@@ -82,7 +87,7 @@ export function VisitReport({
       {/* Only worth a control when there is a choice to make. */}
       {people.length > 1 && (
         <label className="grid gap-1">
-          <span className="text-xs font-medium text-muted">Employee</span>
+          <span className="text-xs font-medium text-muted">{t("report.employee")}</span>
           <select
             value={chosen}
             onChange={(e) => setWho(e.target.value)}
@@ -98,21 +103,23 @@ export function VisitReport({
       )}
 
       <SegmentedTabs
-        segments={GRAINS}
+        segments={grains}
         value={grain}
         onChange={(value) => setGrain(value as Grain)}
       />
 
       {days.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
-          Nothing recorded for {people.find((p) => p.id === chosen)?.name} in the
-          last ninety days.
+          {t("report.nothingFor", {
+            name: people.find((p) => p.id === chosen)?.name ?? "",
+          })}
         </Card>
       ) : periods ? (
         <ul className="space-y-2">
           {periods.map((period) => (
             <li key={period.key}>
               <PeriodCard
+                t={t}
                 period={period}
                 label={grain === "week" ? weekLabel(period.key) : monthLabel(period.key)}
               />
@@ -123,7 +130,7 @@ export function VisitReport({
         <ul className="space-y-2">
           {days.map((day) => (
             <li key={day.key}>
-              <DayCard day={day} />
+              <DayCard t={t} day={day} />
             </li>
           ))}
         </ul>
@@ -132,13 +139,13 @@ export function VisitReport({
   );
 }
 
-function DayCard({ day }: { day: AttendanceDay }) {
+function DayCard({ t, day }: { t: T; day: AttendanceDay }) {
   return (
     <Card className="space-y-3 p-3">
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{longDay(day.key)}</p>
-        {day.open && <Chip tone="brand">Out now</Chip>}
-        {day.unclosed && <Chip tone="warn">Never checked out</Chip>}
+        {day.open && <Chip tone="brand">{t("report.outNow")}</Chip>}
+        {day.unclosed && <Chip tone="warn">{t("report.neverCheckedOut")}</Chip>}
       </div>
 
       <p className="text-xs text-muted">
@@ -150,32 +157,39 @@ function DayCard({ day }: { day: AttendanceDay }) {
       </p>
 
       <Figures
+        t={t}
         working={day.workingMs}
         active={day.activeMs}
-        third={{ label: "Visits", value: String(day.visits) }}
+        third={{ label: t("day.visits"), value: String(day.visits) }}
       />
     </Card>
   );
 }
 
-function PeriodCard({ period, label }: { period: Period; label: string }) {
+function PeriodCard({ t, period, label }: { t: T; period: Period; label: string }) {
   return (
     <Card className="space-y-3 p-3">
       <div className="flex items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">{label}</p>
-        {period.unclosed && <Chip tone="warn">A day was never closed</Chip>}
+        {period.unclosed && <Chip tone="warn">{t("report.dayNeverClosed")}</Chip>}
       </div>
 
       <p className="text-xs text-muted">
-        {period.daysWorked} {period.daysWorked === 1 ? "day" : "days"} worked ·{" "}
-        {period.visits} {period.visits === 1 ? "visit" : "visits"}
+        {period.daysWorked === 1
+          ? t("report.dayWorked")
+          : t("report.daysWorked", { count: period.daysWorked })}{" "}
+        ·{" "}
+        {period.visits === 1
+          ? t("report.visitCountOne")
+          : t("report.visitCount", { count: period.visits })}
       </p>
 
       <Figures
+        t={t}
         working={period.workingMs}
         active={period.activeMs}
         third={{
-          label: "A day",
+          label: t("report.aDay"),
           // The average over days actually worked, not over the calendar: a
           // week with two days off is not a week of short days.
           value: period.daysWorked
@@ -187,19 +201,23 @@ function PeriodCard({ period, label }: { period: Period; label: string }) {
   );
 }
 
+type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
+
 function Figures({
+  t,
   working,
   active,
   third,
 }: {
+  t: T;
   working: number;
   active: number;
   third: { label: string; value: string };
 }) {
   return (
     <dl className="grid grid-cols-3 gap-2 text-center">
-      <Figure label="Working" value={hoursMinutes(working)} />
-      <Figure label="Active" value={hoursMinutes(active)} />
+      <Figure label={t("day.working")} value={hoursMinutes(working)} />
+      <Figure label={t("day.active")} value={hoursMinutes(active)} />
       <Figure label={third.label} value={third.value} />
     </dl>
   );

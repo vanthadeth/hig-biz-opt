@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ModuleTile } from "@/components/ui/ModuleTile";
 import { StatTile, type TintIndex } from "@/components/ui/StatTile";
+import { useT } from "@/components/I18nProvider";
 import { useShell } from "@/components/shell/ShellContext";
 import { quickTiles } from "@/lib/quickActions";
 import type { HomeSummary } from "@/lib/dashboard";
@@ -23,6 +24,7 @@ export function HomeDashboard({
   today: string;
 }) {
   const { viewer, view, views, nav, permissions } = useShell();
+  const t = useT();
   const actions = quickTiles(nav, permissions, view.key);
   const firstName = viewer.nickname || viewer.full_name.split(" ")[0];
 
@@ -46,7 +48,7 @@ export function HomeDashboard({
       {/* Quick actions ------------------------------------------------------ */}
       {actions.length > 0 && (
         <section>
-          <SectionHeader title="Quick actions" caption="What you reach for most" />
+          <SectionHeader title={t("quick.title")} caption="What you reach for most" />
           <div className="mt-3 grid grid-cols-2 gap-3">
             {/* The catalogue is left out here: it locks the phone, which is
                 the centre button's job, not a link on the home screen. */}
@@ -62,7 +64,7 @@ export function HomeDashboard({
                     <Icon name={action.icon} className="size-4.5" />
                   </span>
                   <span className="min-w-0 truncate text-sm font-medium leading-tight">
-                    {action.label}
+                    {action.labelKey ? t(action.labelKey) : action.label}
                   </span>
                 </Link>
               ))}

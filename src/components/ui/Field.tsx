@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { useT } from "@/components/I18nProvider";
 
 const CONTROL =
   "min-h-11 w-full rounded-xl border border-line bg-bg px-3 text-sm outline-none " +
@@ -17,11 +18,13 @@ function Label({
   optional?: boolean;
   hint?: string;
 }) {
+  const t = useT();
+
   return (
     <>
       <label htmlFor={htmlFor} className="text-xs font-medium text-muted">
         {label}
-        {optional && <span className="font-normal"> (optional)</span>}
+        {optional && <span className="font-normal"> ({t("common.optional")})</span>}
       </label>
       {hint && <p className="text-xs text-muted">{hint}</p>}
     </>

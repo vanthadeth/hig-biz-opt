@@ -83,7 +83,7 @@ describe("a day's calls as pins", () => {
   });
 
   it("names a shop that has since been removed", () => {
-    const [p] = pinsFor([call("03T08:00:00", { customer: null })], "2026-09-03");
+    const [p] = pinsFor([call("03T08:00:00", { customer: null })], "2026-09-03", "en");
     expect(p.shopName).toBe("Shop removed");
     expect(p.shop).toBeNull();
   });

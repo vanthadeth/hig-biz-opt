@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { OPTION_COLUMNS, VISIT_COLUMNS, type VisitOption, type VisitRow } from "@/lib/visits";
+import { OpenVisitPage } from "./OpenVisitPage";
 import { VisitRecord } from "./VisitRecord";
 
 /**
@@ -25,14 +26,27 @@ export default async function Page({
 
   if (!visit.data) notFound();
 
+  const row = visit.data as unknown as VisitRow;
+  const visitOptions = (options.data ?? []) as VisitOption[];
+  const now = new Date().toISOString();
+
+  // An open visit is a different screen, not a variant of this one: it is
+  // somebody standing in a shop with a job to finish, and the only thing that
+  // matters is the way out being under their thumb.
+  if (row.checked_out_at === null) {
+    return (
+      <OpenVisitPage viewKey={view} visit={row} options={visitOptions} now={now} />
+    );
+  }
+
   return (
     <VisitRecord
       viewKey={view}
-      visit={visit.data as unknown as VisitRow}
+      visit={row}
       // Every option, not just the active ones: a visit recorded under a word
       // the business has since retired must still say what it said.
-      options={(options.data ?? []) as VisitOption[]}
-      now={new Date().toISOString()}
+      options={visitOptions}
+      now={now}
     />
   );
 }

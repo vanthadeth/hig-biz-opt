@@ -12,18 +12,9 @@ import { haptic } from "@/lib/haptics";
 import type { CartCustomer } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf } from "@/lib/time";
-import {
-  locationProblem,
-  openVisit,
-  usableFix,
-  visitLength,
-  visitsByDay,
-  type Fix,
-  type VisitOption,
-  type VisitRow,
-} from "@/lib/visits";
+import { openVisit, visitLength, visitsByDay, type VisitRow } from "@/lib/visits";
 import { CheckInPanel } from "./CheckInPanel";
-import { OpenVisit } from "./OpenVisit";
+import { useFix } from "./useFix";
 
 /**
  * The whole of a rep's day on one screen.
@@ -42,7 +33,6 @@ export function VisitDay({
   viewKey,
   userId,
   visits,
-  options,
   customers,
   radiusM,
   now,
@@ -50,7 +40,6 @@ export function VisitDay({
   viewKey: string;
   userId: string;
   visits: VisitRow[];
-  options: VisitOption[];
   customers: CartCustomer[];
   radiusM: number;
   now: string;
@@ -58,8 +47,7 @@ export function VisitDay({
   const router = useRouter();
 
   const [nowMs, setNowMs] = useState(() => Date.parse(now));
-  const [fix, setFix] = useState<Fix | null>(null);
-  const [fixProblem, setFixProblem] = useState<string | null>(null);
+  const { fix, problem: fixProblem } = useFix();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,59 +60,27 @@ export function VisitDay({
     return () => clearInterval(timer);
   }, []);
 
-  // Asked once, when the screen opens. A refusal is not fatal — the check-in
-  // still happens, with the distance recorded as unknown — so this reports the
-  // problem and gets out of the way.
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-    let cancelled = false;
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (cancelled) return;
-        const got = usableFix({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy ?? null,
-        });
-        setFix(got);
-        setFixProblem(
-          got
-            ? null
-            : "Your phone's location is too rough to use. A visit will be recorded without a distance.",
-        );
-      },
-      (err) => {
-        if (!cancelled) setFixProblem(locationProblem(err.code ?? null));
-      },
-      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-    // Once, when the screen opens. Re-asking on every render would put the
-    // browser's permission prompt in a loop.
-  }, []);
-
   async function checkIn(customer: CartCustomer) {
     setBusy(true);
     setError(null);
 
-    const { error: failed } = await createClient().rpc("check_in", {
+    // The row comes back, so the screen that opens next is that visit's own.
+    const { data, error: failed } = await createClient().rpc("check_in", {
       p_customer: customer.id,
       p_latitude: fix?.latitude ?? null,
       p_longitude: fix?.longitude ?? null,
     });
 
-    setBusy(false);
-    if (failed) {
+    if (failed || !data?.id) {
+      setBusy(false);
       haptic("error");
-      setError(failed.message);
+      setError(failed?.message ?? "That check-in was not recorded.");
       return;
     }
     haptic("success");
-    router.refresh();
+    // Left busy on purpose: the button stays disabled until the next screen
+    // takes over, so a second tap cannot land in the gap.
+    router.push(`/${viewKey}/visits/${data.id}`);
   }
 
   // The day's figures come from the same maths the reports use, so a rep and
@@ -154,15 +110,26 @@ export function VisitDay({
       )}
 
       {open ? (
-        <OpenVisit
-          key={open.id}
-          visit={open}
-          options={options}
-          fix={fix}
-          nowMs={nowMs}
-          onChanged={() => router.refresh()}
-          onProblem={setError}
-        />
+        /* Checked in somewhere: the only thing this screen offers is the way
+           back to that visit. Two places to write one record is two records. */
+        <Link href={`/${viewKey}/visits/${open.id}`} className="pressable block">
+          <Card className="flex items-center gap-3 p-4">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-brand-fg">
+              <Icon name="pin" className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">
+                {open.customer?.shop_name ?? "Shop removed"}
+              </span>
+              <span className="block text-xs text-muted">
+                Checked in {timeOf(open.checked_in_at)} ·{" "}
+                {hoursMinutes(visitLength(open, nowMs))} ago
+              </span>
+            </span>
+            <Chip tone="brand">Open</Chip>
+            <Icon name="chevron" className="size-4 shrink-0 text-muted" />
+          </Card>
+        </Link>
       ) : (
         <div className="space-y-3">
           {fixProblem && (

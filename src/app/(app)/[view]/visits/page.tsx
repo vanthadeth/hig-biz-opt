@@ -2,7 +2,7 @@ import { PageTitle } from "@/components/PageTitle";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
 import { CART_CUSTOMER_COLUMNS, type CartCustomer } from "@/lib/catalog";
-import { OPTION_COLUMNS, VISIT_COLUMNS, type VisitOption, type VisitRow } from "@/lib/visits";
+import { VISIT_COLUMNS, type VisitRow } from "@/lib/visits";
 import { VisitDay } from "./VisitDay";
 
 /**
@@ -32,7 +32,7 @@ export default async function Page({
   // the fortnight the page asks for is the fortnight it says it is showing.
   const now = new Date();
 
-  const [me, visits, options, customers, settings] = await Promise.all([
+  const [me, visits, customers, settings] = await Promise.all([
     supabase.auth.getUser(),
     // A fortnight is enough for the day list and the correction window, and
     // keeps a rep's first paint small on a phone.
@@ -42,7 +42,6 @@ export default async function Page({
       .gte("checked_in_at", new Date(now.getTime() - 14 * 86_400_000).toISOString())
       .order("checked_in_at", { ascending: false })
       .limit(200),
-    supabase.from("visit_options").select(OPTION_COLUMNS).eq("active", true),
     supabase.from("customers").select(CART_CUSTOMER_COLUMNS).eq("status", "active"),
     supabase.from("app_settings").select("checkin_radius_m").maybeSingle(),
   ]);
@@ -68,7 +67,6 @@ export default async function Page({
         viewKey={view}
         userId={userId}
         visits={rows}
-        options={(options.data ?? []) as VisitOption[]}
         customers={(customers.data ?? []) as CartCustomer[]}
         radiusM={settings.data?.checkin_radius_m ?? 200}
         now={now.toISOString()}

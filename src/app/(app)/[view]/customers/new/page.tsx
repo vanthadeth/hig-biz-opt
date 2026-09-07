@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
-import type { Commune, District, Province } from "@/lib/customers";
+import type { Province } from "@/lib/customers";
 import { CustomerForm } from "../CustomerForm";
 
 export const metadata = { title: "New customer" };
@@ -12,10 +12,8 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   const { view } = await params;
   const supabase = await createClient();
 
-  const [provinces, districts, communes, mine] = await Promise.all([
+  const [provinces, mine] = await Promise.all([
     supabase.from("geo_provinces").select("code, name, name_alt").order("sort_order"),
-    supabase.from("geo_districts").select("code, province_code, name, name_alt").order("name"),
-    supabase.from("geo_communes").select("code, district_code, name, name_alt").order("name"),
     getMyPermissions(),
   ]);
 
@@ -40,8 +38,6 @@ export default async function Page({ params }: { params: Promise<{ view: string 
         customer={null}
         contacts={[]}
         provinces={(provinces.data ?? []) as Province[]}
-        districts={(districts.data ?? []) as District[]}
-        communes={(communes.data ?? []) as Commune[]}
         canSetCredit={can(mine, "customer_credit", "edit")}
         viewKey={view}
       />

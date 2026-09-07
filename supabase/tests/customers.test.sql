@@ -15,7 +15,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CUSTOMERS OK - 71 assertions passed (rls: ran)
+--     ERROR:  CUSTOMERS OK - 70 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -110,12 +110,12 @@ declare
   v_wh   uuid := '00000000-0000-4000-8000-0000000c0005';  -- warehouse, view 'sub'
   v_acc  uuid := '00000000-0000-4000-8000-0000000c0006';  -- accounting, view 'any'
   v_sup  uuid := '00000000-0000-4000-8000-0000000c0007';  -- sale supervisor
+  v_prov  text;  -- a province code read from the table, not written down here
+  v_prov2 text;  -- another, for the row that tests an uncatalogued place
   v_mine uuid;   -- a customer owned by the rep
   v_thrs uuid;   -- one owned by the unrelated rep
   v_house uuid;  -- one with no owner
   v_house2 uuid; -- one used for the status-default assertions
-  v_dist text;
-  v_comm text;
   v_rls text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -132,43 +132,60 @@ begin
 
   ----------------------------------------------------------------------------
   -- Geography
+  --
+  -- The province list is reference data the business owns. The migration seeds
+  -- the twenty-five official provinces; a sync may then replace them with the
+  -- company's own coding, which is what has happened here — the sheet writes
+  -- "SRP" and "PNH", not "17" and "12". So what is asserted is what has to be
+  -- true either way, and the codes used below are read from the table rather
+  -- than written down. Pinning a seeded code made this file break the first
+  -- time somebody imported their own list, which is not a fault worth catching.
   ----------------------------------------------------------------------------
-  perform pg_temp.eq('all 25 provinces are seeded',
-    (select count(*)::text from public.geo_provinces), '25');
-  perform pg_temp.eq('Phnom Penh carries its official code',
-    (select name from public.geo_provinces where code = '12'), 'Phnom Penh');
-  perform pg_temp.eq('Tboung Khmum is present, as the newest province',
-    (select name from public.geo_provinces where code = '25'), 'Tboung Khmum');
-  -- Guessed place names are worse than absent ones, and these are the rows every
-  -- address in the country hangs off.
-  perform pg_temp.eq('Khmer names are left absent rather than guessed at',
-    (select count(*)::text from public.geo_provinces where name_alt is not null), '0');
+  perform pg_temp.ok('there is a province list for an address to hang off',
+    (select count(*) from public.geo_provinces) >= 25);
+  perform pg_temp.eq('and every province in it is named',
+    (select count(*)::text from public.geo_provinces
+      where btrim(coalesce(name, '')) = ''), '0');
 
-  insert into public.geo_districts (code, province_code, name)
-    values ('1201', '12', 'Chamkar Mon') returning code into v_dist;
-  insert into public.geo_communes (code, district_code, name)
-    values ('120101', '1201', 'Tonle Bassac') returning code into v_comm;
-  insert into public.geo_districts (code, province_code, name)
-    values ('0801', '08', 'Kandal Stueng');
+  select code into v_prov  from public.geo_provinces order by code limit 1;
+  select code into v_prov2 from public.geo_provinces order by code desc limit 1;
 
   ----------------------------------------------------------------------------
-  -- The address chain must agree with itself
+  -- Below the province, an address is words
+  --
+  -- The district and the commune used to be codes, resolved from the written
+  -- name by a matcher and held consistent by a guard. They are text now, and
+  -- what that buys is that the sheet's own spelling survives: HIG sells into
+  -- communes that are in no dataset anybody maintains, and a code that cannot
+  -- be looked up was costing a machine and answering nothing.
   ----------------------------------------------------------------------------
-  insert into public.customers (shop_name, owner_id, district_code)
-    values ('CX Chain Test', v_rep, '1201') returning id into v_mine;
-  perform pg_temp.eq('choosing a district fills in its province',
-    (select province_code from public.customers where id = v_mine), '12');
+  perform pg_temp.eq('a district is not a link any more',
+    (select count(*)::text from information_schema.columns
+      where table_schema = 'public' and table_name = 'customers'
+        and column_name in ('district_code', 'commune_code')), '0');
 
-  update public.customers set commune_code = '120101' where id = v_mine;
-  perform pg_temp.eq('choosing a commune fills in the chain above it',
-    (select province_code || '/' || district_code from public.customers where id = v_mine),
-    '12/1201');
+  insert into public.customers (shop_name, owner_id, province_code,
+                                district_text, commune_text)
+    values ('CX Address Test', v_rep, v_prov, 'ខណ្ឌ ចំការមន', 'សង្កាត់ ទន្លេបាសាក់')
+    returning id into v_mine;
+  perform pg_temp.eq('and is kept exactly as somebody wrote it',
+    (select district_text from public.customers where id = v_mine), 'ខណ្ឌ ចំការមន');
+  perform pg_temp.eq('as is the commune',
+    (select commune_text from public.customers where id = v_mine), 'សង្កាត់ ទន្លេបាសាក់');
+  perform pg_temp.eq('while the province keeps its code, because that list is real',
+    (select province_code from public.customers where id = v_mine), v_prov);
 
-  perform pg_temp.rejects('a district in the wrong province is refused',
-    format('update public.customers set province_code = ''08'' where id = %L', v_mine));
-  perform pg_temp.rejects('a commune in the wrong district is refused',
-    format('update public.customers set district_code = ''0801'', commune_code = ''120101''
-              where id = %L', v_mine));
+  -- A commune the reference data has never heard of is the ordinary case, not
+  -- an error: refusing it would stop a rep recording a real shop. On a row of
+  -- its own, because everything below still expects to find v_mine in Phnom
+  -- Penh.
+  insert into public.customers (shop_name, owner_id, province_code,
+                                district_text, commune_text)
+    values ('CX Uncatalogued', v_rep, v_prov2, 'Somewhere New', 'Nowhere In Any Dataset');
+  perform pg_temp.eq('a place nobody has catalogued is written down all the same',
+    (select province_code || '/' || district_text || '/' || commune_text
+       from public.customers where shop_name = 'CX Uncatalogued'),
+    v_prov2 || '/Somewhere New/Nowhere In Any Dataset');
 
   ----------------------------------------------------------------------------
   -- The record's own constraints
@@ -225,7 +242,8 @@ begin
   -- The directory view
   ----------------------------------------------------------------------------
   perform pg_temp.eq('the directory resolves the province name from its code',
-    (select province_name from public.customer_directory where id = v_mine), 'Phnom Penh');
+    (select province_name from public.customer_directory where id = v_mine),
+    (select name from public.geo_provinces where code = v_prov));
   perform pg_temp.eq('and names the primary contact',
     (select primary_contact_name from public.customer_directory where id = v_mine), 'Sok Dara');
   perform pg_temp.eq('and picks the primary picture',
@@ -479,10 +497,11 @@ begin
       (select active::text from public.customer_contacts
         where customer_id = v_mine and name = 'Chan Thida'), 'false');
 
-    -- The geography guard is definer, so it still bites under a policy.
-    perform pg_temp.rejects('the address chain still holds under RLS',
-      'insert into public.customers (shop_name, province_code, district_code)
-         values (''CX Bad Chain'', ''08'', ''1201'')');
+    -- The province is the one level with a reference table behind it, and the
+    -- foreign key is what holds it. A policy does not soften a foreign key.
+    perform pg_temp.rejects('a province that does not exist is still refused under RLS',
+      'insert into public.customers (shop_name, province_code)
+         values (''CX Bad Province'', ''ZZ'')');
 
     execute 'reset role';
     v_rls := 'ran';

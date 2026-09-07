@@ -7,22 +7,16 @@ import { LocationPicker } from "@/components/ui/LocationPicker";
 import { Field, SelectField } from "@/components/ui/Field";
 import { haptic } from "@/lib/haptics";
 import {
-  communesIn,
   coordinateProblem,
-  districtsIn,
   formatAccuracy,
   formatCoordinate,
   locationProblem,
-  type Commune,
-  type District,
   type Province,
 } from "@/lib/customers";
 
 export type AddressDraft = {
   street_address: string;
   province_code: string;
-  district_code: string;
-  commune_code: string;
   province_text: string;
   district_text: string;
   commune_text: string;
@@ -35,27 +29,20 @@ export type AddressDraft = {
 /**
  * Where the shop is.
  *
- * Province, district and commune are *chosen* from the reference tables when
- * they have been imported, and typed when they have not. That is not a
- * compromise, it is the requirement: HIG sells into places whose commune may
- * not be in any dataset yet, and a rep standing in the shop cannot wait for one.
- *
- * So each level offers a select over what is known, plus a text box that takes
- * over when the select has nothing to offer. Picking a district fills in its
- * province — a trigger in the database does the same, so the two cannot drift.
+ * The province is chosen, because that list is real, short, and the one thing
+ * the customer book actually groups by. The district and the commune are typed,
+ * because they are words: HIG sells into places whose commune is in no dataset
+ * anybody maintains, and a rep standing in the shop cannot wait for one to
+ * exist. What they write is the record.
  */
 export function AddressFields({
   draft,
   provinces,
-  districts,
-  communes,
   disabled,
   onChange,
 }: {
   draft: AddressDraft;
   provinces: Province[];
-  districts: District[];
-  communes: Commune[];
   disabled: boolean;
   onChange: (next: AddressDraft) => void;
 }) {
@@ -103,13 +90,6 @@ export function AddressFields({
     );
   }
 
-  const districtChoices = draft.province_code
-    ? districtsIn(districts, draft.province_code)
-    : [];
-  const communeChoices = draft.district_code
-    ? communesIn(communes, draft.district_code)
-    : [];
-
   const problem = coordinateProblem(draft.latitude, draft.longitude);
 
   return (
@@ -129,61 +109,29 @@ export function AddressFields({
         label="Province"
         optional
         value={draft.province_code}
-        onChange={(v) =>
-          // Changing the province invalidates everything under it.
-          set({ province_code: v, district_code: "", commune_code: "", district_text: "", commune_text: "" })
-        }
+        onChange={(v) => set({ province_code: v })}
         options={provinces.map((p) => ({ value: p.code, label: p.name }))}
         placeholder="Not set"
         disabled={disabled}
       />
 
-      {districtChoices.length > 0 ? (
-        <SelectField
-          label="District"
-          optional
-          value={draft.district_code}
-          onChange={(v) => set({ district_code: v, commune_code: "", commune_text: "" })}
-          options={districtChoices.map((d) => ({ value: d.code, label: d.name }))}
-          placeholder="Not set"
-          disabled={disabled}
-        />
-      ) : (
-        <Field
-          label="District"
-          optional
-          value={draft.district_text}
-          onChange={(v) => set({ district_text: v })}
-          placeholder="Type it"
-          hint={
-            draft.province_code
-              ? "No districts imported for this province yet."
-              : undefined
-          }
-          disabled={disabled}
-        />
-      )}
+      <Field
+        label="District"
+        optional
+        value={draft.district_text}
+        onChange={(v) => set({ district_text: v })}
+        placeholder="Type it"
+        disabled={disabled}
+      />
 
-      {communeChoices.length > 0 ? (
-        <SelectField
-          label="Commune"
-          optional
-          value={draft.commune_code}
-          onChange={(v) => set({ commune_code: v })}
-          options={communeChoices.map((c) => ({ value: c.code, label: c.name }))}
-          placeholder="Not set"
-          disabled={disabled}
-        />
-      ) : (
-        <Field
-          label="Commune"
-          optional
-          value={draft.commune_text}
-          onChange={(v) => set({ commune_text: v })}
-          placeholder="Type it"
-          disabled={disabled}
-        />
-      )}
+      <Field
+        label="Commune"
+        optional
+        value={draft.commune_text}
+        onChange={(v) => set({ commune_text: v })}
+        placeholder="Type it"
+        disabled={disabled}
+      />
 
       <Field
         label="Postal code"

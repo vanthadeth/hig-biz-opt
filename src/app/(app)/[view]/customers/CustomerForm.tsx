@@ -11,10 +11,8 @@ import {
   coordinateProblem,
   DEFAULT_CREDIT_LIMIT,
   parseCoordinate,
-  type Commune,
   type Customer,
   type CustomerContact,
-  type District,
   type Province,
 } from "@/lib/customers";
 import { AddressFields, type AddressDraft } from "./AddressFields";
@@ -39,8 +37,6 @@ function draftFrom(customer: Customer | null): Draft {
     business_type: customer?.business_type ?? "",
     street_address: customer?.street_address ?? "",
     province_code: customer?.province_code ?? "",
-    district_code: customer?.district_code ?? "",
-    commune_code: customer?.commune_code ?? "",
     province_text: customer?.province_text ?? "",
     district_text: customer?.district_text ?? "",
     commune_text: customer?.commune_text ?? "",
@@ -90,16 +86,12 @@ export function CustomerForm({
   customer,
   contacts: saved,
   provinces,
-  districts,
-  communes,
   canSetCredit,
   viewKey,
 }: {
   customer: Customer | null;
   contacts: CustomerContact[];
   provinces: Province[];
-  districts: District[];
-  communes: Commune[];
   /** Whether this person may move the credit limit. The trigger decides in the
       end; this only keeps the box from inviting an edit that would be refused. */
   canSetCredit: boolean;
@@ -133,13 +125,12 @@ export function CustomerForm({
       business_type: blank(draft.business_type),
       street_address: blank(draft.street_address),
       province_code: blank(draft.province_code),
-      district_code: blank(draft.district_code),
-      commune_code: blank(draft.commune_code),
-      // Only kept where no code was picked, so the two can never disagree about
-      // the same level.
+      // The province is the one level with a code, so its written form is kept
+      // only where nobody picked one. The district and the commune are words
+      // and nothing else.
       province_text: draft.province_code ? null : blank(draft.province_text),
-      district_text: draft.district_code ? null : blank(draft.district_text),
-      commune_text: draft.commune_code ? null : blank(draft.commune_text),
+      district_text: blank(draft.district_text),
+      commune_text: blank(draft.commune_text),
       landmark: blank(draft.landmark),
       zipcode: blank(draft.zipcode),
       latitude: parseCoordinate(draft.latitude, 90) ?? null,
@@ -317,8 +308,6 @@ export function CustomerForm({
           <AddressFields
             draft={draft}
             provinces={provinces}
-            districts={districts}
-            communes={communes}
             disabled={busy}
             onChange={(next) => {
               setDraft((d) => ({ ...d, ...next }));

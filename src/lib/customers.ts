@@ -120,8 +120,6 @@ export function statusProblem(target: CustomerStatus, note: string): string | nu
 }
 
 export type Province = { code: string; name: string; name_alt: string | null };
-export type District = Province & { province_code: string };
-export type Commune = Province & { district_code: string };
 
 export type Customer = {
   id: string;
@@ -130,8 +128,6 @@ export type Customer = {
   owner_id: string | null;
   street_address: string | null;
   province_code: string | null;
-  district_code: string | null;
-  commune_code: string | null;
   province_text: string | null;
   district_text: string | null;
   commune_text: string | null;
@@ -193,11 +189,10 @@ export type DirectoryCustomer = {
   last_visit_date: string | null;
   last_purchase_date: string | null;
   province_name: string | null;
+  /** The district and commune as the sheet writes them: words, not codes. */
   district_name: string | null;
   commune_name: string | null;
   province_code: string | null;
-  district_code: string | null;
-  commune_code: string | null;
   primary_contact_name: string | null;
   primary_contact_phone: string | null;
   primary_photo_path: string | null;
@@ -205,10 +200,10 @@ export type DirectoryCustomer = {
 };
 
 export const CUSTOMER_COLUMNS =
-  "id, shop_name, business_type, owner_id, street_address, province_code, district_code, commune_code, province_text, district_text, commune_text, landmark, zipcode, latitude, longitude, status, status_note, credit_limit_usd, remarks, last_visit_date, last_purchase_date";
+  "id, shop_name, business_type, owner_id, street_address, province_code, province_text, district_text, commune_text, landmark, zipcode, latitude, longitude, status, status_note, credit_limit_usd, remarks, last_visit_date, last_purchase_date";
 
 export const DIRECTORY_COLUMNS =
-  "id, shop_name, business_type, status, owner_id, owner_name, street_address, landmark, zipcode, latitude, longitude, credit_limit_usd, last_visit_date, last_purchase_date, province_name, district_name, commune_name, province_code, district_code, commune_code, primary_contact_name, primary_contact_phone, primary_photo_path, contact_count";
+  "id, shop_name, business_type, status, owner_id, owner_name, street_address, landmark, zipcode, latitude, longitude, credit_limit_usd, last_visit_date, last_purchase_date, province_name, district_name, commune_name, province_code, primary_contact_name, primary_contact_phone, primary_photo_path, contact_count";
 
 export const CONTACT_COLUMNS =
   "id, customer_id, name, position, phone, telegram_id, is_primary, sort_order, active";
@@ -357,19 +352,6 @@ export function groupByProvince(
 
 export function countCustomers(groups: CustomerGroup[]): number {
   return groups.reduce((total, group) => total + group.customers.length, 0);
-}
-
-/** Districts belonging to the chosen province, and communes to the district. */
-export function districtsIn(districts: District[], provinceCode: string): District[] {
-  return districts
-    .filter((d) => d.province_code === provinceCode)
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export function communesIn(communes: Commune[], districtCode: string): Commune[] {
-  return communes
-    .filter((c) => c.district_code === districtCode)
-    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**

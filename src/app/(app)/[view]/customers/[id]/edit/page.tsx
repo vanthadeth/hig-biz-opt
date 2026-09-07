@@ -6,10 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   CONTACT_COLUMNS,
   CUSTOMER_COLUMNS,
-  type Commune,
   type Customer,
   type CustomerContact,
-  type District,
   type Province,
 } from "@/lib/customers";
 import { CustomerForm } from "../../CustomerForm";
@@ -24,7 +22,7 @@ export default async function Page({
   const { view, id } = await params;
   const supabase = await createClient();
 
-  const [record, contacts, provinces, districts, communes, mine] = await Promise.all([
+  const [record, contacts, provinces, mine] = await Promise.all([
     supabase.from("customers").select(CUSTOMER_COLUMNS).eq("id", id).maybeSingle(),
     // Active only: a retired contact is not something the form should offer to
     // edit, and saving one back would quietly reinstate them.
@@ -36,8 +34,6 @@ export default async function Page({
       .order("is_primary", { ascending: false })
       .order("sort_order"),
     supabase.from("geo_provinces").select("code, name, name_alt").order("sort_order"),
-    supabase.from("geo_districts").select("code, province_code, name, name_alt").order("name"),
-    supabase.from("geo_communes").select("code, district_code, name, name_alt").order("name"),
     getMyPermissions(),
   ]);
 
@@ -61,8 +57,6 @@ export default async function Page({
         customer={record.data as unknown as Customer}
         contacts={(contacts.data ?? []) as unknown as CustomerContact[]}
         provinces={(provinces.data ?? []) as Province[]}
-        districts={(districts.data ?? []) as District[]}
-        communes={(communes.data ?? []) as Commune[]}
         canSetCredit={can(mine, "customer_credit", "edit")}
         viewKey={view}
       />

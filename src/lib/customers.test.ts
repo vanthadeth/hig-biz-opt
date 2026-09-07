@@ -3,7 +3,6 @@ import {
   addressLine,
   ageReceivables,
   AGEING_BUCKETS,
-  communesIn,
   coordinateProblem,
   contactHeading,
   formatAccuracy,
@@ -12,7 +11,6 @@ import {
   countCustomers,
   creditUsage,
   daysBetween,
-  districtsIn,
   groupByProvince,
   mapHref,
   matchesCustomer,
@@ -45,8 +43,6 @@ const shop = (over: Partial<DirectoryCustomer> = {}): DirectoryCustomer => ({
   district_name: null,
   commune_name: null,
   province_code: null,
-  district_code: null,
-  commune_code: null,
   primary_contact_name: null,
   primary_contact_phone: null,
   primary_photo_path: null,
@@ -204,30 +200,6 @@ describe("groupByProvince", () => {
   it("comes back empty when nothing matches", () => {
     expect(groupByProvince(rows, "nothing here")).toEqual([]);
     expect(countCustomers([])).toBe(0);
-  });
-});
-
-describe("districtsIn / communesIn", () => {
-  const districts = [
-    { code: "1201", province_code: "12", name: "Chamkar Mon", name_alt: null },
-    { code: "1202", province_code: "12", name: "Doun Penh", name_alt: null },
-    { code: "0801", province_code: "08", name: "Kandal Stueng", name_alt: null },
-  ];
-
-  it("offers only the districts of the chosen province", () => {
-    expect(districtsIn(districts, "12").map((d) => d.code)).toEqual(["1201", "1202"]);
-  });
-
-  it("offers nothing for a province with none imported", () => {
-    expect(districtsIn(districts, "07")).toEqual([]);
-  });
-
-  it("does the same for communes under a district", () => {
-    const communes = [
-      { code: "120101", district_code: "1201", name: "Tonle Bassac", name_alt: null },
-      { code: "120201", district_code: "1202", name: "Chey Chumneas", name_alt: null },
-    ];
-    expect(communesIn(communes, "1201").map((c) => c.code)).toEqual(["120101"]);
   });
 });
 

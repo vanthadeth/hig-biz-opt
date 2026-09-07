@@ -731,6 +731,7 @@ migration — add a new one.
 0044_free_quantity_and_discount_modes.sql
                               give some away, or discount in money
 0045_primary_currency.sql     which of the two prices a screen shows
+0046_sync_transforms.sql      shapes the sheet has that the database does not
 0047_visits.sql               check in, check out, and what the rep saw
 ```
 

@@ -223,7 +223,13 @@ export function OpenVisitPage({
               </p>
             </div>
           </div>
-          <Chip tone={visit.out_of_range ? "warn" : "accent"}>
+          {/* Neutral when there is no distance: green would read as "close
+              enough", which is a claim, and unknown is not one. */}
+          <Chip
+            tone={
+              visit.distance_m === null ? "neutral" : visit.out_of_range ? "warn" : "accent"
+            }
+          >
             {distanceLabel(visit.distance_m)}
           </Chip>
         </div>

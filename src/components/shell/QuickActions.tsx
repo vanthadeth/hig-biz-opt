@@ -5,8 +5,7 @@ import { Icon } from "@/components/Icon";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
 import { KIOSK_SESSION_KEY } from "@/lib/kiosk";
-import { quickActionsFor } from "@/lib/quickActions";
-import { can } from "@/lib/permissions";
+import { quickTiles, splitTiles, type QuickTile } from "@/lib/quickActions";
 import { useShell } from "./ShellContext";
 import { useState } from "react";
 
@@ -21,11 +20,9 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
   const { nav, permissions, view } = useShell();
   const [locking, setLocking] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
-  const actions = quickActionsFor(nav, permissions, view.key);
-
-  // Only where there is a catalogue to browse. The lock is only worth anything
-  // if the one thing left reachable is the thing the customer is holding it for.
-  const canBrowse = can(permissions, "product", "view");
+  // The catalogue tile is only offered where there is a catalogue to browse;
+  // `quickTiles` decides that from the same permission the database enforces.
+  const { lead, rest } = splitTiles(quickTiles(nav, permissions, view.key));
 
   /**
    * Hand the phone over.
@@ -71,74 +68,100 @@ export function QuickActions({ open, onClose }: { open: boolean; onClose: () => 
     }
   }
 
+  function Tile({ tile, i }: { tile: QuickTile; i: number }) {
+    const inside = (
+      <>
+        <span className="grid size-11 place-items-center rounded-2xl bg-brand/10 text-brand">
+          <Icon name={tile.icon} className="size-6" />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold">
+            {tile.key === "catalog" && locking ? "Locking…" : tile.label}
+          </span>
+          {tile.hint && (
+            // Wrapped rather than truncated: a hint cut off mid-word is worse
+            // than no hint, and these are three or four words.
+            <span className="block text-xs leading-tight text-muted">{tile.hint}</span>
+          )}
+        </span>
+      </>
+    );
+
+    const shell =
+      "pressable flex min-h-24 flex-col items-start justify-between gap-2 rounded-2xl border border-line p-3 text-left disabled:opacity-60";
+
+    // The catalogue locks the app rather than navigating, so it is a button
+    // however much it looks like its neighbours.
+    return tile.href === null ? (
+      <button
+        type="button"
+        onClick={startBrowsing}
+        disabled={locking}
+        style={{ "--i": i } as React.CSSProperties}
+        className={shell}
+      >
+        {inside}
+      </button>
+    ) : (
+      <Link
+        href={tile.href}
+        onClick={() => {
+          haptic("tap");
+          onClose();
+        }}
+        style={{ "--i": i } as React.CSSProperties}
+        className={shell}
+      >
+        {inside}
+      </Link>
+    );
+  }
+
   return (
     <Sheet open={open} onClose={onClose} title="Quick actions">
-      {canBrowse && (
-        <div className="px-1 pb-1">
-          <button
-            type="button"
-            onClick={startBrowsing}
-            disabled={locking}
-            className="pressable flex min-h-14 w-full items-center gap-3 rounded-2xl px-3 text-left hover:bg-subtle disabled:opacity-60"
-          >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/12 text-tint-3-fg">
-              <Icon name="box" className="size-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">
-                {locking ? "Locking…" : "Catalog"}
-              </span>
-              {/* Said before it happens, because handing somebody your phone is
-                  not a thing to discover you have done. */}
-              <span className="block text-xs text-muted">
-                Hand the phone over. Everything else needs your PIN.
-              </span>
-            </span>
-            <Icon name="chevron" className="size-4 shrink-0 text-muted" />
-          </button>
-          {lockError && (
-            <p role="alert" className="px-3 pb-1 pt-1 text-xs text-danger">
-              {lockError}{" "}
-              <Link
-                href={`/${view.key}/profile`}
-                onClick={() => onClose()}
-                className="underline"
-              >
-                Go to your profile
-              </Link>
-            </p>
-          )}
-        </div>
-      )}
+      <div className="space-y-4 p-3">
+        {lead.length > 0 && (
+          <div className="stagger grid grid-cols-2 gap-2">
+            {lead.map((tile, i) => (
+              <Tile key={tile.key} tile={tile} i={i} />
+            ))}
+          </div>
+        )}
 
-      {actions.length === 0 ? (
-        !canBrowse && (
-          <p className="px-3 pb-4 pt-1 text-sm text-muted">
+        {lockError && (
+          <p role="alert" className="text-xs text-danger">
+            {lockError}{" "}
+            <Link
+              href={`/${view.key}/profile`}
+              onClick={() => onClose()}
+              className="underline"
+            >
+              Go to your profile
+            </Link>
+          </p>
+        )}
+
+        {rest.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Also
+            </p>
+            <ul className="stagger grid grid-cols-2 gap-2">
+              {rest.map((tile, i) => (
+                <li key={tile.key} className="contents">
+                  <Tile tile={tile} i={lead.length + i} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {lead.length === 0 && rest.length === 0 && (
+          <p className="py-4 text-center text-sm text-muted">
             You do not have permission to create anything in {view.name}.
           </p>
-        )
-      ) : (
-        <ul className="stagger">
-          {actions.map((action, i) => (
-            <li key={action.moduleKey} style={{ "--i": i } as React.CSSProperties}>
-              <Link
-                href={action.href}
-                onClick={() => {
-                  haptic("tap");
-                  onClose();
-                }}
-                className="pressable flex min-h-14 items-center gap-3 rounded-2xl px-3 hover:bg-subtle"
-              >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
-                  <Icon name={action.icon} className="size-5" />
-                </span>
-                <span className="flex-1 text-sm font-medium">{action.label}</span>
-                <Icon name="chevron" className="size-4 text-muted" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+        )}
+      </div>
     </Sheet>
   );
 }

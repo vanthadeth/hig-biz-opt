@@ -145,7 +145,17 @@ export function VisitRecord({
             </h1>
             <p className="text-xs text-muted">{dayHeading(visit.checked_in_at)}</p>
           </div>
-          <Chip tone={cancelled ? "danger" : visit.out_of_range ? "warn" : "accent"}>
+          <Chip
+            tone={
+              cancelled
+                ? "danger"
+                : visit.distance_m === null
+                  ? "neutral"
+                  : visit.out_of_range
+                    ? "warn"
+                    : "accent"
+            }
+          >
             {cancelled ? "Cancelled" : distanceLabel(visit.distance_m)}
           </Chip>
         </div>

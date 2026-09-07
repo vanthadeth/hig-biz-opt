@@ -7,7 +7,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ModuleTile } from "@/components/ui/ModuleTile";
 import { StatTile, type TintIndex } from "@/components/ui/StatTile";
 import { useShell } from "@/components/shell/ShellContext";
-import { quickActionsFor } from "@/lib/quickActions";
+import { quickTiles } from "@/lib/quickActions";
 import type { HomeSummary } from "@/lib/dashboard";
 
 /** Tints cycle so a grid of any length stays varied without hard-coding. */
@@ -23,7 +23,7 @@ export function HomeDashboard({
   today: string;
 }) {
   const { viewer, view, views, nav, permissions } = useShell();
-  const actions = quickActionsFor(nav, permissions, view.key);
+  const actions = quickTiles(nav, permissions, view.key);
   const firstName = viewer.nickname || viewer.full_name.split(" ")[0];
 
   return (
@@ -46,20 +46,26 @@ export function HomeDashboard({
       {/* Quick actions ------------------------------------------------------ */}
       {actions.length > 0 && (
         <section>
-          <SectionHeader title="Create" caption="What you can add in this workspace" />
+          <SectionHeader title="Quick actions" caption="What you reach for most" />
           <div className="mt-3 grid grid-cols-2 gap-3">
-            {actions.map((action) => (
-              <Link
-                key={action.moduleKey}
-                href={action.href}
-                className="pressable flex items-center gap-2.5 rounded-2xl border border-line bg-surface px-3 py-3 shadow-[var(--shadow-card)] hover:border-brand/30"
-              >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
-                  <Icon name={action.icon} className="size-4.5" />
-                </span>
-                <span className="min-w-0 truncate text-sm font-medium leading-tight">{action.short}</span>
-              </Link>
-            ))}
+            {/* The catalogue is left out here: it locks the phone, which is
+                the centre button's job, not a link on the home screen. */}
+            {actions
+              .filter((action) => action.href !== null)
+              .map((action) => (
+                <Link
+                  key={action.key}
+                  href={action.href!}
+                  className="pressable flex items-center gap-2.5 rounded-2xl border border-line bg-surface px-3 py-3 shadow-[var(--shadow-card)] hover:border-brand/30"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+                    <Icon name={action.icon} className="size-4.5" />
+                  </span>
+                  <span className="min-w-0 truncate text-sm font-medium leading-tight">
+                    {action.label}
+                  </span>
+                </Link>
+              ))}
           </div>
         </section>
       )}

@@ -304,3 +304,24 @@ describe("calling the visit off", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
+
+describe("what colour the distance is", () => {
+  const toneOf = (text: string) =>
+    screen.getByText(text).className;
+
+  it("is not the good-news colour when there is no distance at all", () => {
+    draw({ customer_id: null, customer: null, distance_m: null });
+    // Green would read as "close enough", which is a claim. Unknown is not one.
+    expect(toneOf("Distance unknown")).not.toMatch(/accent/);
+  });
+
+  it("but is when the rep was inside the radius", () => {
+    draw();
+    expect(toneOf("90 m away")).toMatch(/accent/);
+  });
+
+  it("and warns when they were outside it", () => {
+    draw({ distance_m: 1500, out_of_range: true });
+    expect(toneOf("1.5 km away")).toMatch(/warn/);
+  });
+});

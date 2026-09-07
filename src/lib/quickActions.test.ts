@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quickActionsFor } from "./quickActions";
+import { quickTiles, splitTiles } from "./quickActions";
 import type { NavItem, Permission } from "./access";
 
 const nav = (...keys: string[]): NavItem[] =>
@@ -18,88 +18,95 @@ const perm = (module_key: string, action: Permission["action"]): Permission => (
   scope: "own",
 });
 
-describe("quickActionsFor", () => {
-  it("offers only modules the caller may add to", () => {
-    const actions = quickActionsFor(
-      nav("customer", "sale_order", "payment"),
-      [perm("customer", "add"), perm("payment", "add")],
-      "sales",
-    );
-    expect(actions.map((a) => a.moduleKey)).toEqual(["customer", "payment"]);
+const ALL = nav("product", "visit", "customer", "sale_order", "payment", "user");
+const REP = [
+  perm("product", "view"),
+  perm("visit", "add"),
+  perm("customer", "add"),
+  perm("customer", "view"),
+  perm("sale_order", "add"),
+];
+
+describe("the four that lead", () => {
+  /**
+   * The order is the point of this file. A rep opens the app to show the
+   * catalogue, start a visit, add the shop that turned out not to be on the
+   * books, or ask which shop they are outside — in that order of frequency.
+   */
+  it("come in the order somebody actually reaches for them", () => {
+    const { lead } = splitTiles(quickTiles(ALL, REP, "sales"));
+    expect(lead.map((t) => t.key)).toEqual(["catalog", "visit", "customer", "nearest"]);
   });
 
-  it("ignores view, edit and delete", () => {
-    // Being able to read customers is not permission to create one.
-    const actions = quickActionsFor(
-      nav("customer"),
-      [perm("customer", "view"), perm("customer", "edit"), perm("customer", "delete")],
-      "sales",
-    );
-    expect(actions).toEqual([]);
+  it("and the rest follow underneath, in registry order", () => {
+    const { rest } = splitTiles(quickTiles(ALL, REP, "sales"));
+    expect(rest.map((t) => t.key)).toEqual(["sale_order"]);
   });
 
-  it("never offers a module missing from this view's navigation", () => {
-    // The permission exists, but the module is not part of this workspace.
-    const actions = quickActionsFor(nav("customer"), [perm("invoice", "add")], "sales");
-    expect(actions).toEqual([]);
+  it("point at the right places", () => {
+    const tiles = quickTiles(ALL, REP, "sales");
+    const href = (key: string) => tiles.find((t) => t.key === key)?.href;
+
+    expect(href("visit")).toBe("/sales/visits");
+    expect(href("customer")).toBe("/sales/customers/new");
+    expect(href("nearest")).toBe("/sales/customers/nearest");
+    // The catalogue locks the app rather than navigating, so it has no href
+    // at all — anything else would let it be opened without the lock going on.
+    expect(href("catalog")).toBeNull();
+  });
+});
+
+describe("what a person may not do is not offered", () => {
+  it("no catalogue without permission to see products", () => {
+    const tiles = quickTiles(ALL, [perm("visit", "add")], "sales");
+    expect(tiles.map((t) => t.key)).not.toContain("catalog");
   });
 
-  it("uses the module's own wording", () => {
-    const actions = quickActionsFor(nav("sale_order"), [perm("sale_order", "add")], "sales");
-    expect(actions[0].label).toBe("New sales order");
+  it("no new visit without permission to add one", () => {
+    const tiles = quickTiles(ALL, [perm("product", "view")], "sales");
+    expect(tiles.map((t) => t.key)).not.toContain("visit");
   });
 
-  it("also carries the bare module name for narrow tiles", () => {
-    const orders: NavItem[] = [
-      {
-        module_key: "sale_order",
-        name: "Sales Order",
-        icon: "cart",
-        href: "sale-orders",
-        sort_order: 1,
-        group_name: "Selling",
-      },
-    ];
-    const actions = quickActionsFor(orders, [perm("sale_order", "add")], "sales");
-    expect(actions[0].short).toBe("Sales Order");
-    expect(actions[0].label).toBe("New sales order");
+  /**
+   * Reading a customer and creating one are different permissions, and a rep
+   * who may look one up but not add one gets exactly one of the two tiles.
+   */
+  it("nor a new customer to somebody who may only look them up", () => {
+    const tiles = quickTiles(ALL, [perm("customer", "view")], "sales");
+    expect(tiles.map((t) => t.key)).toEqual(["nearest"]);
   });
 
-  it("falls back to the module name for a module it has never heard of", () => {
-    // A module added later still gets a usable action with no code change.
-    const actions = quickActionsFor(
-      [
-        {
-          module_key: "delivery",
-          name: "Delivery",
-          icon: "box",
-          href: "deliveries",
-          sort_order: 1,
-          group_name: "Stock",
-        },
-      ],
-      [perm("delivery", "add")],
-      "warehouse",
-    );
-    expect(actions[0].label).toBe("New delivery");
+  it("and nor the other way round", () => {
+    const tiles = quickTiles(ALL, [perm("customer", "add")], "sales");
+    expect(tiles.map((t) => t.key)).toEqual(["customer"]);
   });
 
-  it("builds hrefs inside the current view", () => {
-    const customers: NavItem[] = [
-      {
-        module_key: "customer",
-        name: "Customer",
-        icon: "building",
-        href: "customers",
-        sort_order: 1,
-        group_name: "Selling",
-      },
-    ];
-    const actions = quickActionsFor(customers, [perm("customer", "add")], "accounting");
-    expect(actions[0].href).toBe("/accounting/customers");
+  it("offers nothing at all to somebody with no permissions", () => {
+    expect(quickTiles(ALL, [], "sales")).toEqual([]);
+  });
+});
+
+describe("modules that are not in this view", () => {
+  it("are left out even when the permission exists", () => {
+    // Holding visit.add while standing in a view that has no visit module is
+    // a menu entry pointing at a page this view does not have.
+    const tiles = quickTiles(nav("customer"), REP, "admin");
+    expect(tiles.map((t) => t.key)).not.toContain("visit");
+  });
+});
+
+describe("naming the rest", () => {
+  it("uses the wording each module goes by", () => {
+    const tiles = quickTiles(ALL, [...REP, perm("payment", "add"), perm("user", "add")], "sales");
+    const label = (key: string) => tiles.find((t) => t.key === key)?.label;
+
+    expect(label("payment")).toBe("Record payment");
+    expect(label("user")).toBe("New employee");
+    expect(label("sale_order")).toBe("New sales order");
   });
 
-  it("returns nothing when no permissions are held", () => {
-    expect(quickActionsFor(nav("customer"), [], "sales")).toEqual([]);
+  it("and falls back on the module's own name for one added later", () => {
+    const tiles = quickTiles(nav("shipment"), [perm("shipment", "add")], "sales");
+    expect(tiles[0].label).toBe("New shipment");
   });
 });

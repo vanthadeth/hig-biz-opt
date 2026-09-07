@@ -11,12 +11,19 @@ import { createClient } from "@/lib/supabase/client";
 import { useScrollHidden } from "@/hooks/useScrollDirection";
 import { useShell, usePageTitle } from "./ShellContext";
 
-export function TitleBar() {
+/**
+ * `title` is for a shell whose pages are not modules. The heading normally comes
+ * from the URL and the module registry — one place, so the bar and the page can
+ * never disagree — but My Visit's three screens have no rows in that registry,
+ * and its own `visitTitle` is the single place its headings come from instead.
+ */
+export function TitleBar({ title }: { title?: string } = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const hidden = useScrollHidden();
   const { viewer, view, views } = useShell();
-  const title = usePageTitle(pathname);
+  const derived = usePageTitle(pathname);
+  const heading = title ?? derived;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -52,7 +59,7 @@ export function TitleBar() {
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-1 px-4">
 
         <h1 className="min-w-0 flex-1 truncate pr-2 text-base font-semibold tracking-tight">
-          {title}
+          {heading}
         </h1>
 
         <Notifications />

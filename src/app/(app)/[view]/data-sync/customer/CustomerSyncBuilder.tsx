@@ -11,6 +11,9 @@ import { spreadsheetIdFrom, toMinutes, type IntervalUnit } from "@/lib/sync";
 import {
   CUSTOMER_FIELDS,
   customerSyncProblem,
+  guessPicks,
+  guessSummary,
+  looksLikeProvinceCodes,
   planCustomerSync,
   planSummary,
   type ContactSlot,
@@ -52,6 +55,9 @@ export function CustomerSyncBuilder({ viewKey }: { viewKey: string }) {
     Array.from({ length: SLOTS }, () => ({ phone: "", label: "" })),
   );
 
+  const [provinceIsCode, setProvinceIsCode] = useState(false);
+  const [guessNote, setGuessNote] = useState<string | null>(null);
+
   const [every, setEvery] = useState("1");
   const [unit, setUnit] = useState<IntervalUnit>("hours");
 
@@ -68,6 +74,7 @@ export function CustomerSyncBuilder({ viewKey }: { viewKey: string }) {
     fields,
     locationColumn,
     provinceColumn,
+    provinceIsCode,
     contacts,
     intervalMinutes: toMinutes(Number(every) || 1, unit),
   };
@@ -102,10 +109,40 @@ export function CustomerSyncBuilder({ viewKey }: { viewKey: string }) {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "The sheet could not be read.");
 
+      const found: string[] = body.headers ?? [];
+      const rows: unknown[][] = body.samples ?? [];
+
       setTabs(body.tabs ?? []);
-      setHeaders(body.headers ?? []);
-      setSamples(body.samples ?? []);
+      setHeaders(found);
+      setSamples(rows);
       if (!tab && body.tabs?.length === 1) setTab(body.tabs[0]);
+
+      // The sheet has just named its own columns. Reading them is work for the
+      // machine, and everything below is now a review rather than thirty
+      // questions.
+      const guess = guessPicks(found);
+      setSheetIdColumn(guess.sheetIdColumn);
+      setFields(guess.fields);
+      setLocationColumn(guess.locationColumn);
+      setProvinceColumn(guess.provinceColumn);
+      setContacts(
+        Array.from({ length: SLOTS }, (_, i) => guess.contacts[i] ?? { phone: "", label: "" }),
+      );
+      setGuessNote(guessSummary(guess, found));
+
+      // Which of the two things a province column can be is decided from its
+      // real values, not assumed: a column of codes read as IDs looks up
+      // nothing and leaves every customer with no province at all.
+      if (guess.provinceColumn) {
+        const at = found.indexOf(guess.provinceColumn);
+        const { data } = await supabase.from("geo_provinces").select("code");
+        setProvinceIsCode(
+          looksLikeProvinceCodes(
+            rows.map((row) => row[at]),
+            ((data ?? []) as { code: string }[]).map((p) => p.code),
+          ),
+        );
+      }
     } catch (e) {
       haptic("error");
       setError(e instanceof Error ? e.message : "The sheet could not be read.");
@@ -223,6 +260,9 @@ export function CustomerSyncBuilder({ viewKey }: { viewKey: string }) {
               title="The customer"
               caption="Which column holds what. Everything hangs off the ID."
             />
+            {guessNote && (
+              <p className="rounded-lg bg-subtle p-2.5 text-xs text-muted">{guessNote}</p>
+            )}
             <SelectField
               label="Customer ID in the sheet"
               value={sheetIdColumn}
@@ -258,13 +298,39 @@ export function CustomerSyncBuilder({ viewKey }: { viewKey: string }) {
               hint="Split into latitude and longitude. A cell that is not two numbers is left empty rather than half filled."
             />
             <SelectField
-              label="Province ID"
+              label="Province"
               value={provinceColumn}
               onChange={setProvinceColumn}
               options={options}
               optional
-              hint="Looked up on the provinces tab. Sync the provinces first, or run this again afterwards."
+              hint={
+                provinceIsCode
+                  ? "These values are province codes this database already knows, so they are written straight through."
+                  : "These values look like the province's ID on its own tab, so they are looked up there. Sync the provinces first, or run this again afterwards."
+              }
             />
+            {provinceColumn && (
+              /* Read off the column's real values, and overridable, because
+                 getting it wrong is silent: every customer lands with no
+                 province rather than with a wrong one. */
+              <label className="flex items-start gap-2.5 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  checked={provinceIsCode}
+                  onChange={(e) => setProvinceIsCode(e.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 accent-brand"
+                />
+                <span>
+                  This column already holds the province code
+                  {samples[0] && provinceColumn && headers.indexOf(provinceColumn) >= 0
+                    ? ` — the first row says "${String(
+                        samples[0][headers.indexOf(provinceColumn)] ?? "",
+                      ).slice(0, 16)}"`
+                    : ""}
+                  .
+                </span>
+              </label>
+            )}
           </Card>
 
           <Card className="space-y-3 p-4">

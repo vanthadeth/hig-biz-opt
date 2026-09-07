@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   customerSyncProblem,
+  guessPicks,
+  guessSummary,
+  headerKey,
+  looksLikeProvinceCodes,
   planCustomerSync,
   planSummary,
   type CustomerSyncPicks,
@@ -14,6 +18,7 @@ const picks = (over: Partial<CustomerSyncPicks> = {}): CustomerSyncPicks => ({
   fields: { shop_name: "Shop", code: "Code" },
   locationColumn: "Location",
   provinceColumn: "Province ID",
+  provinceIsCode: false,
   contacts: [
     { phone: "Phone 1", label: "Label 1" },
     { phone: "Phone 2", label: "Label 2" },
@@ -179,5 +184,137 @@ describe("what the button says it will do", () => {
     expect(planSummary(planCustomerSync(picks({ contacts: [] })))).toBe(
       "One sync: customers.",
     );
+  });
+});
+
+// The headers of the sheet this was built for, verbatim. A guesser tested only
+// against headers invented for the test is a guesser tested against nothing.
+const REAL_HEADERS = [
+  "ID", "QBID", "NAME", "BIZ_TYPE", "PH1", "PH1L", "PH2", "PH2L", "PH3", "PH3L",
+  "STREET", "COMMUNE", "DISTRICT", "PROVINCE_ID", "LANDMARK", "LAT/LONG",
+  "REMARKS", "ASSIGN_TO", "ACTIVE", "CR", "CRTS", "MD", "MDTS",
+  "PREFER_TRUCK_LIST", "PIC_ID", "CREDIT_LIMIT", "EXT_AR_DAY",
+  "LAST_VISIT_DATE", "LAST_PURCHASE_DATE", "BIZ_TYPE_2", "ZIPCODE", "ZONE", "CLASS",
+];
+
+describe("reading a header for what it says", () => {
+  it("throws away the punctuation people vary and keeps the words", () => {
+    expect(headerKey("LAT/LONG")).toBe("lat long");
+    expect(headerKey("BIZ_TYPE")).toBe("biz type");
+    expect(headerKey("  Shop  Name ")).toBe("shop name");
+  });
+});
+
+describe("the mapping the sheet already describes", () => {
+  const guess = guessPicks(REAL_HEADERS);
+
+  it("finds the column everything hangs off", () => {
+    expect(guess.sheetIdColumn).toBe("ID");
+  });
+
+  it("and the plain fields", () => {
+    expect(guess.fields.shop_name).toBe("NAME");
+    expect(guess.fields.business_type).toBe("BIZ_TYPE");
+    expect(guess.fields.street_address).toBe("STREET");
+    expect(guess.fields.landmark).toBe("LANDMARK");
+    expect(guess.fields.district_text).toBe("DISTRICT");
+    expect(guess.fields.commune_text).toBe("COMMUNE");
+    expect(guess.fields.zipcode).toBe("ZIPCODE");
+    expect(guess.fields.remarks).toBe("REMARKS");
+  });
+
+  it("the one cell holding two coordinates", () => {
+    expect(guess.locationColumn).toBe("LAT/LONG");
+  });
+
+  it("and the province, without mistaking its ID for its name", () => {
+    expect(guess.provinceColumn).toBe("PROVINCE_ID");
+    expect(guess.fields.province_text).toBeUndefined();
+  });
+
+  it("pairs each phone with the label beside it", () => {
+    expect(guess.contacts).toEqual([
+      { phone: "PH1", label: "PH1L" },
+      { phone: "PH2", label: "PH2L" },
+      { phone: "PH3", label: "PH3L" },
+    ]);
+  });
+
+  // The failure that cost a whole run: QBID went to customers.code, which is
+  // unique, and the sheet had two rows the database would not take together.
+  it("never guesses the customer code", () => {
+    expect(guess.fields.code).toBeUndefined();
+  });
+
+  // A near-miss is worse than a blank, because a blank is visible.
+  it("and never mistakes a near-miss for the real column", () => {
+    expect(Object.values(guess.fields)).not.toContain("BIZ_TYPE_2");
+    expect(guess.sheetIdColumn).not.toBe("PIC_ID");
+    expect(guess.contacts.map((c) => c.phone)).not.toContain("PH1L");
+  });
+
+  it("leaves what it does not recognise alone", () => {
+    const claimed = [
+      guess.sheetIdColumn, guess.locationColumn, guess.provinceColumn,
+      ...Object.values(guess.fields),
+      ...guess.contacts.flatMap((c) => [c.phone, c.label]),
+    ];
+    for (const header of ["ASSIGN_TO", "CREDIT_LIMIT", "ZONE", "CLASS", "QBID"]) {
+      expect(claimed).not.toContain(header);
+    }
+  });
+
+  it("and produces picks the builder is willing to create", () => {
+    expect(customerSyncProblem({ ...picks(), ...guess })).toBeNull();
+  });
+});
+
+describe("a sheet that says none of it", () => {
+  const guess = guessPicks(["Col A", "Col B", "Col C"]);
+
+  it("guesses nothing rather than something", () => {
+    expect(guess.sheetIdColumn).toBe("");
+    expect(guess.fields).toEqual({});
+    expect(guess.locationColumn).toBe("");
+    expect(guess.contacts.every((c) => c.phone === "" && c.label === "")).toBe(true);
+  });
+
+  it("and says so, so nobody waits for a form to fill itself in", () => {
+    expect(guessSummary(guess, ["Col A", "Col B", "Col C"]))
+      .toMatch(/none of these headers/i);
+  });
+});
+
+describe("what the screen says about a guess", () => {
+  it("counts the columns it filled in against the sheet's own", () => {
+    expect(guessSummary(guessPicks(REAL_HEADERS), REAL_HEADERS))
+      .toBe("Filled in from 17 of the sheet's 33 columns. Check them, and choose anything left over.");
+  });
+});
+
+describe("whether a province column holds codes or IDs", () => {
+  const codes = ["SRP", "PNH", "KKG", "BTB"];
+
+  it("reads codes when the column is full of them", () => {
+    expect(looksLikeProvinceCodes(["SRP", "PNH", "SRP", "BTB"], codes)).toBe(true);
+  });
+
+  it("and IDs when it is not", () => {
+    expect(looksLikeProvinceCodes(["P-001", "P-002", "P-003"], codes)).toBe(false);
+  });
+
+  // Sheets have blanks and a stray typo; one bad cell must not send a whole
+  // column down the path that silently writes no province at all.
+  it("tolerates a blank and a typo", () => {
+    expect(looksLikeProvinceCodes(["SRP", "", "PNH", "SRPP"], codes)).toBe(true);
+  });
+
+  it("case and spacing are not the question being asked", () => {
+    expect(looksLikeProvinceCodes([" srp ", "pnh"], codes)).toBe(true);
+  });
+
+  it("and an empty column decides nothing, so it takes the safe reading", () => {
+    expect(looksLikeProvinceCodes([], codes)).toBe(false);
+    expect(looksLikeProvinceCodes(["SRP"], [])).toBe(false);
   });
 });

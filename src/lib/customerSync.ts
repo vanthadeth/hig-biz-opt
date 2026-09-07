@@ -38,8 +38,19 @@ export type CustomerSyncPicks = {
   fields: Partial<Record<CustomerField, string>>;
   /** The one cell holding "latitude, longitude". */
   locationColumn: string;
-  /** The sheet column holding the province's ID on its own tab. */
+  /** The sheet column that says which province. */
   provinceColumn: string;
+  /**
+   * Whether that column already holds the province's own code.
+   *
+   * Two sheets say "province" two ways: one writes the code this database
+   * keys provinces by ("SRP"), the other writes the ID the province has on
+   * its own tab, which has to be looked up. Guessing wrong is expensive and
+   * silent — every customer lands with no province at all — so this is
+   * decided by comparing the column's real values against the province list
+   * rather than by assuming.
+   */
+  provinceIsCode: boolean;
   contacts: ContactSlot[];
   intervalMinutes: number;
 };
@@ -115,9 +126,10 @@ export function planCustomerSync(picks: CustomerSyncPicks): PlannedSync[] {
   if (picks.provinceColumn.trim()) {
     maps.push({
       ...plain(picks.provinceColumn.trim(), "province_code", order++),
-      // The cell holds the province's ID on its own tab, not its code. Left
-      // null when the provinces have not been synced yet.
-      reference_table: "geo_provinces",
+      // A column that already holds the code is written straight through. One
+      // that holds the province's ID on its own tab is looked up, and lands
+      // null while the provinces have not been synced yet.
+      reference_table: picks.provinceIsCode ? null : "geo_provinces",
     });
   }
 
@@ -176,6 +188,158 @@ export function planCustomerSync(picks: CustomerSyncPicks): PlannedSync[] {
   });
 
   return planned;
+}
+
+// Reading the sheet's own headers --------------------------------------------------------
+
+/**
+ * A header reduced to what it is trying to say.
+ *
+ * Underscores, slashes, case and stray punctuation are how one person writes
+ * "LAT/LONG" and another writes "Lat Long". None of it identifies anything.
+ */
+export function headerKey(header: string): string {
+  return header
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * The headers a target answers to, and only those.
+ *
+ * Matched whole, never by containment. "BIZ_TYPE_2" is not the business type
+ * and "PH1L" is not the first phone, and a substring rule that got either
+ * wrong would put the mistake in a column somebody has to notice rather than
+ * in an empty box they cannot miss. A header nobody claims stays unmapped and
+ * is chosen by hand — a confident guess or none.
+ */
+const FIELD_HEADERS: { field: CustomerField; headers: string[] }[] = [
+  { field: "shop_name", headers: ["name", "shop name", "customer name", "shop"] },
+  { field: "business_type", headers: ["biz type", "business type"] },
+  { field: "street_address", headers: ["street", "street address", "address"] },
+  { field: "landmark", headers: ["landmark"] },
+  { field: "province_text", headers: ["province", "province name"] },
+  { field: "district_text", headers: ["district", "district name"] },
+  { field: "commune_text", headers: ["commune", "commune name"] },
+  { field: "zipcode", headers: ["zipcode", "zip code", "zip", "postal code", "postcode"] },
+  { field: "remarks", headers: ["remarks", "remark", "note", "notes"] },
+];
+
+const ID_HEADERS = ["id", "customer id", "cus id", "sheet id"];
+const PROVINCE_ID_HEADERS = ["province id", "province code"];
+const LOCATION_HEADERS = [
+  "lat long", "lat lng", "latlong", "latitude longitude",
+  "gps", "location", "coordinate", "coordinates",
+];
+
+const phoneHeaders = (n: number) => [`ph${n}`, `phone ${n}`, `phone${n}`, `tel ${n}`, `tel${n}`];
+const labelHeaders = (n: number) => [`ph${n}l`, `ph${n} label`, `phone ${n} label`, `label ${n}`];
+
+/**
+ * Everything this sheet's headers already say, filled in.
+ *
+ * The point of the customer builder was never to ask thirty questions; it was
+ * to say the two things an ordinary mapping cannot — a location in one cell,
+ * and three phones in the customer's row. The rest is a spreadsheet naming its
+ * own columns, and reading them is work for the machine.
+ *
+ * The customer code is deliberately never guessed. It is unique in this
+ * database, sheets carry compound identifiers in columns that look like codes,
+ * and a wrong guess fails the whole run on a duplicate key rather than leaving
+ * one field empty.
+ */
+export function guessPicks(headers: string[]): Pick<
+  CustomerSyncPicks,
+  "sheetIdColumn" | "fields" | "locationColumn" | "provinceColumn" | "contacts"
+> {
+  const byKey = new Map<string, string>();
+  for (const header of headers) {
+    const key = headerKey(header);
+    // First wins, matching how the row builder reads a sheet with a repeated
+    // column name.
+    if (key !== "" && !byKey.has(key)) byKey.set(key, header);
+  }
+
+  const taken = new Set<string>();
+  const claim = (candidates: string[]): string => {
+    for (const candidate of candidates) {
+      const header = byKey.get(candidate);
+      if (header !== undefined && !taken.has(header)) {
+        taken.add(header);
+        return header;
+      }
+    }
+    return "";
+  };
+
+  // The province's own ID first: "PROVINCE_ID" must not be claimed as the
+  // written province name by a looser rule further down.
+  const provinceColumn = claim(PROVINCE_ID_HEADERS);
+  const sheetIdColumn = claim(ID_HEADERS);
+
+  const fields: Partial<Record<CustomerField, string>> = {};
+  for (const { field, headers: candidates } of FIELD_HEADERS) {
+    const found = claim(candidates);
+    if (found) fields[field] = found;
+  }
+
+  const contacts: ContactSlot[] = [1, 2, 3].map((n) => ({
+    phone: claim(phoneHeaders(n)),
+    label: claim(labelHeaders(n)),
+  }));
+
+  return {
+    sheetIdColumn,
+    fields,
+    locationColumn: claim(LOCATION_HEADERS),
+    provinceColumn,
+    contacts,
+  };
+}
+
+/**
+ * Whether the province column holds codes this database already knows.
+ *
+ * Read off the sheet's own sample rows rather than assumed, because the two
+ * readings fail in opposite directions and one of them fails silently: a
+ * column of codes treated as IDs looks up nothing and leaves every customer
+ * with no province at all.
+ *
+ * A majority is enough. Sheets have blanks and a stray typo, and demanding
+ * every value match would send a whole column down the wrong path for one bad
+ * cell.
+ */
+export function looksLikeProvinceCodes(values: unknown[], codes: string[]): boolean {
+  const known = new Set(codes.map((code) => code.trim().toLowerCase()));
+  const seen = values
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter((value) => value !== "");
+
+  if (seen.length === 0 || known.size === 0) return false;
+  return seen.filter((value) => known.has(value)).length * 2 > seen.length;
+}
+
+/** "Ten of thirty-three columns matched" — what the screen says about a guess. */
+export function guessSummary(
+  picks: Pick<
+    CustomerSyncPicks,
+    "sheetIdColumn" | "fields" | "locationColumn" | "provinceColumn" | "contacts"
+  >,
+  headers: string[],
+): string {
+  const used = new Set(
+    [
+      picks.sheetIdColumn,
+      picks.locationColumn,
+      picks.provinceColumn,
+      ...Object.values(picks.fields),
+      ...picks.contacts.flatMap((slot) => [slot.phone, slot.label]),
+    ].filter((header): header is string => Boolean(header)),
+  );
+
+  if (used.size === 0) return "None of these headers is one I recognise. Choose them below.";
+  return `Filled in from ${used.size} of the sheet's ${headers.length} columns. Check them, and choose anything left over.`;
 }
 
 /** What is wrong with the picks, or null when nothing is. */

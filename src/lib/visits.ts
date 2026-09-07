@@ -45,7 +45,8 @@ export function optionsOf(options: VisitOption[], kind: VisitOptionKind): VisitO
 export type VisitRow = {
   id: string;
   user_id: string;
-  customer_id: string;
+  /** Null is a visit somewhere that is not a shop, not a missing value. */
+  customer_id: string | null;
   checked_in_at: string;
   checked_out_at: string | null;
   in_latitude: number | null;
@@ -80,6 +81,7 @@ export const VISIT_COLUMNS =
 export type ReportVisit = {
   id: string;
   user_id: string;
+  customer_id: string | null;
   checked_in_at: string;
   checked_out_at: string | null;
   in_latitude: number | null;
@@ -91,7 +93,7 @@ export type ReportVisit = {
 };
 
 export const REPORT_COLUMNS =
-  "id, user_id, checked_in_at, checked_out_at, in_latitude, in_longitude, distance_m, out_of_range, user:users (full_name), customer:customers (shop_name, latitude, longitude)";
+  "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, distance_m, out_of_range, user:users (full_name), customer:customers (shop_name, latitude, longitude)";
 
 /**
  * Who appears in a report, and what to call them.
@@ -131,14 +133,63 @@ export function distanceLabel(metres: number | null): string {
 }
 
 /**
- * What to say about a check-in that landed outside the radius.
+ * What a visit calls the place it was to.
  *
- * It was still recorded — that is the whole design — so this is a note, not an
- * error, and it says what the radius was rather than only that it was missed.
+ * Three different things that must not read as one. A shop, by its name. No
+ * shop at all, which is a rep at a prospect nobody has written down or a
+ * morning at the warehouse, and is a deliberate answer. And a shop whose
+ * record has gone, which should not happen — the foreign key refuses to delete
+ * a customer with visits — but is worth saying plainly if it ever does.
  */
-export function rangeNote(visit: Pick<VisitRow, "out_of_range" | "distance_m" | "radius_m">):
-  string | null {
-  if (visit.distance_m === null) return "The shop has no location saved yet.";
+export const NO_SHOP = "Somewhere else";
+
+export function shopNameOf(
+  visit: Pick<VisitRow, "customer_id" | "customer">,
+): string {
+  if (visit.customer_id === null) return NO_SHOP;
+  return visit.customer?.shop_name ?? "Shop removed";
+}
+
+/** Whether a shop can still be filled in: never had one, and still correctable. */
+export function canNameShop(
+  visit: Pick<VisitRow, "customer_id" | "checked_out_at">,
+  nowMs: number,
+): boolean {
+  return visit.customer_id === null && editable(visit, nowMs);
+}
+
+/**
+ * What to say about the distance, when there is something to say.
+ *
+ * Null distance has four different causes and they need four different
+ * sentences, because three of them are somebody's to fix and the fourth is
+ * nobody's. Saying "unknown" to all of them tells a rep nothing about whether
+ * to turn location on, pin the shop, or leave it alone.
+ *
+ * A check-in inside the radius says nothing at all. Silence is the good case,
+ * and a note on every visit is a note nobody reads.
+ */
+export function rangeNote(
+  visit: Pick<
+    VisitRow,
+    "out_of_range" | "distance_m" | "radius_m" | "customer_id" | "in_latitude" | "customer"
+  >,
+): string | null {
+  if (visit.customer_id === null) {
+    return "This visit is not to a shop, so there is no distance to measure.";
+  }
+  if (visit.distance_m === null) {
+    if (visit.in_latitude === null) {
+      return "No location was recorded at check-in, so there is no distance.";
+    }
+    if (visit.customer?.latitude == null) {
+      return "The shop has no location saved yet.";
+    }
+    // The shop was attached after the fact. It was not there to be measured
+    // against at the time, and computing it now from today's coordinates
+    // would be inventing evidence.
+    return "The shop was named after the check-in, so no distance was measured.";
+  }
   if (!visit.out_of_range) return null;
   const radius = visit.radius_m === null ? "the allowed distance" : `${visit.radius_m} m`;
   return `Checked in ${distanceLabel(visit.distance_m).replace(" away", "")} from the shop, outside ${radius}.`;

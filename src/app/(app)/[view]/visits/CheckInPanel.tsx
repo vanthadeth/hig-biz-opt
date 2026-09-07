@@ -40,7 +40,8 @@ export function CheckInPanel({
   fix: Fix | null;
   radiusM: number;
   busy: boolean;
-  onCheckIn: (customer: CartCustomer) => void;
+  /** Null is a visit somewhere that is not a shop, which is a real answer. */
+  onCheckIn: (customer: CartCustomer | null) => void;
 }) {
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -138,6 +139,23 @@ export function CheckInPanel({
           Show all {matches.length} shops
         </button>
       )}
+
+      {/* A prospect nobody has written down, the warehouse, a meeting. The
+          alternative to recording it is a rep who does not check in at all,
+          which loses the whole day rather than one field of it. Below the
+          list, never above: at a shop that is in the list, the list is the
+          answer. */}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          haptic("tap");
+          onCheckIn(null);
+        }}
+        className="pressable min-h-11 w-full rounded-xl border border-dashed border-line text-sm font-medium text-muted disabled:opacity-60"
+      >
+        Check in somewhere else
+      </button>
     </div>
   );
 }

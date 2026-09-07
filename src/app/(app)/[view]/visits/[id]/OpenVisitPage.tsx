@@ -12,7 +12,7 @@ import { hoursMinutes } from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { timeOf } from "@/lib/time";
-import { distanceLabel, rangeNote, visitLength, type VisitOption, type VisitRow } from "@/lib/visits";
+import { distanceLabel, rangeNote, shopNameOf, visitLength, type VisitOption, type VisitRow } from "@/lib/visits";
 import { useFix } from "../useFix";
 import { VisitFields, type VisitDraft } from "../VisitFields";
 
@@ -131,7 +131,7 @@ export function OpenVisitPage({
     router.push(`/${viewKey}/visits`);
   }
 
-  const shopName = visit.customer?.shop_name ?? "Shop removed";
+  const shopName = shopNameOf(visit);
 
   return (
     <div className="space-y-5">

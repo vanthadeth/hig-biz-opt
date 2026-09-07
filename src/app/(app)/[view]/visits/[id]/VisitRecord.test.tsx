@@ -126,7 +126,7 @@ describe("a visit, and the day there is to correct it", () => {
     expect(screen.getByText(/outside 200 m/)).toBeInTheDocument();
   });
 
-  it("and calls an unpinned shop unknown rather than nought metres", () => {
+  it("calls a missing distance unknown rather than nought metres", () => {
     render(
       <VisitRecord
         visit={visit({ distance_m: null, in_latitude: null, in_longitude: null })}
@@ -134,9 +134,44 @@ describe("a visit, and the day there is to correct it", () => {
         now={at(1)}
       />,
     );
-
     expect(screen.getByText("Distance unknown")).toBeInTheDocument();
+  });
+
+  it("and says which side of it was missing — here, the phone's", () => {
+    render(
+      <VisitRecord
+        visit={visit({ distance_m: null, in_latitude: null, in_longitude: null })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+    expect(screen.getByText(/No location was recorded at check-in/)).toBeInTheDocument();
+  });
+
+  it("and here, the shop's", () => {
+    render(
+      <VisitRecord
+        visit={visit({
+          distance_m: null,
+          customer: { shop_name: "Corner Mart", latitude: null, longitude: null },
+        })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
     expect(screen.getByText(/no location saved yet/)).toBeInTheDocument();
+  });
+
+  it("and names a visit that was not to a shop at all", () => {
+    render(
+      <VisitRecord
+        visit={visit({ customer_id: null, customer: null, distance_m: null })}
+        options={OPTIONS}
+        now={at(1)}
+      />,
+    );
+    expect(screen.getByText("Somewhere else")).toBeInTheDocument();
+    expect(screen.getByText(/not to a shop/)).toBeInTheDocument();
   });
 
   it("names a shop that has since been removed rather than showing nothing", () => {

@@ -13,7 +13,7 @@
 
 import { metresBetween } from "./geo";
 import { dayKey } from "./time";
-import type { ReportVisit } from "./visits";
+import { shopNameOf, type ReportVisit } from "./visits";
 
 export type MapPin = {
   visitId: string;
@@ -52,7 +52,7 @@ export function pinsFor(visits: ReportVisit[], day: string): MapPin[] {
         visit.customer?.latitude != null && visit.customer?.longitude != null
           ? { latitude: visit.customer.latitude, longitude: visit.customer.longitude }
           : null,
-      shopName: visit.customer?.shop_name ?? "Shop removed",
+      shopName: shopNameOf(visit),
       order: index + 1,
       checkedInAt: visit.checked_in_at,
       outOfRange: visit.out_of_range,

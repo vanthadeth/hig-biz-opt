@@ -12,7 +12,14 @@
 -- rule. Corrections to what the visit *says* stay open for a day, because
 -- people write "no order" and then get one an hour later.
 --
--- The second is whether the distance is honest. It is recorded, never
+-- The second is whether a visit that is not to a shop is still a visit. A rep
+-- standing outside a prospect nobody has written down, or a morning at the
+-- warehouse, is working time; refusing to record it does not stop it happening,
+-- it stops the check-in. So the shop is optional — and may be filled in once,
+-- afterwards, and never swapped, because "we went to A" becoming "we went to B"
+-- is falsification while "we went somewhere, and it was A" is not.
+--
+-- The third is whether the distance is honest. It is recorded, never
 -- enforced: a check-in eleven kilometres away is accepted and flagged, and a
 -- shop with no pin gives a null distance — unknown, which the report has to
 -- read differently from far away — while still keeping the rep's own position,
@@ -25,7 +32,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  VISITS OK - 54 assertions passed (rls: ran)
+--     ERROR:  VISITS OK - 66 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -119,6 +126,7 @@ declare
   v_ostat uuid;
   v_visit public.visits;
   v_old   uuid;   -- a visit closed two days ago
+  v_none  uuid;   -- a visit to nowhere in particular
   v_rls   text := 'skipped (cannot assume the authenticated role)';
 begin
   perform set_config('higtest.checks', '0', false);
@@ -277,6 +285,65 @@ begin
   end;
 
   ----------------------------------------------------------------------------
+  -- Somewhere that is not a shop
+  --
+  -- The whole point of making the customer optional: the alternative to a
+  -- visit with no shop on it is no visit at all, and a day's hours short.
+  ----------------------------------------------------------------------------
+  if v_rls = 'ran' then
+    begin
+      execute 'set local role authenticated';
+      perform pg_temp.act_as(v_rep);
+
+      v_visit := public.check_in(null, v_near_lat, v_near_lng);
+      perform pg_temp.ok('a rep can check in without naming a shop',
+        v_visit.id is not null);
+      perform pg_temp.ok('and the visit names no shop',
+        v_visit.customer_id is null);
+      perform pg_temp.ok('with no distance, there being nothing to measure to',
+        v_visit.distance_m is null);
+      perform pg_temp.eq('which is unknown, not out of range',
+        v_visit.out_of_range::text, 'false');
+      perform pg_temp.eq('and the rep''s own position is kept all the same',
+        v_visit.in_latitude::text, v_near_lat::text);
+
+      -- The ordinary case: checked in at a prospect, who becomes a customer
+      -- an hour later.
+      update public.visits set customer_id = v_cus where id = v_visit.id;
+      perform pg_temp.eq('a shop can be filled in afterwards',
+        (select customer_id::text from public.visits where id = v_visit.id),
+        v_cus::text);
+
+      -- But not swapped, and not cleared in order to swap on the next write.
+      perform pg_temp.rejects('and then never moved to a different shop',
+        format('update public.visits set customer_id = %L where id = %L', v_far, v_visit.id));
+      perform pg_temp.rejects('nor cleared back to nothing',
+        format('update public.visits set customer_id = null where id = %L', v_visit.id));
+
+      -- Attaching a shop cannot manufacture a distance that was never measured.
+      perform pg_temp.ok('and attaching it does not invent a distance',
+        (select distance_m is null from public.visits where id = v_visit.id));
+      perform pg_temp.rejects('which cannot be written in by hand either',
+        format('update public.visits set distance_m = 10 where id = %L', v_visit.id));
+
+      perform pg_temp.ok('closing the shopless visit',
+        (public.check_out(v_visit.id, v_near_lat, v_near_lng)).id is not null);
+
+      execute 'reset role';
+    exception when insufficient_privilege then
+      execute 'reset role';
+    end;
+  end if;
+
+  -- A visit with no shop is still one open visit: the rule that a rep cannot
+  -- be in two places holds whether or not either place has a name.
+  insert into public.visits (user_id, customer_id) values (v_rep, null)
+    returning id into v_none;
+  perform pg_temp.rejects('one open visit per person, shop or no shop',
+    format('insert into public.visits (user_id, customer_id) values (%L, null)', v_rep));
+  delete from public.visits where id = v_none;
+
+  ----------------------------------------------------------------------------
   -- Two days later
   --
   -- The trigger is switched off to age a visit, because it refuses exactly the
@@ -333,8 +400,10 @@ begin
       execute 'set local role authenticated';
 
       perform pg_temp.act_as(v_rep);
+      -- Three by now: the first call, the shopless one that was given this
+      -- shop afterwards, and the one aged two days above.
       perform pg_temp.eq('the rep sees the calls they made',
-        (select count(*)::text from public.visits where user_id = v_rep and customer_id = v_cus), '2');
+        (select count(*)::text from public.visits where user_id = v_rep and customer_id = v_cus), '3');
 
       perform pg_temp.act_as(v_rep2);
       perform pg_temp.eq('a colleague sees none of them',

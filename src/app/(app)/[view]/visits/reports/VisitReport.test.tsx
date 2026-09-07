@@ -16,6 +16,7 @@ const call = (
 ): ReportVisit => ({
   id: `v${n++}`,
   user_id: userId,
+  customer_id: "c1",
   checked_in_at: `2026-09-${from}+07:00`,
   checked_out_at: to === null ? null : `2026-09-${to}+07:00`,
   in_latitude: 11.5564, in_longitude: 104.9282,

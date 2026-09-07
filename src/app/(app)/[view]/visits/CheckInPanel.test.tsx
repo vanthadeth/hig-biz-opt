@@ -155,3 +155,52 @@ describe("choosing a shop to check in at", () => {
     expect(within(list).queryByText("Riverside Grocer")).toBeNull();
   });
 });
+
+describe("somewhere that is not a shop", () => {
+  it("is offered under the list, not above it", () => {
+    render(
+      <CheckInPanel customers={[NEAR]} fix={HERE} radiusM={200}
+        busy={false} onCheckIn={() => {}} />,
+    );
+
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent ?? "");
+    const shop = buttons.findIndex((t) => t.includes("Corner Mart"));
+    const elsewhere = buttons.findIndex((t) => t.includes("Check in somewhere else"));
+    expect(shop).toBeGreaterThanOrEqual(0);
+    // At a shop that is in the list, the list is the answer.
+    expect(elsewhere).toBeGreaterThan(shop);
+  });
+
+  it("checks in with no shop at all", () => {
+    const onCheckIn = vi.fn();
+    render(
+      <CheckInPanel customers={[NEAR]} fix={HERE} radiusM={200}
+        busy={false} onCheckIn={onCheckIn} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check in somewhere else" }));
+    expect(onCheckIn).toHaveBeenCalledWith(null);
+  });
+
+  it("and is still there when no shop matches the search, which is when it is wanted", () => {
+    render(
+      <CheckInPanel customers={[NEAR]} fix={HERE} radiusM={200}
+        busy={false} onCheckIn={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Find a shop"), { target: { value: "zzz" } });
+    expect(screen.getByText("No shop matches that.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check in somewhere else" }))
+      .toBeInTheDocument();
+  });
+
+  it("and is refused while a check-in is already in flight", () => {
+    const onCheckIn = vi.fn();
+    render(<CheckInPanel customers={[NEAR]} fix={HERE} radiusM={200} busy onCheckIn={onCheckIn} />);
+
+    const button = screen.getByRole("button", { name: "Check in somewhere else" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onCheckIn).not.toHaveBeenCalled();
+  });
+});

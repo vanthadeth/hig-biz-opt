@@ -12,7 +12,7 @@ import { haptic } from "@/lib/haptics";
 import type { CartCustomer } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf } from "@/lib/time";
-import { openVisit, visitLength, visitsByDay, type VisitRow } from "@/lib/visits";
+import { openVisit, shopNameOf, visitLength, visitsByDay, type VisitRow } from "@/lib/visits";
 import { CheckInPanel } from "./CheckInPanel";
 import { useFix } from "./useFix";
 
@@ -60,13 +60,13 @@ export function VisitDay({
     return () => clearInterval(timer);
   }, []);
 
-  async function checkIn(customer: CartCustomer) {
+  async function checkIn(customer: CartCustomer | null) {
     setBusy(true);
     setError(null);
 
     // The row comes back, so the screen that opens next is that visit's own.
     const { data, error: failed } = await createClient().rpc("check_in", {
-      p_customer: customer.id,
+      p_customer: customer?.id ?? null,
       p_latitude: fix?.latitude ?? null,
       p_longitude: fix?.longitude ?? null,
     });
@@ -119,7 +119,7 @@ export function VisitDay({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
-                {open.customer?.shop_name ?? "Shop removed"}
+                {shopNameOf(open)}
               </span>
               <span className="block text-xs text-muted">
                 Checked in {timeOf(open.checked_in_at)} ·{" "}
@@ -187,7 +187,7 @@ export function VisitDay({
                       <Card className="flex items-center gap-3 p-3">
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">
-                            {visit.customer?.shop_name ?? "Shop removed"}
+                            {shopNameOf(visit)}
                           </span>
                           <span className="block truncate text-xs text-muted">
                             {timeOf(visit.checked_in_at)}

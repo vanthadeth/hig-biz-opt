@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf } from "@/lib/time";
 import {
   distanceLabel,
+  shopNameOf,
   editWindowLeft,
   editable,
   rangeNote,
@@ -114,7 +115,7 @@ export function VisitRecord({
           </span>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-semibold">
-              {visit.customer?.shop_name ?? "Shop removed"}
+              {shopNameOf(visit)}
             </h1>
             <p className="text-xs text-muted">{dayHeading(visit.checked_in_at)}</p>
           </div>

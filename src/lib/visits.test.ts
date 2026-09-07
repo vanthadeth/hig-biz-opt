@@ -5,10 +5,13 @@ import {
   distanceLabel,
   editWindowLeft,
   editable,
+  canNameShop,
   locationProblem,
+  NO_SHOP,
   openVisit,
   optionsOf,
   rangeNote,
+  shopNameOf,
   usableFix,
   visitLength,
   visitsByDay,
@@ -64,19 +67,82 @@ describe("saying a distance", () => {
   });
 });
 
-describe("what to say about a check-in that missed", () => {
-  it("says nothing at all when it landed inside the radius", () => {
-    expect(rangeNote({ out_of_range: false, distance_m: 90, radius_m: 200 })).toBeNull();
+/**
+ * Four different reasons a visit has no distance on it, and three of them are
+ * somebody's to fix: turn location on, pin the shop, or nothing. Saying
+ * "unknown" to all four tells a rep which of those to do — none.
+ */
+describe("what to say about the distance", () => {
+  const shop = { shop_name: "Corner Mart", latitude: 11.5564, longitude: 104.9282 };
+  const base = {
+    customer_id: "c1", customer: shop,
+    in_latitude: 11.5564 as number | null,
+    out_of_range: false, distance_m: 90 as number | null, radius_m: 200 as number | null,
+  };
+
+  it("says nothing at all when the check-in landed inside the radius", () => {
+    expect(rangeNote(base)).toBeNull();
   });
 
   it("names the radius it missed, since the visit was still recorded", () => {
-    expect(rangeNote({ out_of_range: true, distance_m: 1500, radius_m: 200 }))
+    expect(rangeNote({ ...base, out_of_range: true, distance_m: 1500 }))
       .toBe("Checked in 1.5 km from the shop, outside 200 m.");
   });
 
-  it("and an unpinned shop is a missing pin, not a missed radius", () => {
-    expect(rangeNote({ out_of_range: false, distance_m: null, radius_m: 200 }))
-      .toBe("The shop has no location saved yet.");
+  it("a visit to no shop has nothing to measure to", () => {
+    expect(rangeNote({ ...base, customer_id: null, customer: null, distance_m: null }))
+      .toBe("This visit is not to a shop, so there is no distance to measure.");
+  });
+
+  it("a phone that gave no position is the rep's to fix", () => {
+    expect(rangeNote({ ...base, in_latitude: null, distance_m: null }))
+      .toBe("No location was recorded at check-in, so there is no distance.");
+  });
+
+  it("an unpinned shop is the office's to fix", () => {
+    expect(rangeNote({
+      ...base, distance_m: null,
+      customer: { ...shop, latitude: null, longitude: null },
+    })).toBe("The shop has no location saved yet.");
+  });
+
+  it("and a shop named afterwards is nobody's: it was not there to measure against", () => {
+    expect(rangeNote({ ...base, distance_m: null }))
+      .toBe("The shop was named after the check-in, so no distance was measured.");
+  });
+});
+
+describe("what a visit calls where it was", () => {
+  it("a shop by its name", () => {
+    expect(shopNameOf({ customer_id: "c1", customer: { shop_name: "Corner Mart", latitude: null, longitude: null } }))
+      .toBe("Corner Mart");
+  });
+
+  it("no shop as a deliberate answer, not a missing one", () => {
+    expect(shopNameOf({ customer_id: null, customer: null })).toBe("Somewhere else");
+    expect(shopNameOf({ customer_id: null, customer: null })).toBe(NO_SHOP);
+  });
+
+  it("and a shop whose record has gone as exactly that", () => {
+    expect(shopNameOf({ customer_id: "c1", customer: null })).toBe("Shop removed");
+  });
+});
+
+describe("whether a shop can still be named", () => {
+  const closed = "2026-09-03T02:00:00Z";
+  const at = (h: number) => Date.parse(closed) + h * 3_600_000;
+
+  it("yes, while a shopless visit is still open", () => {
+    expect(canNameShop({ customer_id: null, checked_out_at: null }, at(1000))).toBe(true);
+  });
+
+  it("and for the day after it closes", () => {
+    expect(canNameShop({ customer_id: null, checked_out_at: closed }, at(23))).toBe(true);
+    expect(canNameShop({ customer_id: null, checked_out_at: closed }, at(25))).toBe(false);
+  });
+
+  it("never when the visit already names one — that would be a swap", () => {
+    expect(canNameShop({ customer_id: "c1", checked_out_at: null }, at(1))).toBe(false);
   });
 });
 

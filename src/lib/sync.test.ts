@@ -514,3 +514,21 @@ describe("a mapping with nothing to do", () => {
     expect(applyTransform("none", null, "12", 12)).toBe(12);
   });
 });
+
+describe("a column the sheet leaves blank", () => {
+  it("keeps what somebody wrote", () => {
+    expect(applyTransform("fallback", "Phone 1", "Owner", "Owner")).toBe("Owner");
+  });
+
+  it("and stands in for them where they wrote nothing", () => {
+    expect(applyTransform("fallback", "Phone 1", "", null)).toBe("Phone 1");
+    expect(applyTransform("fallback", "Phone 1", "   ", null)).toBe("Phone 1");
+    expect(applyTransform("fallback", "Phone 1", null, null)).toBe("Phone 1");
+  });
+
+  // Without this the constraint would be the only thing catching it, and only
+  // once somebody had already saved the mapping.
+  it("is nothing at all without the text it carries", () => {
+    expect(applyTransform("fallback", null, "", null)).toBeNull();
+  });
+});

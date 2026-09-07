@@ -17,7 +17,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  DATA SYNC OK - 63 assertions passed (rls: ran)
+--     ERROR:  DATA SYNC OK - 67 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 create or replace function pg_temp.bump() returns void language plpgsql as $f$
@@ -225,6 +225,34 @@ begin
   perform pg_temp.eq('but a sheet may have many columns nobody wants',
     (select count(*)::text from public.sync_column_maps
       where sync_id = v_sync and target_column is null), '2');
+
+  ----------------------------------------------------------------------------
+  -- The text a transform carries
+  --
+  -- Two transforms are nothing without an argument: a suffix with nothing to
+  -- append derives no identity, and a fallback with nothing to fall back to
+  -- still writes null into the column it was added to fill. One constraint
+  -- says so for both, because forgetting the argument is the same mistake
+  -- either way and it is invisible until a run writes the wrong thing.
+  ----------------------------------------------------------------------------
+  perform pg_temp.rejects('a suffix needs the text it appends',
+    format('insert into public.sync_column_maps (sync_id, sheet_column, target_column, transform)
+            values (%L, ''ID'', ''name_alt'', ''suffix'')', v_sync));
+  perform pg_temp.rejects('a fallback needs the text it falls back to',
+    format('insert into public.sync_column_maps (sync_id, sheet_column, target_column, transform)
+            values (%L, ''ID'', ''name_alt'', ''fallback'')', v_sync));
+  perform pg_temp.rejects('and whitespace is not text',
+    format('insert into public.sync_column_maps
+              (sync_id, sheet_column, target_column, transform, transform_arg)
+            values (%L, ''ID'', ''name_alt'', ''fallback'', ''   '')', v_sync));
+
+  insert into public.sync_column_maps
+    (sync_id, sheet_column, target_column, transform, transform_arg)
+    values (v_sync, 'Label', 'name_alt', 'fallback', 'Phone 1');
+  perform pg_temp.eq('with it, the mapping is allowed',
+    (select transform::text from public.sync_column_maps
+      where sync_id = v_sync and target_column = 'name_alt'), 'fallback');
+  delete from public.sync_column_maps where sync_id = v_sync and target_column = 'name_alt';
 
   ----------------------------------------------------------------------------
   -- The write

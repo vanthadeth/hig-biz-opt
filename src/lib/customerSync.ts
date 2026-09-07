@@ -149,10 +149,10 @@ export function planCustomerSync(picks: CustomerSyncPicks): PlannedSync[] {
     planned.push({
       name: `Customer phone ${n}`,
       target_table: "customer_contacts",
-      // A contact must be called something — the column is NOT NULL — so a row
-      // whose label is blank is not a contact, and is left out rather than
-      // failing the whole run.
-      require_column: "name",
+      // What makes a slot used is the number in it, not the label beside it.
+      // Most labels on a sheet like this are blank, and treating a blank one as
+      // an empty slot threw away two thirds of the phone numbers.
+      require_column: "phone",
       maps: [
         {
           ...plain(id, "customer_id", 0),
@@ -163,7 +163,13 @@ export function planCustomerSync(picks: CustomerSyncPicks): PlannedSync[] {
           transform: "suffix",
           transform_arg: `#${n}`,
         },
-        ...(label ? [plain(label, "name", 2)] : []),
+        // A contact must be called something — the column is NOT NULL — and
+        // the label column is where that something comes from when the sheet
+        // has one. Where it does not, "Phone 2" is a worse name than the real
+        // one and a much better answer than dropping the number.
+        ...(label
+          ? [{ ...plain(label, "name", 2), transform: "fallback" as const, transform_arg: `Phone ${n}` }]
+          : []),
         plain(phone, "phone", 3),
       ],
     });
@@ -184,7 +190,10 @@ export function customerSyncProblem(picks: CustomerSyncPicks): string | null {
   }
   const slots = picks.contacts.filter((c) => c.phone.trim());
   if (slots.some((c) => !c.label.trim())) {
-    return "Every phone needs the column that labels it: a contact must have a name.";
+    // The column, not a value in it: blank cells inside a chosen label column
+    // are fine and fall back to "Phone 1". Having no label column at all is
+    // not, because then nothing feeds a NOT NULL column.
+    return "Every phone needs the column that labels it, even if most of its cells are empty.";
   }
   return null;
 }

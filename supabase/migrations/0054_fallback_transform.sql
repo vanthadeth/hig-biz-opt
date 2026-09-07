@@ -1,0 +1,24 @@
+-- 0054_fallback_transform
+--
+-- A name for a contact whose name the sheet never had.
+--
+-- The customer sheet keeps three phones in the customer's row, each with a
+-- label column beside it — and most of the labels are empty. Of the 121 numbers
+-- on the tab, 80 sit next to a blank label. `customer_contacts.name` is NOT
+-- NULL, so those eighty numbers could not be imported at all: the sync skipped
+-- the row rather than writing a contact with no name.
+--
+-- Skipping was the right refusal and the wrong remedy. A phone number nobody
+-- labelled is still the shop's phone number, and the office losing two thirds
+-- of its contacts to a blank column is a worse answer than calling one of them
+-- "Phone 2".
+--
+-- So: a transform that supplies a constant when the cell is empty and gets out
+-- of the way when it is not. The labels somebody did fill in are kept exactly
+-- as written; only the blanks become "Phone 1", "Phone 2", "Phone 3".
+--
+-- It is deliberately not specific to phones. "The sheet leaves this blank and
+-- the column is NOT NULL" is the general shape, and the next sheet will have
+-- its own version of it.
+
+alter type public.sync_transform add value if not exists 'fallback';

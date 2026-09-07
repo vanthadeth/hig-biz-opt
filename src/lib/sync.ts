@@ -175,7 +175,7 @@ function readNumber(raw: unknown): number | null {
  * until everything is moved over, and asking somebody to restructure it while
  * they are still working in it is asking for the data to get worse.
  */
-export type SyncTransform = "none" | "latitude" | "longitude" | "suffix";
+export type SyncTransform = "none" | "latitude" | "longitude" | "suffix" | "fallback";
 
 /**
  * One half of a "lat, long" cell.
@@ -225,9 +225,16 @@ export function applyTransform(
     return transform === "latitude" ? pair.lat : pair.lng;
   }
 
+  const base = raw === null || raw === undefined ? "" : String(raw).trim();
+
+  // A column the sheet often leaves blank, feeding one this database insists
+  // on. The written value wins wherever there is one; the argument stands in
+  // where there is not, so eighty unlabelled phone numbers become "Phone 2"
+  // rather than eighty rows nobody can import.
+  if (transform === "fallback") return base === "" ? (arg ?? null) : coerced;
+
   // A suffix on nothing is nothing: a child of a parent with no ID has no
   // identity of its own to derive.
-  const base = raw === null || raw === undefined ? "" : String(raw).trim();
   if (base === "") return null;
   return `${base}${arg ?? ""}`;
 }

@@ -114,10 +114,21 @@ describe("planning one phone", () => {
     expect(byTarget.phone).toBe("Phone 1");
   });
 
-  it("skips a row whose label is blank rather than failing the run", () => {
-    // The name column is NOT NULL, and the derived id exists whether or not
-    // anybody filled the slot in, so the key check cannot tell the difference.
-    expect(one().require_column).toBe("name");
+  it("decides an empty slot by the number, not the label beside it", () => {
+    // The derived id exists whether or not anybody filled the slot in, so the
+    // key check cannot tell an empty slot from a used one. The phone can:
+    // most labels on a sheet like this are blank, and reading a blank label as
+    // an empty slot threw away two thirds of the numbers.
+    expect(one().require_column).toBe("phone");
+  });
+
+  it("and names the contact 'Phone 1' where the label column is empty", () => {
+    // The NOT NULL column still has to be fed, and a worse name is a better
+    // answer than a number nobody can import.
+    const name = one().maps.find((m) => m.target_column === "name");
+    expect(name?.transform).toBe("fallback");
+    expect(name?.transform_arg).toBe("Phone 1");
+    expect(name?.sheet_column).toBe("Label 1");
   });
 
   it("asks nothing of the customer sync itself", () => {

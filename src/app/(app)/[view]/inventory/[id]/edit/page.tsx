@@ -32,7 +32,7 @@ export default async function Page({
       .select(VARIANT_COLUMNS)
       .eq("item_id", id)
       .order("sort_order"),
-    supabase.from("item_categories").select(CATEGORY_COLUMNS).order("sort_order"),
+    supabase.from("item_categories").select(CATEGORY_COLUMNS).order("name"),
     supabase.from("brands").select(BRAND_COLUMNS).eq("active", true).order("sort_order"),
     getMyPermissions(),
   ]);

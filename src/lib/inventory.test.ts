@@ -325,7 +325,7 @@ describe("categoryOptions", () => {
     category({ id: "snacks", name: "Snacks", parent_id: "grocery" }),
   ];
 
-  it("lists a parent then its children, in sort order", () => {
+  it("lists a parent then its children, alphabetically", () => {
     expect(categoryOptions(categories).map((o) => o.value)).toEqual([
       "grocery",
       "drinks",
@@ -555,10 +555,13 @@ describe("filterCategoryTree", () => {
     category({ id: "old", name: "Discontinued", sort_order: 3, active: false }),
   ];
 
-  it("returns the whole tree when nothing is asked of it", () => {
+  it("returns the whole tree when nothing is asked of it, by name", () => {
     const branches = filterCategoryTree(tree, "", "all");
-    expect(branches.map((b) => b.parent.id)).toEqual(["grocery", "tools", "old"]);
-    expect(branches[0].children.map((c) => c.id)).toEqual(["drinks", "snacks"]);
+    // Discontinued, Grocery, Tools. `sort_order` is still on the row but
+    // nobody curates it, and a list ordered by a number nobody set reads as
+    // random to the person scanning it for a name.
+    expect(branches.map((b) => b.parent.id)).toEqual(["old", "grocery", "tools"]);
+    expect(branches[1].children.map((c) => c.id)).toEqual(["drinks", "snacks"]);
   });
 
   it("keeps every child of a parent that matched", () => {
@@ -599,8 +602,8 @@ describe("filterCategoryTree", () => {
 
   it("shows only what is retired on Inactive", () => {
     const branches = filterCategoryTree(tree, "", "inactive");
-    expect(branches.map((b) => b.parent.id)).toEqual(["grocery", "old"]);
-    expect(branches[0].children.map((c) => c.id)).toEqual(["snacks"]);
+    expect(branches.map((b) => b.parent.id)).toEqual(["old", "grocery"]);
+    expect(branches[1].children.map((c) => c.id)).toEqual(["snacks"]);
   });
 
   it("comes back empty when nothing matches", () => {

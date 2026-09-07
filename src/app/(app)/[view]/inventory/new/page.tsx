@@ -18,7 +18,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   const supabase = await createClient();
 
   const [categories, brands, mine] = await Promise.all([
-    supabase.from("item_categories").select(CATEGORY_COLUMNS).order("sort_order"),
+    supabase.from("item_categories").select(CATEGORY_COLUMNS).order("name"),
     supabase.from("brands").select(BRAND_COLUMNS).eq("active", true).order("sort_order"),
     getMyPermissions(),
   ]);

@@ -330,9 +330,14 @@ export function countItems(groups: CatalogueGroup[]): number {
   return groups.reduce((total, group) => total + group.items.length, 0);
 }
 
-/** Sort order first, then the name — the one every category has. */
-const byOrder = (a: Category, b: Category) =>
-  a.sort_order - b.sort_order || a.name.localeCompare(b.name);
+/**
+ * By name.
+ *
+ * `sort_order` is still on the row and still what the sync writes, but nobody
+ * curates it and a list ordered by a number nobody set reads as random. Names
+ * are what somebody scans a category list for.
+ */
+const byName = (a: Category, b: Category) => a.name.localeCompare(b.name);
 
 /**
  * Categories as a select list, sub-categories indented under their parent.
@@ -344,7 +349,7 @@ const byOrder = (a: Category, b: Category) =>
 export function categoryOptions(
   categories: Category[],
 ): { value: string; label: string }[] {
-  const parents = categories.filter((c) => c.parent_id === null).sort(byOrder);
+  const parents = categories.filter((c) => c.parent_id === null).sort(byName);
 
   const options: { value: string; label: string }[] = [];
 
@@ -352,7 +357,7 @@ export function categoryOptions(
   // looking for a category rather than reading one they already know.
   for (const parent of parents) {
     options.push({ value: parent.id, label: categoryLabel(parent) });
-    const children = categories.filter((c) => c.parent_id === parent.id).sort(byOrder);
+    const children = categories.filter((c) => c.parent_id === parent.id).sort(byName);
     for (const child of children) {
       options.push({
         value: child.id,
@@ -518,10 +523,10 @@ export type CategoryTree = { parent: Category; children: Category[] }[];
 export function categoryTree(categories: Category[]): CategoryTree {
   return categories
     .filter((c) => c.parent_id === null)
-    .sort(byOrder)
+    .sort(byName)
     .map((parent) => ({
       parent,
-      children: categories.filter((c) => c.parent_id === parent.id).sort(byOrder),
+      children: categories.filter((c) => c.parent_id === parent.id).sort(byName),
     }));
 }
 

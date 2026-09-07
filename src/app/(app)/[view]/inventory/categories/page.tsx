@@ -12,7 +12,7 @@ export default async function Page({ params }: { params: Promise<{ view: string 
   const supabase = await createClient();
 
   const [categories, mine] = await Promise.all([
-    supabase.from("item_categories").select(CATEGORY_COLUMNS).order("sort_order"),
+    supabase.from("item_categories").select(CATEGORY_COLUMNS).order("name"),
     getMyPermissions(),
   ]);
 

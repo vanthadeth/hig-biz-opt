@@ -165,7 +165,7 @@ export function isOpen(visit: Pick<Visit, "checked_out_at">): boolean {
 /**
  * The one still open, if there is one.
  *
- * There can only be one — `visits_one_open_per_person` in 0046 is what says so —
+ * There can only be one — `visits_one_open_per_person` in 0047 is what says so —
  * and that index is exactly why the centre button in the bar never has to ask
  * which visit "Check out" means.
  */
@@ -199,7 +199,7 @@ export function durationLabel(minutes: number | null): string | null {
  * A rep may correct their own record for a day after they closed it.
  *
  * The database is where this rule actually lives — `public.guard_visit_edit()`
- * in 0046 refuses the update, and refuses it over the REST endpoint too, not
+ * in 0047 refuses the update, and refuses it over the REST endpoint too, not
  * only through this form. What is here decides whether a button is drawn. The
  * two have to say the same thing, so if you change one, change the other.
  */

@@ -1,6 +1,6 @@
 -- visits.test.sql
 --
--- The two rules 0046 exists to hold up.
+-- The two rules 0047 exists to hold up.
 --
 -- One open visit per person, because that is what makes the centre button in
 -- the bar unambiguous — with two open visits it would have to ask which one

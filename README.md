@@ -575,7 +575,7 @@ question.
 
 ### Evidence, and a report
 
-Two different kinds of fact live in one row, and `0046_visits.sql` treats them
+Two different kinds of fact live in one row, and `0047_visits.sql` treats them
 differently.
 
 **The stamps are evidence.** `checked_in_at` and its coordinates cannot be
@@ -678,7 +678,7 @@ migration — add a new one.
 0044_free_quantity_and_discount_modes.sql
                               give some away, or discount in money
 0045_primary_currency.sql     which of the two prices a screen shows
-0046_visits.sql               check in, check out, and what the rep saw
+0047_visits.sql               check in, check out, and what the rep saw
 ```
 
 `0042` is the only one of these that is data rather than schema, and it is not

@@ -18,7 +18,7 @@ const day = (iso: string) =>
  * The stamps: which shop, when the rep arrived, when they left.
  *
  * Facts, not fields. Nothing here is ever an input — `guard_visit_edit()` in
- * 0046 refuses to change any of it, and a form that offered the attempt would
+ * 0047 refuses to change any of it, and a form that offered the attempt would
  * only be a way to meet that refusal.
  */
 export function VisitFacts({ visit, editable }: { visit: Visit; editable: boolean }) {

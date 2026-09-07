@@ -70,7 +70,7 @@ describe("how long the rep was in the shop", () => {
 });
 
 describe("the 24 hours a rep has to correct a visit", () => {
-  // This mirrors public.guard_visit_edit in 0046. The database is what refuses
+  // This mirrors public.guard_visit_edit in 0047. The database is what refuses
   // the write; these cases are what decides whether a button is drawn, and the
   // two have to agree.
   const closedAt = "2026-09-06T02:45:00.000Z";

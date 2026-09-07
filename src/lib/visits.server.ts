@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
  * The visit this person still has open, if any.
  *
  * Read on every request in the visit layout, because it is what the centre
- * button in the bar says. One row at most: `visits_one_open_per_person` in 0046
+ * button in the bar says. One row at most: `visits_one_open_per_person` in 0047
  * is the reason this can return an id rather than a list, and the reason the
  * button never has to ask which visit is meant.
  *

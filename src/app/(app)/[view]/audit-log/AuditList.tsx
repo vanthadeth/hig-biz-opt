@@ -16,10 +16,10 @@ import {
   recordTitle,
   tableLabel,
   tablesIn,
-  timeOf,
   type AuditAction,
   type AuditEntry,
 } from "@/lib/audit";
+import { timeOf } from "@/lib/time";
 
 /**
  * The log, newest first, under day headings.

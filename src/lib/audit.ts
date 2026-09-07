@@ -8,6 +8,8 @@
  * row is titled by whatever it calls itself rather than by its uuid.
  */
 
+import { TIME_ZONE, dayKey } from "./time";
+
 export type AuditAction = "insert" | "update" | "delete";
 
 export type AuditEntry = {
@@ -37,15 +39,6 @@ export const AUDIT_COLUMNS =
  */
 export const AUDIT_PAGE_SIZE = 200;
 
-/**
- * Cambodian time, pinned rather than taken from the machine.
- *
- * Two reasons. The page renders on a server in UTC and then hydrates in a
- * browser in Phnom Penh, and a timestamp formatted from the local zone would
- * differ between the two. And everyone reading this log is in one country: "at
- * 14:32" should mean the same thing to all of them.
- */
-export const TIME_ZONE = "Asia/Phnom_Penh";
 
 const TABLE_LABELS: Record<string, string> = {
   users: "Employee",
@@ -262,13 +255,6 @@ export function filterEntries(
   );
 }
 
-const dayFormat = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 const headingFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: TIME_ZONE,
   weekday: "long",
@@ -276,22 +262,6 @@ const headingFormat = new Intl.DateTimeFormat("en-GB", {
   month: "long",
   year: "numeric",
 });
-
-const timeFormat = new Intl.DateTimeFormat("en-GB", {
-  timeZone: TIME_ZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-/** The Cambodian calendar day an instant falls on, as "2026-09-03". */
-export function dayKey(iso: string): string {
-  return dayFormat.format(new Date(iso));
-}
-
-export function timeOf(iso: string): string {
-  return timeFormat.format(new Date(iso));
-}
 
 /**
  * "Today", "Yesterday", or the date written out.
@@ -301,11 +271,11 @@ export function timeOf(iso: string): string {
  * server and the browser disagreeing about where the day boundary fell.
  */
 export function dayLabel(key: string, now: Date): string {
-  const today = dayFormat.format(now);
+  const today = dayKey(now);
   if (key === today) return "Today";
 
   const yesterday = new Date(now.getTime() - 86_400_000);
-  if (key === dayFormat.format(yesterday)) return "Yesterday";
+  if (key === dayKey(yesterday)) return "Yesterday";
 
   // Midday, so the date cannot slide across a boundary while being formatted
   // back into the same zone it was derived in.

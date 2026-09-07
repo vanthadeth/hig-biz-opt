@@ -6,7 +6,6 @@ import {
   AUDIT_ACTIONS,
   changeRows,
   columnLabel,
-  dayKey,
   dayLabel,
   describeEntry,
   filterEntries,
@@ -16,9 +15,9 @@ import {
   recordTitle,
   tableLabel,
   tablesIn,
-  timeOf,
   type AuditEntry,
 } from "./audit";
+import { dayKey, timeOf } from "./time";
 
 const entry = (over: Partial<AuditEntry> = {}): AuditEntry => ({
   id: 1,

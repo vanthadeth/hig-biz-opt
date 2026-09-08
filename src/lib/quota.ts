@@ -221,3 +221,25 @@ export function numberOrNull(text: string): number | null {
   const value = Number(trimmed);
   return Number.isFinite(value) ? value : Number.NaN;
 }
+
+// One person, against the company ------------------------------------------------------
+
+/**
+ * A rep's own target, laid over the company's.
+ *
+ * Every field is independent: a rep whose daily count is set individually but
+ * whose week still follows the company figure is the ordinary case, not an
+ * edge one, so this coalesces field by field rather than picking one source
+ * for the whole row. A field null on both sides stays null — nobody manages
+ * it, same as before either row existed.
+ */
+export function effectiveQuota(user: Quota, org: Quota): Quota {
+  return {
+    daily_visit_target: user.daily_visit_target ?? org.daily_visit_target,
+    daily_working_hours: user.daily_working_hours ?? org.daily_working_hours,
+    daily_active_hours: user.daily_active_hours ?? org.daily_active_hours,
+    weekly_visit_target: user.weekly_visit_target ?? org.weekly_visit_target,
+    weekly_working_hours: user.weekly_working_hours ?? org.weekly_working_hours,
+    weekly_active_hours: user.weekly_active_hours ?? org.weekly_active_hours,
+  };
+}

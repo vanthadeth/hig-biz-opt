@@ -4,6 +4,7 @@ import { Icon } from "@/components/Icon";
 import { RecordView } from "@/components/ui/RecordView";
 import { requireViewer } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
+import { NO_QUOTA, QUOTA_COLUMNS, type Quota } from "@/lib/quota";
 import {
   profileGroups,
   USER_RECORD_COLUMNS,
@@ -12,6 +13,7 @@ import {
 import { RemoveUserButton } from "../RemoveUserButton";
 import { StatusControls } from "../StatusControls";
 import { GeneratePassword } from "./GeneratePassword";
+import { QuotaAction } from "./QuotaAction";
 
 export async function generateMetadata({
   params,
@@ -52,22 +54,35 @@ export default async function Page({
   // `can_edit_user` and `can_delete_user` ask the database the scoped questions
   // the policies will ask about this particular person — own, sub or any —
   // which `my_permissions` cannot, since it reports reach without a subject.
-  const [{ data: canEdit }, { data: canDelete }, department, role, viewer] =
-    await Promise.all([
-      supabase.rpc("can_edit_user", { p_user: id }),
-      supabase.rpc("can_delete_user", { p_user: id }),
-      person.department_id
-        ? supabase
-            .from("departments")
-            .select("name")
-            .eq("id", person.department_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-      person.role_id
-        ? supabase.from("roles").select("name").eq("id", person.role_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      requireViewer(),
-    ]);
+  // `can_edit_visit_quota` is the same shape, for the one narrower question of
+  // whether the viewer may move this person's target rather than their record.
+  const [
+    { data: canEdit },
+    { data: canDelete },
+    { data: canEditQuota },
+    department,
+    role,
+    viewer,
+    quotaRow,
+    orgQuotaRow,
+  ] = await Promise.all([
+    supabase.rpc("can_edit_user", { p_user: id }),
+    supabase.rpc("can_delete_user", { p_user: id }),
+    supabase.rpc("can_edit_visit_quota", { p_user: id }),
+    person.department_id
+      ? supabase
+          .from("departments")
+          .select("name")
+          .eq("id", person.department_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    person.role_id
+      ? supabase.from("roles").select("name").eq("id", person.role_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    requireViewer(),
+    supabase.from("user_visit_quotas").select(QUOTA_COLUMNS).eq("user_id", id).maybeSingle(),
+    supabase.from("app_settings").select(QUOTA_COLUMNS).maybeSingle(),
+  ]);
 
   const isSelf = viewer.id === person.id;
 
@@ -109,6 +124,14 @@ export default async function Page({
                 <Icon name="pencil" className="size-4" />
                 Edit record
               </Link>
+            )}
+            {canEditQuota === true && (
+              <QuotaAction
+                userId={person.id}
+                fullName={person.full_name}
+                current={(quotaRow.data as Quota | null) ?? NO_QUOTA}
+                org={(orgQuotaRow.data as Quota | null) ?? NO_QUOTA}
+              />
             )}
             {canDelete === true && !isSelf && (
               <RemoveUserButton

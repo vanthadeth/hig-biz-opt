@@ -1,7 +1,7 @@
 import { PageTitle } from "@/components/PageTitle";
 import { Card } from "@/components/ui/Card";
 import { createClient } from "@/lib/supabase/server";
-import { NO_QUOTA, QUOTA_COLUMNS, type Quota } from "@/lib/quota";
+import { NO_QUOTA, QUOTA_COLUMNS, effectiveQuota, type Quota } from "@/lib/quota";
 import { VISIT_COLUMNS, type VisitRow } from "@/lib/visits";
 import { VisitDay } from "./VisitDay";
 
@@ -32,29 +32,10 @@ export default async function Page({
   // the fortnight the page asks for is the fortnight it says it is showing.
   const now = new Date();
 
-  const [me, visits, settings, provinces] = await Promise.all([
-    supabase.auth.getUser(),
-    // A fortnight is enough for the day list and the correction window, and
-    // keeps a rep's first paint small on a phone.
-    supabase
-      .from("visits")
-      .select(VISIT_COLUMNS)
-      .gte("checked_in_at", new Date(now.getTime() - 14 * 86_400_000).toISOString())
-      .order("checked_in_at", { ascending: false })
-      .limit(200),
-    supabase.from("app_settings").select(QUOTA_COLUMNS).maybeSingle(),
-    // Twenty-five rows, so the whole table rather than a join: there is no
-    // foreign key from a customer to its province — the code is text carried
-    // over from the sheet — and asking per visit would be a query a row.
-    supabase.from("geo_provinces").select("code, name"),
-  ]);
-
+  // Needed before the batch below, since the viewer's own target is looked up
+  // by their own id.
+  const me = await supabase.auth.getUser();
   const userId = me.data.user?.id ?? null;
-  const rows = (visits.data ?? []) as unknown as VisitRow[];
-  const quota = (settings.data as Quota | null) ?? NO_QUOTA;
-  const provinceNames = ((provinces.data ?? []) as { code: string; name: string }[]).map(
-    (province) => [province.code, province.name] as [string, string],
-  );
 
   if (!userId) {
     return (
@@ -66,6 +47,34 @@ export default async function Page({
       </div>
     );
   }
+
+  const [visits, settings, own, provinces] = await Promise.all([
+    // A fortnight is enough for the day list and the correction window, and
+    // keeps a rep's first paint small on a phone.
+    supabase
+      .from("visits")
+      .select(VISIT_COLUMNS)
+      .gte("checked_in_at", new Date(now.getTime() - 14 * 86_400_000).toISOString())
+      .order("checked_in_at", { ascending: false })
+      .limit(200),
+    supabase.from("app_settings").select(QUOTA_COLUMNS).maybeSingle(),
+    // A manager may have set this rep's target apart from the company's; a
+    // field they left alone falls back to it. Reading your own row is always
+    // allowed, whatever `visit_quota` scope you hold, so this needs no
+    // permission check of its own.
+    supabase.from("user_visit_quotas").select(QUOTA_COLUMNS).eq("user_id", userId).maybeSingle(),
+    // Twenty-five rows, so the whole table rather than a join: there is no
+    // foreign key from a customer to its province — the code is text carried
+    // over from the sheet — and asking per visit would be a query a row.
+    supabase.from("geo_provinces").select("code, name"),
+  ]);
+
+  const rows = (visits.data ?? []) as unknown as VisitRow[];
+  const orgQuota = (settings.data as Quota | null) ?? NO_QUOTA;
+  const quota = effectiveQuota((own.data as Quota | null) ?? NO_QUOTA, orgQuota);
+  const provinceNames = ((provinces.data ?? []) as { code: string; name: string }[]).map(
+    (province) => [province.code, province.name] as [string, string],
+  );
 
   return (
     <div className="space-y-5">

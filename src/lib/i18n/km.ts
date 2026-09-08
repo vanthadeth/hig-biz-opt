@@ -166,6 +166,10 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "quota.activeMeaning":
     "ម៉ោងសកម្មគឺជាពេលវេលានៅក្នុងហាង។ ម៉ោងធ្វើការគឺពេញមួយថ្ងៃ រាប់បញ្ចូលទាំងការធ្វើដំណើរ។",
   "quota.notManaged": "មិនគ្រប់គ្រង",
+  "quota.setAction": "កំណត់គោលដៅ",
+  "quota.forPerson": "គោលដៅសម្រាប់ {name}",
+  "quota.personCaption":
+    "ទុកប្រអប់ទទេ ដើម្បីអនុវត្តតាមតួលេខរបស់ក្រុមហ៊ុន ដែលបង្ហាញជាអក្សរណែនាំ។",
 
   // Customers -------------------------------------------------------------
   "customer.all": "អតិថិជនទាំងអស់",

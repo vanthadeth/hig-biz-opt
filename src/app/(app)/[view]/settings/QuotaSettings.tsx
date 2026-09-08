@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
-import { Field } from "@/components/ui/Field";
+import { QuotaBoxes } from "@/components/ui/QuotaBoxes";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { numberOrNull, quotaProblem, type Quota } from "@/lib/quota";
 
+const textOf = (value: number | null) => (value === null ? "" : String(value));
+
 /**
- * What a day, and a week, is supposed to look like.
+ * What a day, and a week, is supposed to look like — company-wide.
  *
  * Six boxes, and every one of them may be left empty. Empty means nobody
  * manages that figure, which is a real answer and the one every business
@@ -22,26 +24,10 @@ import { numberOrNull, quotaProblem, type Quota } from "@/lib/quota";
  * guess about a six-day week, and a company that works Saturday mornings would
  * spend its time fighting the arithmetic instead of typing a number.
  *
- * The boxes are text rather than number inputs on purpose: a number input on a
- * phone hands back an empty string for "0" in some browsers and swallows the
- * difference between "nothing typed" and "zero", which is exactly the
- * distinction this screen exists to keep.
+ * This is the company's own figure — the one every rep follows unless a
+ * manager has set something different for them on their own account. That
+ * override lives in `QuotaAction`, on the user record page.
  */
-const BOXES: { field: keyof Quota; labelKey: "quota.visits" | "quota.workingHours" | "quota.activeHours" }[][] = [
-  [
-    { field: "daily_visit_target", labelKey: "quota.visits" },
-    { field: "daily_working_hours", labelKey: "quota.workingHours" },
-    { field: "daily_active_hours", labelKey: "quota.activeHours" },
-  ],
-  [
-    { field: "weekly_visit_target", labelKey: "quota.visits" },
-    { field: "weekly_working_hours", labelKey: "quota.workingHours" },
-    { field: "weekly_active_hours", labelKey: "quota.activeHours" },
-  ],
-];
-
-const textOf = (value: number | null) => (value === null ? "" : String(value));
-
 export function QuotaSettings({
   current,
   canEdit,
@@ -102,29 +88,12 @@ export function QuotaSettings({
     <Card className="space-y-4 p-4">
       <SectionHeader title={t("quota.title")} caption={t("quota.caption")} />
 
-      {BOXES.map((row, at) => (
-        <div key={at} className="space-y-2">
-          <p className="text-xs font-medium text-muted">
-            {at === 0 ? t("quota.daily") : t("quota.weekly")}
-          </p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {row.map((box) => (
-              <Field
-                key={box.field}
-                label={t(box.labelKey)}
-                value={text[box.field]}
-                onChange={(value) =>
-                  setText((all) => ({ ...all, [box.field]: value.replace(/[^\d.]/g, "") }))
-                }
-                disabled={!canEdit || busy}
-                inputMode="numeric"
-                placeholder={t("quota.notManaged")}
-                optional
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+      <QuotaBoxes
+        text={text}
+        onChange={(field, value) => setText((all) => ({ ...all, [field]: value }))}
+        disabled={!canEdit || busy}
+        placeholder={() => t("quota.notManaged")}
+      />
 
       <p className="text-sm text-muted">{t("quota.activeMeaning")}</p>
 

@@ -166,6 +166,10 @@ export const en = {
   "quota.activeMeaning":
     "Active hours are the time inside shops; working hours are the whole day, travelling included.",
   "quota.notManaged": "Not managed",
+  "quota.setAction": "Set quota",
+  "quota.forPerson": "Quota for {name}",
+  "quota.personCaption":
+    "Leave a box empty to follow the company figure, shown as its placeholder.",
 
   // Customers -------------------------------------------------------------
   "customer.all": "All customers",

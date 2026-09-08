@@ -4,6 +4,7 @@ import {
   NO_QUOTA,
   anyTarget,
   barsFor,
+  effectiveQuota,
   hoursMs,
   numberOrNull,
   quotaProblem,
@@ -183,5 +184,34 @@ describe("an empty box", () => {
     expect(numberOrNull("eight")).toBeNaN();
     expect(quotaProblem(quota({ daily_visit_target: numberOrNull("eight") })))
       .toBe("That is not a number.");
+  });
+});
+
+describe("a rep's own target, laid over the company's", () => {
+  const org = quota({ daily_visit_target: 8, daily_working_hours: 8, weekly_visit_target: 44 });
+
+  it("keeps the company figure where nobody has overridden it", () => {
+    expect(effectiveQuota(NO_QUOTA, org)).toEqual(org);
+  });
+
+  it("takes the rep's own figure, field by field, where one is set", () => {
+    const mine = quota({ daily_visit_target: 12 });
+    expect(effectiveQuota(mine, org)).toEqual(
+      quota({ daily_visit_target: 12, daily_working_hours: 8, weekly_visit_target: 44 }),
+    );
+  });
+
+  // A rep whose day is set individually but whose week still follows the
+  // company figure is the ordinary case, not an edge one.
+  it("mixes fields freely rather than choosing one row or the other whole", () => {
+    const mine = quota({ daily_visit_target: 12, weekly_visit_target: 60 });
+    const merged = effectiveQuota(mine, org);
+    expect(merged.daily_visit_target).toBe(12);
+    expect(merged.weekly_visit_target).toBe(60);
+    expect(merged.daily_working_hours).toBe(8);
+  });
+
+  it("stays unmanaged where neither side has decided", () => {
+    expect(effectiveQuota(NO_QUOTA, NO_QUOTA)).toEqual(NO_QUOTA);
   });
 });

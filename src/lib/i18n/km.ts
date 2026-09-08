@@ -36,8 +36,8 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "quick.newVisitHint": "ចាប់ផ្តើមនៅកន្លែងអ្នកឈរ",
   "quick.newCustomer": "អតិថិជនថ្មី",
   "quick.newCustomerHint": "ហាងដែលមិនទាន់មានក្នុងបញ្ជី",
-  "quick.customerInfo": "ព័ត៌មានអតិថិជន",
-  "quick.customerInfoHint": "ហាងជិតបំផុត",
+  "quick.customerInfo": "អតិថិជនក្បែរនេះ",
+  "quick.customerInfoHint": "ហាងជិតបំផុតប្រាំ ជាមួយវិធីចុះឈ្មោះចូល",
   "quick.locking": "កំពុងចាក់សោ…",
 
   // Visits ----------------------------------------------------------------
@@ -185,6 +185,12 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "customer.dropAPin": "ចុចលើផែនទីដើម្បីដាក់ចំណុច រួចអូសដើម្បីកែតម្រូវ។",
   "customer.useMyLocation": "ប្រើទីតាំងរបស់ខ្ញុំ",
   "customer.findingYou": "កំពុងស្វែងរក…",
+  "customer.balance": "សមតុល្យ",
+  "customer.lastVisit": "ចុះជួបចុងក្រោយ",
+  "customer.neverVisited": "មិនទាន់បានចុះជួប",
+  "customer.daysAgo": "{n} ថ្ងៃមុន",
+  "customer.checkInHere": "ចុះឈ្មោះចូល",
+  "customer.checkingIn": "កំពុងចុះឈ្មោះចូល…",
 
   // Everywhere ------------------------------------------------------------
   "common.cancel": "បោះបង់",

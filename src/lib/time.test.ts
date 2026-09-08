@@ -6,6 +6,7 @@ import {
   dayKey,
   dayStartMs,
   daysBetween,
+  daysSince,
   longDay,
   monthKey,
   monthLabel,
@@ -73,6 +74,21 @@ describe("walking the calendar", () => {
     ]);
     expect(daysBetween("2026-09-01", "2026-09-01")).toEqual(["2026-09-01"]);
     expect(daysBetween("2026-09-02", "2026-09-01")).toEqual([]);
+  });
+});
+
+describe("how long ago, by calendar day", () => {
+  it("is zero on the day itself, however many hours have passed", () => {
+    expect(daysSince("2026-09-03T00:05:00Z", Date.parse("2026-09-03T16:00:00Z"))).toBe(0);
+  });
+
+  it("counts a visit late at night as yesterday the moment the date turns", () => {
+    // 23:50 Phnom Penh time on the 2nd, read back one minute into the 3rd.
+    expect(daysSince("2026-09-02T16:50:00Z", Date.parse("2026-09-02T17:01:00Z"))).toBe(1);
+  });
+
+  it("adds up across a stretch of days", () => {
+    expect(daysSince("2026-09-01T00:00:00Z", Date.parse("2026-09-08T00:00:00Z"))).toBe(7);
   });
 });
 

@@ -105,6 +105,16 @@ export function daysBetween(from: string, to: string): string[] {
   return out;
 }
 
+/**
+ * How many calendar days back an instant was, here -- not a raw 24-hour
+ * count. A visit at 11pm is "yesterday" the moment the clock crosses
+ * midnight, not twenty hours later, the same distinction {@link dayKey}
+ * exists to make everywhere else in this file.
+ */
+export function daysSince(at: string | number | Date, nowMs: number): number {
+  return daysBetween(dayKey(at), dayKey(nowMs)).length - 1;
+}
+
 /** The Monday of the week a day falls in. Weeks start on Monday here. */
 export function weekKey(key: string): string {
   const [y, m, d] = key.split("-").map(Number);

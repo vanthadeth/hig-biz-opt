@@ -34,8 +34,8 @@ export const en = {
   "quick.newVisitHint": "Starts where you are",
   "quick.newCustomer": "New customer",
   "quick.newCustomerHint": "A shop not on the books",
-  "quick.customerInfo": "Customer info",
-  "quick.customerInfoHint": "The nearest shop",
+  "quick.customerInfo": "Nearby customers",
+  "quick.customerInfoHint": "The five closest, with a way to check in",
   "quick.locking": "Locking…",
 
   // Visits ----------------------------------------------------------------
@@ -185,6 +185,12 @@ export const en = {
   "customer.dropAPin": "Tap the map to drop a pin, then drag it to nudge.",
   "customer.useMyLocation": "Use my location",
   "customer.findingYou": "Finding you…",
+  "customer.balance": "Balance",
+  "customer.lastVisit": "Last visit",
+  "customer.neverVisited": "Never visited",
+  "customer.daysAgo": "{n}d ago",
+  "customer.checkInHere": "Check in",
+  "customer.checkingIn": "Checking in…",
 
   // Everywhere ------------------------------------------------------------
   "common.cancel": "Cancel",

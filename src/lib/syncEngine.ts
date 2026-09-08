@@ -19,6 +19,7 @@ import {
   type SyncColumnMap,
   type SyncDefinition,
   type SyncSource,
+  type TargetColumn,
 } from "@/lib/sync";
 
 /**
@@ -95,7 +96,7 @@ export async function runSync(
   };
 
   try {
-    const [{ data: maps }, { data: target }] = await Promise.all([
+    const [{ data: maps }, { data: target }, { data: columns }] = await Promise.all([
       supabase
         .from("sync_column_maps")
         .select(SYNC_COLUMN_MAP_COLUMNS)
@@ -106,6 +107,7 @@ export async function runSync(
         .select("key_column, pk_column")
         .eq("table_name", sync.target_table)
         .single(),
+      supabase.rpc("sync_columns_for_engine", { p_table: sync.target_table }),
     ]);
 
     const mapping = (maps ?? []) as SyncColumnMap[];
@@ -116,8 +118,10 @@ export async function runSync(
     });
 
     // Checked here as well as in the screen that saved it, because a mapping
-    // can be broken after it was saved — a column dropped, a target blocked.
-    const problems = syncProblems(sync, mapping, keyColumn);
+    // can be broken after it was saved — a column dropped, a target blocked,
+    // or a uuid column left pointed straight at a sheet's own id scheme with
+    // no reference to resolve it through.
+    const problems = syncProblems(sync, mapping, keyColumn, (columns ?? []) as TargetColumn[]);
     if (problems.length > 0) throw new Error(problems.join(" "));
 
     const { headers, rows } = await readSheet(

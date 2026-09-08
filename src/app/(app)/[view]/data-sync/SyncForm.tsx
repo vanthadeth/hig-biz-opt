@@ -241,6 +241,7 @@ export function SyncForm({
         { trigger_kind: triggerKind, interval_minutes: intervalMinutes },
         asMaps,
         keyColumn,
+        columns,
       )
     : [];
 

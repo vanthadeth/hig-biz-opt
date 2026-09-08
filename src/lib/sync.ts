@@ -604,10 +604,17 @@ export function matchColumn(
   return sync.match_on === "sheet_id" ? "sheet_id" : target.key_column;
 }
 
+/**
+ * `columns` is optional and defaults to none checked, rather than required,
+ * because the one caller that cannot always get it — a run whose target
+ * table's columns failed to load — should degrade to the checks that do not
+ * need it rather than skip validation altogether.
+ */
 export function syncProblems(
   sync: Pick<SyncDefinition, "trigger_kind" | "interval_minutes">,
   maps: SyncColumnMap[],
   keyColumn: string,
+  columns: TargetColumn[] = [],
 ): string[] {
   const problems: string[] = [];
   const mapped = mappedColumns(maps);
@@ -622,6 +629,24 @@ export function syncProblems(
   }
   if (sync.trigger_kind === "interval" && !sync.interval_minutes) {
     problems.push("An interval sync needs an interval.");
+  }
+
+  // Our own id and the sheet's are different kinds of value — a uuid we
+  // generated against whatever the sheet happens to use for the same idea.
+  // A column typed uuid only ever holds one of ours, so a mapping that sends
+  // it a sheet cell straight, with no `reference_table` to resolve through,
+  // is not a slow row here and there: it is a `sync_apply` call that fails on
+  // its first uuid-shaped column and writes nothing at all. The matched-on
+  // column is exempt because it is never itself a uuid — a target keyed by
+  // its own `id` matches on `sheet_id` instead, for exactly this reason.
+  for (const m of mapped) {
+    if (m.target_column === keyColumn || m.reference_table !== null) continue;
+    const column = columns.find((c) => c.column_name === m.target_column);
+    if (column?.data_type === "uuid") {
+      problems.push(
+        `${m.target_column} holds one of our own ids, but ${m.sheet_column} is not marked as coming from another table. Set “Read as” to an ID from the right table for it, or every row will fail to write.`,
+      );
+    }
   }
 
   return problems;

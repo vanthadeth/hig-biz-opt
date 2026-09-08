@@ -318,6 +318,60 @@ describe("syncProblems", () => {
     );
     expect(problems).toContain("An interval sync needs an interval.");
   });
+
+  // The bug that prompted this check: a sheet's own id scheme sent straight
+  // into a uuid column, which is not our id however much it looks like one.
+  describe("a uuid column fed a sheet cell with nothing to resolve it", () => {
+    const columns = [
+      { column_name: "sheet_id", data_type: "text", is_required: false },
+      { column_name: "parent_id", data_type: "uuid", is_required: false },
+    ];
+
+    it("is flagged when nothing marks it as a reference", () => {
+      const problems = syncProblems(
+        { trigger_kind: "interval", interval_minutes: 60 },
+        [map("ID", "sheet_id"), map("Category ID", "parent_id")],
+        "sheet_id",
+        columns,
+      );
+      expect(problems.some((p) => p.includes("parent_id"))).toBe(true);
+    });
+
+    it("is not flagged once reference_table resolves it", () => {
+      const problems = syncProblems(
+        { trigger_kind: "interval", interval_minutes: 60 },
+        [map("ID", "sheet_id"), map("Category ID", "parent_id", "text", 1, "item_categories")],
+        "sheet_id",
+        columns,
+      );
+      expect(problems.some((p) => p.includes("parent_id"))).toBe(false);
+    });
+
+    it("exempts the matched-on column itself", () => {
+      // sheet_id is text, never uuid, but this proves the exemption rather
+      // than the column's own type — a target keyed by its own id matches on
+      // sheet_id for exactly this reason.
+      const problems = syncProblems(
+        { trigger_kind: "interval", interval_minutes: 60 },
+        [map("ID", "sheet_id")],
+        "sheet_id",
+        columns,
+      );
+      expect(problems).toEqual([]);
+    });
+
+    it("says nothing when no column metadata was available to check against", () => {
+      // The engine's own fetch of column types can itself fail; degrading to
+      // the checks that do not need it is better than skipping validation
+      // altogether, and better than a false alarm on every column.
+      const problems = syncProblems(
+        { trigger_kind: "interval", interval_minutes: 60 },
+        [map("ID", "sheet_id"), map("Category ID", "parent_id")],
+        "sheet_id",
+      );
+      expect(problems.some((p) => p.includes("parent_id"))).toBe(false);
+    });
+  });
 });
 
 describe("reading a sync back", () => {

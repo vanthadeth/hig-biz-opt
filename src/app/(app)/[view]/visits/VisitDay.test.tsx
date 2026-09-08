@@ -87,6 +87,32 @@ describe("whose day this actually is, once a subordinate's rows can arrive too",
   });
 });
 
+describe("the field app, which has nowhere for a report or a map to go", () => {
+  it("drops both doors when links is false, keeping the rest of the screen", () => {
+    render(
+      <VisitDay
+        viewKey="field"
+        userId="me"
+        visits={[]}
+        quota={NO_QUOTA}
+        provinces={[]}
+        now={NOW}
+        canCheckIn
+        links={false}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: /Report/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Map/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "New visit" })).toBeInTheDocument();
+  });
+
+  it("keeps both doors by default, for the main app", () => {
+    draw([]);
+    expect(screen.getByRole("link", { name: /Report/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Map/ })).toBeInTheDocument();
+  });
+});
+
 describe("a viewer who holds no visit:add of their own", () => {
   it("offers no way to start a call, even with nobody checked in", () => {
     draw([], false);

@@ -88,6 +88,32 @@ describe("updateSession, signed out", () => {
   });
 });
 
+describe("updateSession, signed out, the field app", () => {
+  beforeEach(signedOut);
+
+  it("sends a field-app page to the field app's own login, not the main one", async () => {
+    const to = redirectedTo(await updateSession(request("/field")));
+    expect(to?.pathname).toBe("/field/login");
+    expect(to?.searchParams.get("next")).toBe("/field");
+  });
+
+  it("does the same for a visit inside it", async () => {
+    const to = redirectedTo(await updateSession(request("/field/visits/abc")));
+    expect(to?.pathname).toBe("/field/login");
+  });
+
+  it("lets the field login page through", async () => {
+    expect(redirectedTo(await updateSession(request("/field/login")))).toBeNull();
+  });
+
+  it("does not treat /field/loginx as the login page itself", async () => {
+    // A different route, were it ever to exist — not public, and still sent
+    // to the real /field/login rather than the main app's.
+    const to = redirectedTo(await updateSession(request("/field/loginx")));
+    expect(to?.pathname).toBe("/field/login");
+  });
+});
+
 describe("updateSession, signed in", () => {
   beforeEach(signedIn);
 
@@ -107,6 +133,15 @@ describe("updateSession, signed in", () => {
 
   it("lets the root through so it can resolve the entry point", async () => {
     expect(redirectedTo(await updateSession(request("/")))).toBeNull();
+  });
+
+  it("bounces the field login page to the field app, not the main entry point", async () => {
+    const to = redirectedTo(await updateSession(request("/field/login")));
+    expect(to?.pathname).toBe("/field");
+  });
+
+  it("lets a page inside the field app through", async () => {
+    expect(redirectedTo(await updateSession(request("/field/visits/abc")))).toBeNull();
   });
 });
 

@@ -520,6 +520,39 @@ the app on its owner rather than handing it to a customer. A device that was
 locked before that rule existed can still leave: the unlock pad asks whether a
 PIN exists, and offers **Leave browsing** instead of a keypad when none does.
 
+## The field app
+
+`/field` is a second front door onto the same building: check-in/out, and
+nothing else. Not a second product — a rep's account is exactly the account
+they already have, and the permissions that decide what it can do are the
+same `visit:add`/`visit:view` rows that decide it in the main app. There is
+no new role, no new table, no new RLS policy. What is new is a route that
+shows only that one screen and a login that stays on it.
+
+**Its own login.** `/field/login` is a separate page from `/login`, and
+`src/lib/supabase/middleware.ts` knows about both: somebody signed out who
+reaches `/field/*` is sent to `/field/login`, not the main app's — the door
+they knocked on is the door they come back to. Signing in there lands on
+`/field`; signing in at `/login` still lands wherever `resolveEntryPath`
+sends it. One Supabase session either way, so a rep already signed into the
+main app on the same phone can open `/field` directly with nothing to type.
+
+**The screen itself is `VisitDay`**, the same component `/[view]/visits`
+already renders — a rep's day does not become a different thing for living
+behind a different door. The one difference is `links={false}`: the field
+app has no report and no map for those two buttons to open, so `VisitDay`
+leaves them out rather than offering a route that would 404. Opening a visit
+goes to `/field/visits/[id]`, which renders the same `OpenVisitPage` /
+`VisitRecord` the main app uses, with `viewKey` fixed to `"field"` instead of
+read from the URL — there being only the one place a visit can be here.
+
+**No permission, no screen.** `/field/layout.tsx` checks `visit:add` or
+`visit:view` on every request, same as the main app's `[view]/layout.tsx`
+checks a view — an account that holds neither is signed in and told so
+plainly, not shown a blank page or a button that would only fail. An account
+with no view assigned at all can still use `/field`: the two entry points do
+not depend on each other.
+
 ## The cart, and what it becomes
 
 A cart is scratch. It reads prices live off the item, it belongs to one person,

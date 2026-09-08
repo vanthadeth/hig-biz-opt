@@ -14,8 +14,13 @@ import {
  * at 3am or a spreadsheet reports a change. They are not unprotected: the tick
  * checks a shared secret and the hook's whole path is a random token. Sending
  * them to /login would turn both into a redirect nothing follows.
+ *
+ * `/field/login` is here for the same reason `/login` is: the field app is a
+ * separate front door with its own sign-in screen, and that screen has to be
+ * reachable by somebody who is not signed in yet — which is everybody who
+ * needs it.
  */
-const PUBLIC_PATHS = ["/login", "/auth", "/api/sync/tick", "/api/sync/hook"];
+const PUBLIC_PATHS = ["/login", "/field/login", "/auth", "/api/sync/tick", "/api/sync/hook"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -54,7 +59,12 @@ export async function updateSession(request: NextRequest) {
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    // Whoever knocked stays at the door they knocked on: a field-app URL sends
+    // somebody signed out to /field/login, not the main app's /login, so the
+    // "own login" the field app is for actually holds when it matters —
+    // reaching a page while signed out.
+    const inField = pathname === "/field" || pathname.startsWith("/field/");
+    url.pathname = inField ? "/field/login" : "/login";
     url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
     return NextResponse.redirect(url);
   }
@@ -79,9 +89,9 @@ export async function updateSession(request: NextRequest) {
     response.cookies.set(KIOSK_COOKIE, "", { path: "/", maxAge: 0 });
   }
 
-  if (user && pathname === "/login") {
+  if (user && (pathname === "/login" || pathname === "/field/login")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = pathname === "/field/login" ? "/field" : "/";
     url.search = "";
     return NextResponse.redirect(url);
   }

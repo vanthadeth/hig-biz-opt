@@ -8,7 +8,12 @@ import { useI18n, useT } from "@/components/I18nProvider";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { attendanceDays, groupByWeek, hoursMinutes } from "@/lib/attendance";
+import {
+  attendanceDays,
+  groupByWeek,
+  hoursMinutes,
+  type AttendanceDay,
+} from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf, weekKey } from "@/lib/time";
@@ -34,6 +39,11 @@ import { useFix } from "./useFix";
  * "Standing outside a shop" is not everybody's day, though: `canCheckIn` says
  * whether this viewer holds `visit:add` at all, and when they do not, the
  * button is replaced rather than left to fail against the RPC's own refusal.
+ *
+ * `links` defaults to true for the main app, where a report and a map both
+ * have somewhere to go. The field app (`/field`) is check-in/out and nothing
+ * else — no `/field/visits/reports`, no `/field/visits/map` — so it passes
+ * `false` and gets the same screen minus the two doors that would 404 there.
  */
 export function VisitDay({
   viewKey,
@@ -43,6 +53,7 @@ export function VisitDay({
   provinces,
   now,
   canCheckIn,
+  links = true,
 }: {
   viewKey: string;
   userId: string;
@@ -52,6 +63,7 @@ export function VisitDay({
   provinces: [string, string][];
   now: string;
   canCheckIn: boolean;
+  links?: boolean;
 }) {
   const router = useRouter();
   const t = useT();
@@ -163,15 +175,16 @@ export function VisitDay({
           week={totalsOfPeriod(week)}
         />
       ) : (
-        today && (
+        today &&
+        // Only the main app has a report for this to open onto — the field
+        // app is check-in/out alone, so the same figures sit still there.
+        (links ? (
           <Link href={`/${viewKey}/visits/reports`} className="pressable block">
-            <Card className="grid grid-cols-3 divide-x divide-line p-0">
-              <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
-              <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
-              <Figure label={t("day.visits")} value={String(today.visits)} />
-            </Card>
+            <TodayFigures today={today} t={t} />
           </Link>
-        )
+        ) : (
+          <TodayFigures today={today} t={t} />
+        ))
       )}
 
       {error && (
@@ -237,22 +250,24 @@ export function VisitDay({
         </Card>
       )}
 
-      <div className="flex gap-2">
-        <Link
-          href={`/${viewKey}/visits/reports`}
-          className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
-        >
-          <Icon name="chart" className="size-4" />
-          {t("day.report")}
-        </Link>
-        <Link
-          href={`/${viewKey}/visits/map`}
-          className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
-        >
-          <Icon name="pin" className="size-4" />
-          {t("day.map")}
-        </Link>
-      </div>
+      {links && (
+        <div className="flex gap-2">
+          <Link
+            href={`/${viewKey}/visits/reports`}
+            className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
+          >
+            <Icon name="chart" className="size-4" />
+            {t("day.report")}
+          </Link>
+          <Link
+            href={`/${viewKey}/visits/map`}
+            className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-medium"
+          >
+            <Icon name="pin" className="size-4" />
+            {t("day.map")}
+          </Link>
+        </div>
+      )}
 
       {grouped.length > 0 ? (
         <div className="space-y-5">
@@ -282,6 +297,23 @@ function Figure({ label, value }: { label: string; value: string }) {
       <p className="text-lg font-semibold tabular-nums text-brand">{value}</p>
       <p className="text-xs text-muted">{label}</p>
     </div>
+  );
+}
+
+/** The bare three figures, with or without a report for them to open onto. */
+function TodayFigures({
+  today,
+  t,
+}: {
+  today: AttendanceDay;
+  t: ReturnType<typeof useT>;
+}) {
+  return (
+    <Card className="grid grid-cols-3 divide-x divide-line p-0">
+      <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
+      <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
+      <Figure label={t("day.visits")} value={String(today.visits)} />
+    </Card>
   );
 }
 

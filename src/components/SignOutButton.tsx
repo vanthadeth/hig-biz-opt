@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { createClient } from "@/lib/supabase/client";
 
-export function SignOutButton() {
+export function SignOutButton({ redirectTo = "/login" }: { redirectTo?: string } = {}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -13,7 +13,7 @@ export function SignOutButton() {
     setBusy(true);
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.replace("/login");
+    router.replace(redirectTo);
     router.refresh();
   }
 

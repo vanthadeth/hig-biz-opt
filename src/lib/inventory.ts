@@ -337,7 +337,7 @@ export function countItems(groups: CatalogueGroup[]): number {
  * curates it and a list ordered by a number nobody set reads as random. Names
  * are what somebody scans a category list for.
  */
-const byName = (a: Category, b: Category) => a.name.localeCompare(b.name);
+export const byName = (a: Category, b: Category) => a.name.localeCompare(b.name);
 
 /**
  * Categories as a select list, sub-categories indented under their parent.

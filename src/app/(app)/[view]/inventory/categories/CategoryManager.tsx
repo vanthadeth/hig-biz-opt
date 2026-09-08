@@ -10,6 +10,7 @@ import { StoredPhoto } from "@/components/ui/StoredPhoto";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import {
+  byName,
   categoryLabel,
   countCategories,
   filterCategoryTree,
@@ -81,8 +82,12 @@ export function CategoryManager({
   const searching = query.trim() !== "";
   const allCollapsed =
     branches.length > 0 && branches.every((b) => collapsed.has(b.parent.id));
+  // Sorted here rather than relied on from the initial fetch: a category
+  // created in this screen is appended to `categories` as it comes back from
+  // the insert, not re-sorted, so the "Sits under" list would otherwise show
+  // a brand new top-level category out of order until the page reloaded.
   const parents = useMemo(
-    () => categories.filter((c) => c.parent_id === null),
+    () => categories.filter((c) => c.parent_id === null).sort(byName),
     [categories],
   );
 

@@ -100,16 +100,7 @@ export function CategoryManager({
   }
 
   const trimmed = draft?.name.trim() ?? "";
-  // The two partial unique indexes are what actually hold; catching it here
-  // just saves a round trip to be told so. They key on the name — the
-  // one every category is guaranteed to have — so this does too.
-  const duplicate = categories.some(
-    (c) =>
-      c.id !== draft?.id &&
-      (c.parent_id ?? "") === (draft?.parent_id ?? "") &&
-      c.name.toLowerCase() === trimmed.toLowerCase(),
-  );
-  const valid = trimmed !== "" && !duplicate;
+  const valid = trimmed !== "";
 
   async function save() {
     if (!draft || !valid) return;
@@ -332,9 +323,6 @@ export function CategoryManager({
               value={draft.name}
               onChange={(v) => setDraft({ ...draft, name: v })}
               placeholder="Grocery"
-              error={
-                duplicate ? `A category called “${trimmed}” already sits here.` : null
-              }
             />
 
             <Field

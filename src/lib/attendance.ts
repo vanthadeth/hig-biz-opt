@@ -261,6 +261,42 @@ export function byPerson(spans: VisitSpan[]): Map<string, VisitSpan[]> {
 }
 
 /**
+ * Several people's days, added into one team day.
+ *
+ * Each person's own figures come from {@link attendanceDays} first, one
+ * person at a time — pooling everybody's raw spans and re-merging them here
+ * instead would fold two reps' simultaneous calls into one span, same as
+ * `mergeRanges` folds one person's overlapping visits, and that is wrong the
+ * moment it is two different people: a rep cannot be in two shops at once,
+ * but a team can, and a manager's total should say sixteen hours worked, not
+ * eight.
+ *
+ * `clockIn`/`clockOut` stop meaning a single shift once more than one
+ * person's day is in the sum, so they are cleared rather than showing one
+ * arbitrary person's arrival as if it spoke for everybody.
+ */
+export function combineDays(perPerson: AttendanceDay[][]): AttendanceDay[] {
+  const byKey = new Map<string, AttendanceDay>();
+  for (const days of perPerson) {
+    for (const day of days) {
+      const found = byKey.get(day.key);
+      if (!found) {
+        byKey.set(day.key, { ...day, clockIn: null, clockOut: null });
+        continue;
+      }
+      found.workingMs += day.workingMs;
+      found.activeMs += day.activeMs;
+      found.visits += day.visits;
+      found.open = found.open || day.open;
+      found.unclosed = found.unclosed || day.unclosed;
+    }
+  }
+  return [...byKey.values()].sort((a, b) =>
+    a.key < b.key ? 1 : a.key > b.key ? -1 : 0,
+  );
+}
+
+/**
  * A duration as somebody would say it: "7h 45m", "45m", "8h".
  *
  * Rounded to the minute, because attendance is not a stopwatch and a figure

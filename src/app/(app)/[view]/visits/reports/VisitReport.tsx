@@ -8,6 +8,7 @@ import { SegmentedTabs } from "@/components/ui/SegmentedTabs";
 import {
   attendanceDays,
   byPerson,
+  combineDays,
   groupByMonth,
   groupByWeek,
   hoursMinutes,
@@ -20,15 +21,21 @@ import { peopleIn, type ReportVisit } from "@/lib/visits";
 
 type Grain = "day" | "week" | "month";
 
-
+/** Not a real person's id, so it cannot collide with one. */
+const ALL = "__all__";
 
 /**
- * Somebody's days, added up three ways.
+ * Somebody's days, added up three ways -- or everybody's.
  *
  * The figures come from `attendance.ts` — the same code the rep's own screen
  * uses, so the office and the person it is about never see two different
  * answers for the same day. Working hours are the day's span, active hours are
  * the time inside shops, and the gap between them is the travelling.
+ *
+ * `people` is only ever who the viewer's own `visit:view` scope already let
+ * through — a rep sees just themselves, so the picker never shows at all;
+ * anyone who can see more than one person can also add them together, and
+ * that combined view is where a supervisor or the office actually starts.
  *
  * A day with a visit somebody never checked out of is marked rather than
  * quietly short. The alternative is a figure that looks like a slow day and is
@@ -50,23 +57,35 @@ export function VisitReport({
     { value: "month", label: t("report.month") },
   ];
   const people = useMemo(() => peopleIn(visits), [visits]);
+  const spansByPerson = useMemo(
+    () =>
+      byPerson(
+        visits.map((visit) => ({
+          userId: visit.user_id,
+          checkedInAt: visit.checked_in_at,
+          checkedOutAt: visit.checked_out_at,
+          cancelledAt: visit.cancelled_at,
+        })),
+      ),
+    [visits],
+  );
 
   const [grain, setGrain] = useState<Grain>("day");
-  const [who, setWho] = useState<string>(() => people[0]?.id ?? "");
+  // More than one person to choose from starts on the combined view -- that
+  // is the answer a supervisor opens this screen for. Nobody else ever sees
+  // the picker at all, so this default never applies to them.
+  const [who, setWho] = useState<string>(() => (people.length > 1 ? ALL : (people[0]?.id ?? "")));
 
-  const chosen = people.some((person) => person.id === who) ? who : (people[0]?.id ?? "");
+  const fallback = people.length > 1 ? ALL : (people[0]?.id ?? "");
+  const chosen = who === ALL || people.some((person) => person.id === who) ? who : fallback;
 
   const days = useMemo(() => {
-    const spans = byPerson(
-      visits.map((visit) => ({
-        userId: visit.user_id,
-        checkedInAt: visit.checked_in_at,
-        checkedOutAt: visit.checked_out_at,
-        cancelledAt: visit.cancelled_at,
-      })),
-    ).get(chosen);
+    if (chosen === ALL) {
+      return combineDays(people.map((person) => attendanceDays(spansByPerson.get(person.id) ?? [], nowMs)));
+    }
+    const spans = spansByPerson.get(chosen);
     return spans ? attendanceDays(spans, nowMs) : [];
-  }, [visits, chosen, nowMs]);
+  }, [spansByPerson, people, chosen, nowMs]);
 
   const periods = useMemo(() => {
     if (grain === "week") return groupByWeek(days);
@@ -93,6 +112,7 @@ export function VisitReport({
             onChange={(e) => setWho(e.target.value)}
             className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
           >
+            <option value={ALL}>{t("report.allEmployees")}</option>
             {people.map((person) => (
               <option key={person.id} value={person.id}>
                 {person.name}
@@ -111,7 +131,10 @@ export function VisitReport({
       {days.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted">
           {t("report.nothingFor", {
-            name: people.find((p) => p.id === chosen)?.name ?? "",
+            name:
+              chosen === ALL
+                ? t("report.allEmployees")
+                : (people.find((p) => p.id === chosen)?.name ?? ""),
           })}
         </Card>
       ) : periods ? (

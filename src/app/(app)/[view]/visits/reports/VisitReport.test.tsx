@@ -130,24 +130,49 @@ describe("whose days", () => {
     expect(screen.queryByLabelText("Employee")).toBeNull();
   });
 
-  it("but does when more than one person's visits came back", () => {
+  it("but does when more than one person's visits came back, offering all of them together first", () => {
     render(<VisitReport visits={[...SOKHA, ...BOPHA]} now={NOW} />);
 
     const picker = screen.getByLabelText("Employee");
     expect(within(picker).getAllByRole("option").map((o) => o.textContent))
-      .toEqual(["Bopha Lim", "Sokha Chan"]);
+      .toEqual(["All employees", "Bopha Lim", "Sokha Chan"]);
   });
 
-  it("and shows only the chosen person's days", () => {
+  it("opens on everybody together, not one arbitrary person", () => {
     render(<VisitReport visits={[...SOKHA, ...BOPHA]} now={NOW} />);
 
-    // Alphabetical, so Bopha is first and her one day is what shows.
+    expect(screen.getByLabelText("Employee")).toHaveValue("__all__");
+    // Sokha's three days plus Bopha's one -- four distinct calendar days.
+    expect(screen.getAllByRole("listitem")).toHaveLength(4);
+    expect(screen.getByText("Wednesday 2 September 2026")).toBeInTheDocument();
+  });
+
+  it("narrows to one person's own days when one is chosen", () => {
+    render(<VisitReport visits={[...SOKHA, ...BOPHA]} now={NOW} />);
+
+    fireEvent.change(screen.getByLabelText("Employee"), { target: { value: "u2" } });
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getByText("Wednesday 2 September 2026")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Employee"), { target: { value: "u1" } });
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     expect(screen.queryByText("Wednesday 2 September 2026")).toBeNull();
+  });
+
+  it("adds two people's hours on a day they both worked, rather than merging their spans", () => {
+    render(
+      <VisitReport
+        visits={[
+          call("u1", "Sokha Chan", "02T08:00:00", "02T16:00:00"), // 8h, overlapping Bopha's
+          ...BOPHA,
+        ]}
+        now={NOW}
+      />,
+    );
+    // Sokha's 8h plus Bopha's 45m, not the roughly eight hours a merged
+    // range covering both would show.
+    const day = screen.getByText("Wednesday 2 September 2026").closest("li")!;
+    expect(within(day).getAllByText("8h 45m")).toHaveLength(2); // working and active alike
   });
 
   it("names somebody whose employee record has gone rather than showing a uuid", () => {

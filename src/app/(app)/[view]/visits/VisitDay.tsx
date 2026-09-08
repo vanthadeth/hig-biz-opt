@@ -30,6 +30,10 @@ import { useFix } from "./useFix";
  * first render in the browser matches the HTML it is hydrating. A component
  * that reads the clock while rendering renders two different pages, and an
  * open visit's running time is exactly the sort of thing that would flicker.
+ *
+ * "Standing outside a shop" is not everybody's day, though: `canCheckIn` says
+ * whether this viewer holds `visit:add` at all, and when they do not, the
+ * button is replaced rather than left to fail against the RPC's own refusal.
  */
 export function VisitDay({
   viewKey,
@@ -38,6 +42,7 @@ export function VisitDay({
   quota,
   provinces,
   now,
+  canCheckIn,
 }: {
   viewKey: string;
   userId: string;
@@ -46,6 +51,7 @@ export function VisitDay({
   /** Province code to name, so a timeline row can say which one a shop is in. */
   provinces: [string, string][];
   now: string;
+  canCheckIn: boolean;
 }) {
   const router = useRouter();
   const t = useT();
@@ -197,7 +203,7 @@ export function VisitDay({
             <Icon name="chevron" className="size-4 shrink-0 text-muted" />
           </Card>
         </Link>
-      ) : (
+      ) : canCheckIn ? (
         <div className="space-y-3">
           <button
             type="button"
@@ -222,6 +228,13 @@ export function VisitDay({
                 : t("visit.findingYou")}
           </p>
         </div>
+      ) : (
+        // No `visit:add` at all -- a supervisor watching the department, not
+        // making calls of their own. Said plainly rather than offering a
+        // button the RPC would only refuse.
+        <Card className="p-6 text-center text-sm text-muted">
+          {t("visit.noCheckIn")}
+        </Card>
       )}
 
       <div className="flex gap-2">

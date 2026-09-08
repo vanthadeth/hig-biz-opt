@@ -4,6 +4,7 @@ import {
   activeShare,
   attendanceDays,
   byPerson,
+  combineDays,
   decimalHours,
   fillDays,
   groupByMonth,
@@ -296,6 +297,62 @@ describe("byPerson", () => {
     expect([...people.keys()].sort()).toEqual(["a", "b"]);
     expect(people.get("a")).toHaveLength(2);
     expect(attendanceDays(people.get("a")!, NOW)).toHaveLength(2);
+  });
+});
+
+describe("combineDays", () => {
+  it("sums two people's hours on the same day rather than merging their ranges", () => {
+    const a = attendanceDays([call("01T08:00:00", "01T16:00:00")], NOW); // 8h
+    const b = attendanceDays([call("01T09:00:00", "01T17:00:00")], NOW); // 8h, overlapping
+
+    const combined = combineDays([a, b]);
+    expect(combined).toHaveLength(1);
+    // A union of the two ranges would read as one working day of about nine
+    // hours; two reps really put in sixteen between them.
+    expect(combined[0].workingMs).toBe(a[0].workingMs + b[0].workingMs);
+    expect(combined[0].activeMs).toBe(a[0].activeMs + b[0].activeMs);
+  });
+
+  it("adds visit counts across people on the same day", () => {
+    const a = attendanceDays(
+      [call("01T08:00:00", "01T09:00:00"), call("01T10:00:00", "01T11:00:00")], NOW,
+    );
+    const b = attendanceDays([call("01T08:00:00", "01T09:00:00")], NOW);
+
+    expect(combineDays([a, b])[0].visits).toBe(3);
+  });
+
+  it("keeps days that only one person worked", () => {
+    const a = attendanceDays([call("01T08:00:00", "01T09:00:00")], NOW);
+    const b = attendanceDays([call("02T08:00:00", "02T09:00:00")], NOW);
+
+    const combined = combineDays([a, b]);
+    expect(combined.map((d) => d.key)).toEqual(["2026-09-02", "2026-09-01"]);
+  });
+
+  it("flags the day open or unclosed if anybody's does", () => {
+    const stillOut = attendanceDays(
+      [call("10T08:00:00", null)], // today, still open at NOW
+      NOW,
+    );
+    const clocked = attendanceDays([call("10T08:00:00", "10T09:00:00")], NOW);
+
+    const combined = combineDays([stillOut, clocked]);
+    expect(combined[0].open).toBe(true);
+  });
+
+  it("clears the single clock-in/out, since it no longer names one person", () => {
+    const a = attendanceDays([call("01T08:00:00", "01T09:00:00")], NOW);
+    const b = attendanceDays([call("01T10:00:00", "01T11:00:00")], NOW);
+
+    const combined = combineDays([a, b]);
+    expect(combined[0].clockIn).toBeNull();
+    expect(combined[0].clockOut).toBeNull();
+  });
+
+  it("is the day itself, unchanged, when there is only one person to combine", () => {
+    const a = attendanceDays([call("01T08:00:00", "01T09:00:00")], NOW);
+    expect(combineDays([a])).toEqual([{ ...a[0], clockIn: null, clockOut: null }]);
   });
 });
 

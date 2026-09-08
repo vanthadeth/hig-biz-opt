@@ -15,7 +15,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  CUSTOMERS OK - 70 assertions passed (rls: ran)
+--     ERROR:  CUSTOMERS OK - 72 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -110,6 +110,7 @@ declare
   v_wh   uuid := '00000000-0000-4000-8000-0000000c0005';  -- warehouse, view 'sub'
   v_acc  uuid := '00000000-0000-4000-8000-0000000c0006';  -- accounting, view 'any'
   v_sup  uuid := '00000000-0000-4000-8000-0000000c0007';  -- sale supervisor
+  v_smgr uuid := '00000000-0000-4000-8000-0000000c0008';  -- sale manager, edit 'any'
   v_prov  text;  -- a province code read from the table, not written down here
   v_prov2 text;  -- another, for the row that tests an uncatalogued place
   v_mine uuid;   -- a customer owned by the rep
@@ -127,6 +128,7 @@ begin
   perform pg_temp.new_user(v_wh,   'cx.wh@example.test',  'Cx Wh',    'warehouse');
   perform pg_temp.new_user(v_acc,  'cx.acc@example.test', 'Cx Acc',   'accounting');
   perform pg_temp.new_user(v_sup,  'cx.sup@example.test', 'Cx Sup',   'sales_supervisor');
+  perform pg_temp.new_user(v_smgr, 'cx.smgr@example.test','Cx Smgr',  'sales_manager');
   update public.users set is_super_admin = true where id = v_sa;
   update public.users set manager_id = v_mgr where id in (v_rep, v_wh);
 
@@ -378,6 +380,12 @@ begin
   perform pg_temp.eq('and it is not a page anybody can navigate to',
     (select count(*)::text from public.view_modules where module_key = 'customer_credit'), '0');
 
+  -- A sale manager's own reach into the record itself, distinct from the
+  -- credit limit's narrower module: view was already 'any' (0006), and now so
+  -- is edit -- accessing every shop was never the gap, changing one was.
+  perform pg_temp.eq('a sale manager may edit any shop, not only ones they made',
+    app.effective_scope(v_smgr, 'customer', 'edit')::text, 'any');
+
   ----------------------------------------------------------------------------
   -- Scope, which is the whole point of this module
   ----------------------------------------------------------------------------
@@ -440,6 +448,13 @@ begin
     perform pg_temp.eq('a supervisor may move one on a shop they hold',
       (select credit_limit_usd::text from public.customers where shop_name = 'CX Sup Shop'),
       '2500.00');
+
+    -- A sale manager reaches a shop nobody handed them, the ordinary
+    -- any-scope behaviour -- the same v_thrs the rep was refused above.
+    perform pg_temp.act_as(v_smgr);
+    update public.customers set business_type = 'Hardware' where id = v_thrs;
+    perform pg_temp.eq('a sale manager may edit a shop that is not theirs',
+      (select business_type from public.customers where id = v_thrs), 'Hardware');
 
     -- Back to the rep, whose account the assertions below are about.
     perform pg_temp.act_as(v_rep);

@@ -1,4 +1,5 @@
 import { PageTitle } from "@/components/PageTitle";
+import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { CART_CUSTOMER_COLUMNS, type CartCustomer } from "@/lib/catalog";
 import { NearestCustomer } from "./NearestCustomer";
@@ -16,6 +17,11 @@ import { NearestCustomer } from "./NearestCustomer";
  * own `visit:view` scope already lets them see: a rep sees their own calls, a
  * supervisor their line's, without this screen having to ask the question
  * itself.
+ *
+ * The "Check in" button on each row is a different permission from being able
+ * to look this screen up at all -- a sale manager can reach every customer
+ * here (`customer:view` at 'any') without holding `visit:add`, so `canCheckIn`
+ * decides whether that button exists rather than letting a tap fail.
  */
 export default async function Page({
   params,
@@ -25,7 +31,7 @@ export default async function Page({
   const { view } = await params;
   const supabase = await createClient();
 
-  const [customers, visits] = await Promise.all([
+  const [customers, visits, permissions] = await Promise.all([
     supabase
       .from("customers")
       .select(CART_CUSTOMER_COLUMNS)
@@ -44,6 +50,7 @@ export default async function Page({
       .is("cancelled_at", null)
       .order("checked_in_at", { ascending: false })
       .limit(3000),
+    getMyPermissions(),
   ]);
 
   const lastVisits = new Map<string, string>();
@@ -59,6 +66,7 @@ export default async function Page({
         customers={(customers.data ?? []) as CartCustomer[]}
         lastVisits={[...lastVisits]}
         now={new Date().toISOString()}
+        canCheckIn={can(permissions, "visit", "add")}
       />
     </div>
   );

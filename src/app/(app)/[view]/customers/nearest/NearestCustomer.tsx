@@ -43,6 +43,12 @@ const SHOWN = 5;
  * check-in moment should not wait on; choosing one of five rows already
  * sorted by distance is the one tap the button says it is.
  *
+ * That button is `canCheckIn`'s to grant, not `customers` -- reaching this
+ * screen only needs `customer:view`, which a sale manager holds at 'any', but
+ * checking in needs `visit:add`, which they do not. Without it the row still
+ * shows the shop, the distance, and the rest of the facts; it just offers no
+ * button that the database would only refuse.
+ *
  * Without a position this is just the customer list, alphabetically, which is
  * what the customers page already is. Said plainly rather than left to look
  * broken.
@@ -52,12 +58,14 @@ export function NearestCustomer({
   customers,
   lastVisits,
   now,
+  canCheckIn,
 }: {
   viewKey: string;
   customers: CartCustomer[];
   /** Customer id to the ISO time of their most recent (non-cancelled) visit. */
   lastVisits: [string, string][];
   now: string;
+  canCheckIn: boolean;
 }) {
   const t = useT();
   const { lang } = useI18n();
@@ -163,7 +171,7 @@ export function NearestCustomer({
           t={t}
           lastVisitLabel={lastVisitLabel(top.lastVisitAt)}
           busy={checkingIn === top.customer.id}
-          onCheckIn={() => checkInHere(top.customer.id)}
+          onCheckIn={canCheckIn ? () => checkInHere(top.customer.id) : null}
         />
       </Card>
 
@@ -192,7 +200,7 @@ export function NearestCustomer({
                   t={t}
                   lastVisitLabel={lastVisitLabel(lastVisitAt)}
                   busy={checkingIn === customer.id}
-                  onCheckIn={() => checkInHere(customer.id)}
+                  onCheckIn={canCheckIn ? () => checkInHere(customer.id) : null}
                 />
               </Card>
             </li>
@@ -222,7 +230,9 @@ function Facts({
   t: ReturnType<typeof useT>;
   lastVisitLabel: string;
   busy: boolean;
-  onCheckIn: () => void;
+  /** Null when the viewer holds no `visit:add` -- the button is left off
+   * rather than shown disabled, since there is nothing a later tap unlocks. */
+  onCheckIn: (() => void) | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 border-t border-line pt-2 text-xs text-muted">
@@ -233,14 +243,16 @@ function Facts({
         {t("customer.lastVisit")}{" "}
         <span className="font-medium text-fg">{lastVisitLabel}</span>
       </span>
-      <button
-        type="button"
-        onClick={onCheckIn}
-        disabled={busy}
-        className="pressable shrink-0 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-brand-fg disabled:opacity-60"
-      >
-        {busy ? t("customer.checkingIn") : t("customer.checkInHere")}
-      </button>
+      {onCheckIn && (
+        <button
+          type="button"
+          onClick={onCheckIn}
+          disabled={busy}
+          className="pressable shrink-0 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-brand-fg disabled:opacity-60"
+        >
+          {busy ? t("customer.checkingIn") : t("customer.checkInHere")}
+        </button>
+      )}
     </div>
   );
 }

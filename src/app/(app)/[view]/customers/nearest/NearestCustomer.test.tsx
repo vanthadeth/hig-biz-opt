@@ -51,7 +51,17 @@ const CUSTOMERS: CartCustomer[] = [
 const draw = (
   customers: CartCustomer[] = CUSTOMERS,
   lastVisits: [string, string][] = [],
-) => render(<NearestCustomer viewKey="sales" customers={customers} lastVisits={lastVisits} now={NOW} />);
+  canCheckIn = true,
+) =>
+  render(
+    <NearestCustomer
+      viewKey="sales"
+      customers={customers}
+      lastVisits={lastVisits}
+      now={NOW}
+      canCheckIn={canCheckIn}
+    />,
+  );
 
 beforeEach(() => {
   push.mockClear();
@@ -134,6 +144,21 @@ describe("checking in from the list", () => {
 describe("tapping the row itself", () => {
   it("opens the real customer record", () => {
     draw();
+    const link = screen.getByRole("link", { name: /Closest Mart/ });
+    expect(link).toHaveAttribute("href", "/sales/customers/c1");
+  });
+});
+
+describe("a viewer who holds no visit:add", () => {
+  it("offers no check-in button on any row, though the rest of each row still shows", () => {
+    draw(CUSTOMERS, [], false);
+    expect(screen.queryByRole("button", { name: "Check in" })).toBeNull();
+    expect(screen.getByText("Closest Mart")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+
+  it("still opens the real customer record on a tap", () => {
+    draw(CUSTOMERS, [], false);
     const link = screen.getByRole("link", { name: /Closest Mart/ });
     expect(link).toHaveAttribute("href", "/sales/customers/c1");
   });

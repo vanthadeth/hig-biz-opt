@@ -34,7 +34,7 @@ const visit = (over: Partial<VisitRow> = {}): VisitRow => ({
   ...over,
 });
 
-const draw = (visits: VisitRow[]) =>
+const draw = (visits: VisitRow[], canCheckIn = true) =>
   render(
     <VisitDay
       viewKey="sales"
@@ -43,6 +43,7 @@ const draw = (visits: VisitRow[]) =>
       quota={NO_QUOTA}
       provinces={[]}
       now={NOW}
+      canCheckIn={canCheckIn}
     />,
   );
 
@@ -83,5 +84,23 @@ describe("whose day this actually is, once a subordinate's rows can arrive too",
 
     expect(screen.queryByText("Their Shop")).toBeNull();
     expect(screen.getByText("No visits recorded in the last fortnight.")).toBeInTheDocument();
+  });
+});
+
+describe("a viewer who holds no visit:add of their own", () => {
+  it("offers no way to start a call, even with nobody checked in", () => {
+    draw([], false);
+    expect(screen.queryByRole("button", { name: "New visit" })).toBeNull();
+    expect(screen.getByText(/watching the department's/)).toBeInTheDocument();
+  });
+
+  it("still shows a subordinate's open visit, once it is genuinely their own", () => {
+    // A viewer can only ever be checked in via visit:add, so this is a
+    // defensive case rather than one that happens today -- but the open card
+    // must win over the no-permission message if it ever does.
+    draw([visit({ id: "mine", user_id: "me", checked_out_at: null })], false);
+    // Twice on purpose: the open-visit card and the timeline below it.
+    expect(screen.getAllByText("Corner Mart").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/watching the department's/)).toBeNull();
   });
 });

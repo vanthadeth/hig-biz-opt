@@ -1,5 +1,6 @@
 import { PageTitle } from "@/components/PageTitle";
 import { Card } from "@/components/ui/Card";
+import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { NO_QUOTA, QUOTA_COLUMNS, effectiveQuota, type Quota } from "@/lib/quota";
 import { VISIT_COLUMNS, type VisitRow } from "@/lib/visits";
@@ -19,6 +20,11 @@ import { VisitDay } from "./VisitDay";
  * `visit.view` at 'own' sees their own, a supervisor at 'sub' sees the
  * department's. The screen never filters by user, so it cannot disagree with
  * the database about who may see what.
+ *
+ * Whether the button appears is a separate question from what it can see: a
+ * sale manager holds `visit:view:sub` to watch the department's calls but no
+ * `visit:add` of their own -- they do not make calls, so the RPC would refuse
+ * one anyway. `canCheckIn` says which case this is before the tap, not after.
  */
 export default async function Page({
   params,
@@ -48,7 +54,7 @@ export default async function Page({
     );
   }
 
-  const [visits, settings, own, provinces] = await Promise.all([
+  const [visits, settings, own, provinces, permissions] = await Promise.all([
     // A fortnight is enough for the day list and the correction window, and
     // keeps a rep's first paint small on a phone.
     supabase
@@ -67,6 +73,10 @@ export default async function Page({
     // foreign key from a customer to its province — the code is text carried
     // over from the sheet — and asking per visit would be a query a row.
     supabase.from("geo_provinces").select("code, name"),
+    // Whether this viewer may start a call at all -- a supervisor's own
+    // `visit:view:sub` reaches the department's calls but not the button to
+    // make one, and the screen has to say so rather than let the tap fail.
+    getMyPermissions(),
   ]);
 
   const rows = (visits.data ?? []) as unknown as VisitRow[];
@@ -86,6 +96,7 @@ export default async function Page({
         quota={quota}
         provinces={provinceNames}
         now={now.toISOString()}
+        canCheckIn={can(permissions, "visit", "add")}
       />
     </div>
   );

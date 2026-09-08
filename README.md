@@ -878,17 +878,27 @@ mobile layout — the auto-hiding title bar and bottom bar are built for it.
 
 ## Maps
 
-The visit map and the customer location picker use the Google Maps JavaScript
-API. Set:
+The visit map and the customer location picker are [Leaflet](https://leafletjs.com)
+drawing on OpenStreetMap tiles. **There is no API key and nothing to set up** —
+they work on a fresh checkout.
+
+### Where the tiles come from
+
+The default is OpenStreetMap's own tile server. Read their
+[tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
+before putting this in front of a sales team: those servers run on donations,
+and heavy or commercial use is explicitly asked to go elsewhere. A dozen people
+opening the day's route each morning is fine; a hundred is not.
+
+Moving to a paid host — MapTiler, Stadia, Thunderforest, your own — is two
+environment variables and no code:
 
 ```
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=...
+NEXT_PUBLIC_MAP_TILE_URL=https://tiles.example.com/{z}/{x}/{y}.png?key=...
+NEXT_PUBLIC_MAP_TILE_ATTRIBUTION=&copy; Example, &copy; OpenStreetMap contributors
 ```
 
-The key reaches the browser either way, so restrict it by HTTP referrer in the
-Google Cloud console rather than trying to hide it. Enable **Maps JavaScript
-API** on the project the key belongs to.
-
-Without a key the maps do not go blank — they say which variable is missing,
-because a grey rectangle is indistinguishable from no data, a slow network, or
-a bug.
+Attribution is a licence condition, not decoration, so it travels with the URL
+as one setting. Set a custom URL without one and the app still credits
+OpenStreetMap, because most alternative hosts serve OSM data and crediting
+nobody is the one wrong answer.

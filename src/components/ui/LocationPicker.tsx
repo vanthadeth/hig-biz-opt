@@ -1,11 +1,12 @@
 "use client";
 
+import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useT } from "@/components/I18nProvider";
 import { Sheet } from "@/components/ui/Sheet";
 import { haptic } from "@/lib/haptics";
-import { loadMaps, mapsKey, mapsProblem } from "@/lib/googleMaps";
+import { DEFAULT_CENTRE, mapProblem, tileLayer } from "@/lib/openMap";
 
 /**
  * Putting a shop on the map.
@@ -35,8 +36,6 @@ export function LocationPicker({
   const t = useT();
   const [open, setOpen] = useState(false);
 
-  const key = mapsKey();
-
   return (
     <>
       <button
@@ -53,28 +52,20 @@ export function LocationPicker({
       </button>
 
       <Sheet open={open} onClose={() => setOpen(false)} title={t("customer.whereIsShop")}>
-        {key === null ? (
-          <p role="status" className="p-6 text-center text-sm text-muted">
-            {mapsProblem(null, false)}
-          </p>
-        ) : (
-          <PickerMap
-            latitude={latitude}
-            longitude={longitude}
-            onPick={(lat, lng) => {
-              haptic("success");
-              onPick(lat, lng);
-              setOpen(false);
-            }}
-            onCancel={() => setOpen(false)}
-          />
-        )}
+        <PickerMap
+          latitude={latitude}
+          longitude={longitude}
+          onPick={(lat, lng) => {
+            haptic("success");
+            onPick(lat, lng);
+            setOpen(false);
+          }}
+          onCancel={() => setOpen(false)}
+        />
       </Sheet>
     </>
   );
 }
-
-const PHNOM_PENH = { lat: 11.5564, lng: 104.9282 };
 
 function PickerMap({
   latitude,
@@ -97,59 +88,75 @@ function PickerMap({
   );
 
   useEffect(() => {
+    if (!holder.current) return;
     let cancelled = false;
+    let map: import("leaflet").Map | null = null;
 
-    loadMaps()
-      .then((maps) => {
+    // Browser-only, so it arrives through import() in an effect rather than at
+    // the top of the file.
+    import("leaflet")
+      .then((L) => {
         if (cancelled || !holder.current) return;
 
         const start =
           latitude !== null && longitude !== null
             ? { lat: latitude, lng: longitude }
-            : PHNOM_PENH;
+            : DEFAULT_CENTRE;
 
-        const map = new maps.Map(holder.current, {
-          center: start,
+        map = L.map(holder.current, {
+          center: [start.lat, start.lng],
           zoom: latitude !== null ? 18 : 13,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          gestureHandling: "greedy", // Inside a sheet there is nothing to trap.
+          // Inside a sheet there is no page behind to trap, so the wheel is
+          // free here where it is not on the visit map.
+          scrollWheelZoom: true,
         });
 
-        const marker = new maps.Marker({
-          map,
-          position: start,
+        const tiles = tileLayer();
+        L.tileLayer(tiles.url, {
+          attribution: tiles.attribution,
+          maxZoom: tiles.maxZoom,
+        }).addTo(map);
+
+        // A real marker rather than a circle with drag bolted on: Leaflet's own
+        // dragging handles touch, and touch is what this is for. The icon is
+        // drawn instead of loaded, which is how a Leaflet map usually ends up
+        // with a broken image where its marker should be.
+        const brand =
+          getComputedStyle(holder.current).getPropertyValue("--brand").trim() || "#1B7FD0";
+        const pin = L.marker([start.lat, start.lng], {
           draggable: true,
-          visible: latitude !== null,
+          autoPan: true,
+          icon: L.divIcon({
+            className: "",
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+            html:
+              `<span style="display:block;width:22px;height:22px;border-radius:9999px;` +
+              `background:${brand};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></span>`,
+          }),
         });
+        if (latitude !== null) pin.addTo(map);
 
         const place = (lat: number, lng: number) => {
-          marker.setPosition({ lat, lng });
-          marker.setVisible(true);
+          pin.setLatLng([lat, lng]);
+          if (map && !map.hasLayer(pin)) pin.addTo(map);
           if (!cancelled) setAt({ lat, lng });
         };
 
         // Tap anywhere to drop it; drag to nudge. Both, because a thumb is
         // good at the first and bad at the second on a small screen.
-        map.addListener("click", (e: google.maps.MapMouseEvent) => {
-          if (e.latLng) place(e.latLng.lat(), e.latLng.lng());
-        });
-        marker.addListener("dragend", () => {
-          const p = marker.getPosition();
-          if (p) place(p.lat(), p.lng());
+        map.on("click", (e) => place(e.latlng.lat, e.latlng.lng));
+        pin.on("dragend", () => {
+          const p = pin.getLatLng();
+          place(p.lat, p.lng);
         });
 
         // Only offered if the browser will give it; never taken without asking.
         if (latitude === null && typeof navigator !== "undefined" && navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              if (cancelled) return;
-              map.setCenter({
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-              });
-              map.setZoom(17);
+              if (cancelled || !map) return;
+              map.setView([position.coords.latitude, position.coords.longitude], 17);
             },
             () => {},
             { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
@@ -162,13 +169,14 @@ function PickerMap({
 
     return () => {
       cancelled = true;
+      map?.remove();
     };
   }, [latitude, longitude]);
 
   if (failed) {
     return (
       <p role="status" className="p-6 text-center text-sm text-muted">
-        {mapsProblem(mapsKey(), true)}
+        {mapProblem(true)}
       </p>
     );
   }

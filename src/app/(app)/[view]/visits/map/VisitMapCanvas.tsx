@@ -1,40 +1,39 @@
 "use client";
 
+import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { boundsOf, gapLine, padded, routeLines, type MapPin } from "@/lib/mapView";
-import { loadMaps, mapsKey, mapsProblem } from "@/lib/googleMaps";
+import { DEFAULT_CENTRE, mapProblem, tileLayer } from "@/lib/openMap";
 
 /**
  * The map itself, and nothing else.
  *
- * Google Maps arrives as a script with a key on it, loaded at run time rather
- * than imported, so the page around it renders while the library is still on
- * its way — and says plainly when it never arrives. A blank grey rectangle is
- * the worst way to report a missing key: it looks exactly like no data.
+ * Leaflet is a browser-only library — it reads `window` on the way in — so it
+ * arrives through `import()` inside an effect rather than at the top of the
+ * file, which is what the framework's own lazy-loading guide asks for. The
+ * page around it renders while the library is still on its way, and says
+ * plainly if it never arrives.
  *
- * Markers are drawn as numbered discs with our own colours, read off the page
- * so they follow the theme. A check-in is a numbered disc, one outside the
- * radius is amber, and a shop is a small hollow ring so it never reads as
- * somebody having been there.
- *
- * These use `google.maps.Marker` rather than `AdvancedMarkerElement`, which
- * needs a cloud-configured Map ID that this app does not have and should not
- * require somebody to create before a map will draw. Google has committed to
- * twelve months' notice before withdrawing it.
+ * Every mark is drawn rather than dropped from an icon file: a check-in is a
+ * numbered disc, one measured outside the radius is amber, and a shop is a
+ * small hollow ring so it never reads as somebody having been there. The
+ * colours are read off the page, so the map follows the theme instead of
+ * keeping its own idea of the brand — and it means no marker images to load,
+ * which is the usual way a Leaflet map ends up with broken icons.
  */
 export function VisitMapCanvas({ pins }: { pins: MapPin[] }) {
   const holder = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
 
-  const key = mapsKey();
-  const problem = mapsProblem(key, failed);
-
   useEffect(() => {
-    if (key === null) return;
+    if (!holder.current) return;
     let cancelled = false;
+    // Held so the cleanup can take the map down: Leaflet keeps listeners on
+    // the window, and a second mount onto a container it still owns throws.
+    let map: import("leaflet").Map | null = null;
 
-    loadMaps()
-      .then((maps) => {
+    import("leaflet")
+      .then((L) => {
         if (cancelled || !holder.current) return;
 
         const css = getComputedStyle(holder.current);
@@ -47,113 +46,87 @@ export function VisitMapCanvas({ pins }: { pins: MapPin[] }) {
         const surface = token("--surface", "#ffffff");
         const muted = token("--muted", "#64707D");
 
-        const map = new maps.Map(holder.current, {
-          // A map inside a scrolling page that swallows the wheel is a map that
-          // traps the page; dragging and pinching still work.
-          gestureHandling: "cooperative",
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-          center: { lat: 11.5564, lng: 104.9282 },
+        map = L.map(holder.current, {
+          center: [DEFAULT_CENTRE.lat, DEFAULT_CENTRE.lng],
           zoom: 13,
+          // A map inside a scrolling page that swallows the wheel is a map that
+          // traps the page, so the wheel scrolls past it. Dragging, the zoom
+          // buttons and pinching all still work, and pinching is what the
+          // phones this is built for actually use.
+          scrollWheelZoom: false,
         });
 
-        const info = new maps.InfoWindow();
+        const tiles = tileLayer();
+        L.tileLayer(tiles.url, {
+          attribution: tiles.attribution,
+          maxZoom: tiles.maxZoom,
+        }).addTo(map);
 
         // The shop first, so a check-in disc sits over its ring, not under.
         for (const pin of pins) {
           if (!pin.shop) continue;
-          const marker = new maps.Marker({
-            map,
-            position: { lat: pin.shop.latitude, lng: pin.shop.longitude },
-            icon: {
-              path: maps.SymbolPath.CIRCLE,
-              scale: 6,
-              fillColor: surface,
-              fillOpacity: 1,
-              strokeColor: brand,
-              strokeWeight: 2,
-            },
-            title: pin.shopName,
-          });
-          marker.addListener("click", () => {
-            info.setContent(
-              `<strong>${pin.shopName}</strong><br><small>Where the shop is recorded</small>`,
-            );
-            info.open({ map, anchor: marker });
-          });
+          L.circleMarker([pin.shop.latitude, pin.shop.longitude], {
+            radius: 6,
+            color: brand,
+            weight: 2,
+            fillColor: surface,
+            fillOpacity: 1,
+          })
+            .addTo(map)
+            .bindPopup(`<strong>${pin.shopName}</strong><br><small>Where the shop is recorded</small>`);
         }
 
+        // The gap between where somebody stood and where the shop is recorded.
         for (const pin of pins) {
           const line = gapLine(pin);
           if (!line) continue;
-          new maps.Polyline({
-            map,
-            path: line.map(([lat, lng]) => ({ lat, lng })),
-            strokeOpacity: 0,
-            // A dashed line, drawn as repeated dots: the gap between where
-            // somebody stood and where the shop is recorded.
-            icons: [{
-              icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 2,
-                      strokeColor: pin.outOfRange ? warnFg : muted },
-              offset: "0",
-              repeat: "10px",
-            }],
-          });
+          L.polyline(line, {
+            color: pin.outOfRange ? warnFg : muted,
+            weight: 2,
+            opacity: 0.9,
+            dashArray: "2 8",
+          }).addTo(map);
         }
 
         for (const line of routeLines(pins)) {
-          new maps.Polyline({
-            map,
-            path: line.map(([lat, lng]) => ({ lat, lng })),
-            strokeColor: brand,
-            strokeWeight: 3,
-            strokeOpacity: 0.55,
-          });
+          L.polyline(line, { color: brand, weight: 3, opacity: 0.55 }).addTo(map);
         }
 
         for (const pin of pins) {
           if (!pin.at) continue;
-          const marker = new maps.Marker({
-            map,
-            position: { lat: pin.at.latitude, lng: pin.at.longitude },
-            zIndex: 10 + pin.order,
-            icon: {
-              path: maps.SymbolPath.CIRCLE,
-              scale: 12,
-              fillColor: pin.outOfRange ? warnFg : brand,
-              fillOpacity: 1,
-              strokeWeight: 0,
-            },
-            label: {
-              text: String(pin.order),
-              color: pin.outOfRange ? warn : brandFg,
-              fontSize: "11px",
-              fontWeight: "600",
-            },
+          const fill = pin.outOfRange ? warnFg : brand;
+          const ink = pin.outOfRange ? warn : brandFg;
+          L.marker([pin.at.latitude, pin.at.longitude], {
             title: `${pin.order}. ${pin.shopName}`,
-          });
-          marker.addListener("click", () => {
-            info.setContent(
+            zIndexOffset: 10 + pin.order,
+            icon: L.divIcon({
+              className: "",
+              iconSize: [24, 24],
+              iconAnchor: [12, 12],
+              popupAnchor: [0, -12],
+              html:
+                `<span style="display:grid;place-items:center;width:24px;height:24px;` +
+                `border-radius:9999px;background:${fill};color:${ink};` +
+                `font:600 11px/1 system-ui,sans-serif">${pin.order}</span>`,
+            }),
+          })
+            .addTo(map)
+            .bindPopup(
               `<strong>${pin.order}. ${pin.shopName}</strong><br><small>${
                 pin.distanceM === null
                   ? "Distance unknown"
                   : `${Math.round(pin.distanceM)} m from the shop`
               }</small>`,
             );
-            info.open({ map, anchor: marker });
-          });
         }
 
         const box = boundsOf(pins);
         if (box) {
           const air = padded(box);
-          map.fitBounds(
-            new maps.LatLngBounds(
-              { lat: air.south, lng: air.west },
-              { lat: air.north, lng: air.east },
-            ),
-          );
+          map.fitBounds([
+            [air.south, air.west],
+            [air.north, air.east],
+          ]);
         }
       })
       .catch(() => {
@@ -162,9 +135,11 @@ export function VisitMapCanvas({ pins }: { pins: MapPin[] }) {
 
     return () => {
       cancelled = true;
+      map?.remove();
     };
-  }, [pins, key]);
+  }, [pins]);
 
+  const problem = mapProblem(failed);
   if (problem) {
     return (
       <div

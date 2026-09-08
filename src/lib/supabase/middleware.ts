@@ -22,7 +22,41 @@ import {
  */
 const PUBLIC_PATHS = ["/login", "/footprint/login", "/auth", "/api/sync/tick", "/api/sync/hook"];
 
+/**
+ * HIG Footprint's own address, once it has one. Whoever visits it should find
+ * Footprint and nothing else — not a way in to the rest of the business
+ * sitting one wrong tap away on a domain a field rep was handed on its own.
+ */
+const FOOTPRINT_HOST = "footprint.higbiz.app";
+
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  // The `Host` header, not `nextUrl.hostname`: measured directly, the two
+  // disagree in this app's own dev server, where `nextUrl` is built from the
+  // address Next is bound to rather than the header a request actually
+  // carried. The header is what a real client sends and what Vercel's edge
+  // sets from the domain it resolved — the only one of the two that reflects
+  // which door was actually knocked on.
+  const host = request.headers.get("host")?.split(":")[0] ?? "";
+
+  // Confined before anything else runs, and before a session is even looked
+  // up: this is routing, not authorization, and it applies the same whether
+  // or not anybody is signed in. The API paths are exempted on principle —
+  // nothing under `/footprint` calls this app's own API today, but a request
+  // that names one explicitly is not "somebody typing the main app's URL out
+  // of habit", which is the one thing this redirect exists to catch.
+  if (
+    host === FOOTPRINT_HOST &&
+    pathname !== "/footprint" &&
+    !pathname.startsWith("/footprint/") &&
+    !pathname.startsWith("/api/")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/footprint";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -52,7 +86,6 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );

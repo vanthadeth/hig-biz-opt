@@ -17,6 +17,23 @@ function request(pathname: string, cookies: Record<string, string> = {}) {
 }
 
 /**
+ * The same request, arriving on HIG Footprint's own domain.
+ *
+ * The `Host` header, explicitly — not just a URL whose origin says so. A
+ * `NextRequest` built from a URL alone carries no `Host` header at all (that
+ * is added by real HTTP transport, which nothing here is), and the
+ * middleware reads the header, not the URL, for exactly this reason: see its
+ * own comment on why `nextUrl.hostname` cannot be trusted for this.
+ */
+function onFootprintHost(pathname: string, cookies: Record<string, string> = {}) {
+  const req = new NextRequest(new URL(pathname, "https://footprint.higbiz.app"), {
+    headers: { host: "footprint.higbiz.app" },
+  });
+  for (const [name, value] of Object.entries(cookies)) req.cookies.set(name, value);
+  return req;
+}
+
+/**
  * The same request, on a phone that has been handed to a customer.
  *
  * `agoMs` is how long since anything said the lock was still alive. The
@@ -46,6 +63,51 @@ beforeEach(() => {
   getUser.mockReset();
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+});
+
+describe("updateSession, HIG Footprint's own domain", () => {
+  // Confinement is routing, not authorization — it fires the same whether or
+  // not anybody is signed in, so these run without a getUser mock at all.
+
+  it("sends the bare domain into Footprint", async () => {
+    const to = redirectedTo(await updateSession(onFootprintHost("/")));
+    expect(to?.pathname).toBe("/footprint");
+  });
+
+  it("sends the main app's own paths into Footprint instead of serving them", async () => {
+    const to = redirectedTo(await updateSession(onFootprintHost("/sales/customers")));
+    expect(to?.pathname).toBe("/footprint");
+  });
+
+  it("drops the query on the way there", async () => {
+    const to = redirectedTo(await updateSession(onFootprintHost("/sales/customers?q=dara")));
+    expect(to?.search).toBe("");
+  });
+
+  it("lets /footprint itself through untouched", async () => {
+    signedOut();
+    // Passes this check, then meets the ordinary signed-out redirect below —
+    // /footprint/login, not another bounce to /footprint.
+    const to = redirectedTo(await updateSession(onFootprintHost("/footprint")));
+    expect(to?.pathname).toBe("/footprint/login");
+  });
+
+  it("lets a path already inside /footprint through", async () => {
+    signedIn();
+    expect(redirectedTo(await updateSession(onFootprintHost("/footprint/visits/abc")))).toBeNull();
+  });
+
+  it("does not confine api routes", async () => {
+    signedOut();
+    // Exempted on principle: a request naming an API path explicitly is not
+    // "typed the main app's URL out of habit", the one thing this catches.
+    expect(redirectedTo(await updateSession(onFootprintHost("/api/sync/tick")))).toBeNull();
+  });
+
+  it("leaves every other domain alone", async () => {
+    signedIn();
+    expect(redirectedTo(await updateSession(request("/sales/customers")))).toBeNull();
+  });
 });
 
 describe("updateSession, signed out", () => {

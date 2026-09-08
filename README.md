@@ -565,6 +565,28 @@ plainly, not shown a blank page or a button that would only fail. An account
 with no view assigned at all can still use `/footprint`: the two entry
 points do not depend on each other.
 
+**Its own domain.** `footprint.higbiz.app` is meant to show Footprint alone —
+not `higbiz.app/footprint`, the whole point of handing a rep a domain of
+their own is that it does not also read as a path into the rest of the
+business. `src/lib/supabase/middleware.ts` enforces that: any request whose
+`Host` header is `footprint.higbiz.app` and whose path is not already under
+`/footprint/*` (or `/api/*`, exempted on principle) is redirected to
+`/footprint` before anything else runs — a stray `footprint.higbiz.app/sales/customers`
+lands on Footprint's own day screen rather than the CRM. This checks the
+`Host` header directly rather than `request.nextUrl.hostname`: the two
+disagree in this app's own dev server (`nextUrl` is built from the address
+Next is bound to, not the header a request actually carried), and the header
+is what a real client sends and what Vercel's edge sets from the domain it
+resolved.
+
+Getting `footprint.higbiz.app` itself pointed at this deployment is a step
+outside the codebase: in Vercel, **Settings → Domains → Add**, entering
+`footprint.higbiz.app`, then adding the CNAME (or A record) Vercel gives you
+at whoever hosts `higbiz.app`'s DNS. Once that resolves, both
+`higbiz.app/footprint` and `footprint.higbiz.app` reach the same app —
+the domain is a second address for a route that already existed, not a
+second deployment to keep in sync.
+
 ## The cart, and what it becomes
 
 A cart is scratch. It reads prices live off the item, it belongs to one person,

@@ -31,17 +31,19 @@ import {
  * sheet ID. One control offers both, because to somebody filling this in they
  * are the same question — what is in this column?
  *
- * `driveImage` is its own flag rather than a third thing that control offers:
- * it only ever applies to a picture column, and it stacks on top of whichever
- * kind is already chosen for the column rather than replacing it, so a `text`
- * pairing stays `text` underneath — the sync engine reads the cell as text
- * either way, it is only what happens to that text afterwards that changes.
+ * `driveImage` and `namePrefix` are their own flags rather than more things
+ * that control offers: each only ever applies to one kind of column, and
+ * each stacks on top of whichever kind is already chosen rather than
+ * replacing it, so a `text` pairing stays `text` underneath — the sync
+ * engine reads the cell as text either way, it is only what happens to that
+ * text afterwards that changes.
  */
 type Pairing = {
   target: string;
   kind: SyncValueKind;
   reference: string | null;
   driveImage: boolean;
+  namePrefix: boolean;
 };
 
 /**
@@ -96,6 +98,7 @@ export function SyncForm({
           kind: m.value_kind,
           reference: m.reference_table,
           driveImage: m.transform === "drive_image",
+          namePrefix: m.transform === "reference_name_prefix",
         },
       ]),
     ),
@@ -172,6 +175,7 @@ export function SyncForm({
             kind: "text",
             reference: null,
             driveImage: false,
+            namePrefix: false,
           };
         }
         return next;
@@ -190,7 +194,13 @@ export function SyncForm({
     setPairs((current) => ({
       ...current,
       [header]: {
-        ...(current[header] ?? { target: "", kind: "text", reference: null, driveImage: false }),
+        ...(current[header] ?? {
+          target: "",
+          kind: "text",
+          reference: null,
+          driveImage: false,
+          namePrefix: false,
+        }),
         ...patch,
       },
     }));
@@ -203,9 +213,11 @@ export function SyncForm({
       target: column,
       kind: type ? kindForType(type.data_type) : "text",
       reference: null,
-      // A picture column chosen after this one is unrelated to it; the flag
-      // is not carried across to a column it was never set for.
+      // A picture column, or a name column, chosen after this one is
+      // unrelated to it; neither flag carries across to a column it was
+      // never set for.
       driveImage: false,
+      namePrefix: false,
     });
   }
 
@@ -213,6 +225,17 @@ export function SyncForm({
   // database has a unique index on it, and two columns feeding one is a race.
   const takenBy = (header: string, column: string) =>
     Object.entries(pairs).some(([h, p]) => h !== header && p.target === column);
+
+  // Whether anything in this sync is set up to resolve a reference at all —
+  // what "prefix with the referenced name" needs a name to come from.
+  const hasReference = Object.values(pairs).some((p) => p.reference !== null);
+
+  /** The one transform a pairing's own flags add up to. At most one applies. */
+  function transformFor(p: Pairing | undefined): SyncColumnMap["transform"] {
+    if (p?.driveImage) return "drive_image";
+    if (p?.namePrefix) return "reference_name_prefix";
+    return "none";
+  }
 
   const asMaps: SyncColumnMap[] = headers.map((header, i) => ({
     id: `draft-${i}`,
@@ -224,9 +247,8 @@ export function SyncForm({
     // The form pairs one sheet column with one target column. Splitting a cell
     // across two columns, and deriving a child's id from its parent's, are set
     // on the mapping rows themselves — see 0046 — and this draft view of them
-    // carries the plain case, plus the one transform this screen does offer:
-    // a picture column read as a Drive file rather than a plain value.
-    transform: pairs[header]?.driveImage ? ("drive_image" as const) : ("none" as const),
+    // carries the plain case, plus the transforms this screen does offer.
+    transform: transformFor(pairs[header]),
     transform_arg: null,
     sort_order: i,
   }));
@@ -306,7 +328,7 @@ export function SyncForm({
           target_column: pairs[header]?.target || null,
           value_kind: pairs[header]?.kind ?? "text",
           reference_table: pairs[header]?.reference ?? null,
-          transform: pairs[header]?.driveImage ? "drive_image" : "none",
+          transform: transformFor(pairs[header]),
           sort_order: i,
         })),
       );
@@ -495,6 +517,25 @@ export function SyncForm({
                           type="checkbox"
                           checked={pairs[header]?.driveImage ?? false}
                           onChange={(e) => pair(header, { driveImage: e.target.checked })}
+                          className="size-5 accent-[var(--brand)]"
+                        />
+                      </label>
+                    )}
+                    {/* Only offered on the name column, and only once this
+                        sync actually resolves a reference to prefix with —
+                        elsewhere it would be a flag with nothing to read. */}
+                    {chosen === "name" && hasReference && (
+                      <label className="flex min-h-11 items-center justify-between gap-3 text-sm">
+                        <span>
+                          Prefix with the referenced row&rsquo;s name
+                          <span className="block text-xs text-muted">
+                            &ldquo;Beverages Coca Cola&rdquo; instead of just &ldquo;Coca Cola&rdquo;.
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={pairs[header]?.namePrefix ?? false}
+                          onChange={(e) => pair(header, { namePrefix: e.target.checked })}
                           className="size-5 accent-[var(--brand)]"
                         />
                       </label>

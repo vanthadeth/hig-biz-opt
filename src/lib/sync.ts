@@ -181,7 +181,8 @@ export type SyncTransform =
   | "longitude"
   | "suffix"
   | "fallback"
-  | "drive_image";
+  | "drive_image"
+  | "reference_name_prefix";
 
 /**
  * One half of a "lat, long" cell.
@@ -244,6 +245,13 @@ export function applyTransform(
   // trimmed text so `splitDriveReferences` can find it and pull it back out
   // before the row reaches the database at all.
   if (transform === "drive_image") return base === "" ? null : base;
+
+  // What this cell becomes depends on a row this sync resolves through a
+  // reference — the referenced row's own name, which does not exist until
+  // that reference has been looked up. Handed through as the plain coerced
+  // value here; `withReferenceNamePrefix` does the actual prefixing once the
+  // reference names are known.
+  if (transform === "reference_name_prefix") return coerced;
 
   // A suffix on nothing is nothing: a child of a parent with no ID has no
   // identity of its own to derive.
@@ -508,6 +516,56 @@ export function extensionFor(contentType: string): string {
   return EXTENSION_FOR_CONTENT_TYPE[bare] ?? "jpg";
 }
 
+/**
+ * "<the referenced row's own name> <this cell's own text>", for every column
+ * mapped with `reference_name_prefix`.
+ *
+ * Reads from the sheet, not from what is already in the database: `own` is
+ * the coerced value of the sheet's own cell, never a name a previous run
+ * already prefixed, so running this twice in a row does not double the
+ * prefix — each run starts fresh from what the sheet itself says the item is
+ * called.
+ *
+ * `referenceNames` is a plain lookup — the reference target's `sheet_id` to
+ * its `name` — built once in `syncEngine.ts`, because building it takes a
+ * query this pure function has no business making.
+ */
+export function withReferenceNamePrefix(
+  records: Record<string, unknown>[],
+  maps: SyncColumnMap[],
+  referenceNames: Map<string, string>,
+): Record<string, unknown>[] {
+  const targets = maps.filter(
+    (m) => m.transform === "reference_name_prefix" && m.target_column !== null,
+  );
+  if (targets.length === 0) return records;
+
+  // The one mapping in this sync that resolves a reference. Its raw value is
+  // still the sheet's own id at this point — sync_apply resolves it to our
+  // uuid later — which is exactly what referenceNames is keyed by.
+  const refColumn = maps.find(
+    (m) => m.reference_table !== null && m.target_column !== null,
+  )?.target_column;
+  if (!refColumn) return records;
+
+  return records.map((record) => {
+    const name = referenceNames.get(String(record[refColumn] ?? ""));
+    // Not found is not a failure here either — the parent may simply not be
+    // synced yet, the same leniency a reference always gets. The cell keeps
+    // the sheet's own text rather than gaining a blank prefix.
+    if (!name) return record;
+
+    const row = { ...record };
+    for (const t of targets) {
+      const own = row[t.target_column as string];
+      if (typeof own === "string" && own.trim() !== "") {
+        row[t.target_column as string] = `${name} ${own}`;
+      }
+    }
+    return row;
+  });
+}
+
 // Scheduling -------------------------------------------------------------------------
 
 export type IntervalUnit = "minutes" | "hours" | "days";
@@ -647,6 +705,19 @@ export function syncProblems(
         `${m.target_column} holds one of our own ids, but ${m.sheet_column} is not marked as coming from another table. Set “Read as” to an ID from the right table for it, or every row will fail to write.`,
       );
     }
+  }
+
+  // "Prefix with the referenced name" only means something once this sync
+  // actually resolves a reference to prefix with — otherwise it is a flag
+  // with nothing to read, and the column is written exactly as if it had
+  // been left on "none".
+  if (
+    mapped.some((m) => m.transform === "reference_name_prefix")
+    && !mapped.some((m) => m.reference_table !== null)
+  ) {
+    problems.push(
+      "A column is set to be prefixed with a referenced row's name, but nothing in this sync is mapped as a reference to get that name from.",
+    );
   }
 
   return problems;

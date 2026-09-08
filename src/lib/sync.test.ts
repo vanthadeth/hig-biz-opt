@@ -22,6 +22,7 @@ import {
   type SyncDefinition,
   applyTransform,
   splitLatLng,
+  withReferenceNamePrefix,
 } from "./sync";
 
 const map = (
@@ -669,5 +670,87 @@ describe("extensionFor", () => {
   it("falls back to jpg for anything it does not recognise", () => {
     expect(extensionFor("application/octet-stream")).toBe("jpg");
     expect(extensionFor("")).toBe("jpg");
+  });
+});
+
+describe("an item name meant to carry its category too", () => {
+  it("is handed through as the plain coerced value — the prefixing happens later", () => {
+    expect(applyTransform("reference_name_prefix", null, "Coca Cola", "Coca Cola")).toBe(
+      "Coca Cola",
+    );
+  });
+});
+
+describe("withReferenceNamePrefix", () => {
+  const maps = [
+    map("ID", "sheet_id", "text", 0),
+    map("ITEM_ID", "category_id", "text", 1, "item_categories"),
+    map("NAME", "name", "text", 2, null, "reference_name_prefix"),
+  ];
+
+  it("prepends the referenced row's own name to the cell's own text", () => {
+    const records = [{ sheet_id: "I1", category_id: "C1", name: "Coca Cola" }];
+    const names = new Map([["C1", "Beverages"]]);
+    expect(withReferenceNamePrefix(records, maps, names)).toEqual([
+      { sheet_id: "I1", category_id: "C1", name: "Beverages Coca Cola" },
+    ]);
+  });
+
+  it("leaves the cell as the sheet wrote it when the reference has not resolved", () => {
+    // The parent may simply not be synced yet — the same leniency a
+    // reference always gets elsewhere in this file.
+    const records = [{ sheet_id: "I1", category_id: "C9", name: "Coca Cola" }];
+    expect(withReferenceNamePrefix(records, maps, new Map())).toEqual(records);
+  });
+
+  it("does nothing when no column asks for the prefix", () => {
+    const plainMaps = [map("NAME", "name")];
+    const records = [{ name: "Coca Cola" }];
+    expect(withReferenceNamePrefix(records, plainMaps, new Map([["C1", "Beverages"]]))).toBe(
+      records,
+    );
+  });
+
+  it("does nothing when nothing in the sync resolves a reference to prefix with", () => {
+    const noRefMaps = [map("NAME", "name", "text", 0, null, "reference_name_prefix")];
+    const records = [{ name: "Coca Cola" }];
+    expect(withReferenceNamePrefix(records, noRefMaps, new Map([["C1", "Beverages"]]))).toEqual(
+      records,
+    );
+  });
+
+  it("re-runs cleanly from the sheet's own text rather than doubling the prefix", () => {
+    // `own` always comes from buildRows' coercion of the sheet cell, never
+    // from a name a previous run already prefixed, so a second run starts
+    // fresh instead of compounding.
+    const records = [{ sheet_id: "I1", category_id: "C1", name: "Coca Cola" }];
+    const names = new Map([["C1", "Beverages"]]);
+    const once = withReferenceNamePrefix(records, maps, names);
+    const again = withReferenceNamePrefix(records, maps, names);
+    expect(again).toEqual(once);
+  });
+});
+
+describe("syncProblems: a prefix with nothing to resolve it against", () => {
+  it("is flagged when no column in the sync resolves a reference", () => {
+    const problems = syncProblems(
+      { trigger_kind: "interval", interval_minutes: 60 },
+      [map("ID", "sheet_id"), map("NAME", "name", "text", 1, null, "reference_name_prefix")],
+      "sheet_id",
+    );
+    expect(problems.some((p) => p.includes("reference"))).toBe(true);
+  });
+
+  it("is not flagged once some column does resolve one", () => {
+    const problems = syncProblems(
+      { trigger_kind: "interval", interval_minutes: 60 },
+      [
+        map("ID", "sheet_id"),
+        map("ITEM_ID", "category_id", "text", 1, "item_categories"),
+        map("NAME", "name", "text", 2, null, "reference_name_prefix"),
+      ],
+      "sheet_id",
+    );
+    expect(problems.some((p) => p.toLowerCase().includes("reference to get"))).toBe(false);
   });
 });

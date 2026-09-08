@@ -299,6 +299,26 @@ is counted and named in the run's message rather than failing the run — the
 same "report it, do not silently drop it, do not let it take the rest of the
 sheet down with it" the rest of this feature already follows.
 
+### Naming a row after its parent
+
+The item sheet's own name column is the item alone — "Coca Cola" — and now
+that item codes are allowed to repeat, that name alone does not tell two
+items in different categories apart. What does is the category and the item
+together, so the item sheet's `NAME` column is mapped with **"Prefix with the
+referenced row's name"**, offered on the column pairing screen wherever a
+column named `name` sits in a sync that also resolves a reference. That sets
+`transform` to `reference_name_prefix`: the sync engine resolves the
+reference's own name first — one query against whichever table the sync's
+reference points at — then prepends it to the cell's own text before the row
+reaches `sync_apply`, the same "resolved outside the writer, not inside it"
+shape `drive_image` already uses.
+
+Idempotent by construction: the text being prefixed is always the sheet's own
+cell, never a name a previous run already prefixed, so re-running the sync
+does not compound the prefix. A reference that has not resolved yet — the
+parent not synced — leaves the cell exactly as the sheet wrote it, the same
+leniency a reference always gets.
+
 ### Clearing what a sync imported
 
 Mapping somebody else's spreadsheet is a guess, and the second guess is better.

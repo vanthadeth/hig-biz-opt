@@ -15,6 +15,7 @@ import {
   SYNC_COLUMN_MAP_COLUMNS,
   SYNC_DEFINITION_COLUMNS,
   syncProblems,
+  withReferenceNamePrefix,
   type DriveReference,
   type SyncColumnMap,
   type SyncDefinition,
@@ -151,15 +152,34 @@ export async function runSync(
       });
     }
 
+    // A column mapped to prefix with a referenced row's name needs that
+    // name looked up before the row reaches `sync_apply` — the same reason
+    // `drive_image` is resolved out here rather than inside it. The lookup
+    // itself is one query against whichever table this sync's own reference
+    // mapping points at, only made when some column actually asks for it.
+    let prefixed = built.records;
+    if (mapping.some((m) => m.transform === "reference_name_prefix")) {
+      const referenceTable = mapping.find((m) => m.reference_table !== null)?.reference_table;
+      if (referenceTable) {
+        const { data: referenced } = await supabase
+          .from(referenceTable)
+          .select("sheet_id, name")
+          .not("sheet_id", "is", null);
+        const referenceNames = new Map(
+          ((referenced ?? []) as { sheet_id: string; name: string }[]).map((r) => [
+            r.sheet_id,
+            r.name,
+          ]),
+        );
+        prefixed = withReferenceNamePrefix(built.records, mapping, referenceNames);
+      }
+    }
+
     // A `drive_image` column names a file, not the value it will hold — that
     // takes a fetch `sync_apply` never does (see `sync.ts`). Pulled out here
     // so the one statement below still writes every ordinary column in a
     // single all-or-nothing pass.
-    const { rows: toWrite, references } = splitDriveReferences(
-      built.records,
-      mapping,
-      keyColumn,
-    );
+    const { rows: toWrite, references } = splitDriveReferences(prefixed, mapping, keyColumn);
 
     // One statement, so a sheet that is wrong halfway down leaves the table as
     // it was rather than half-updated.

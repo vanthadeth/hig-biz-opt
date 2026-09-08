@@ -134,9 +134,9 @@ export function VisitDay({
   return (
     <div className="space-y-5">
       {/* The day against what it is supposed to be, first, because that is what
-          somebody opens this page between calls to find out. It collapses to a
-          line as the timeline scrolls under it, so the target stays on screen
-          without the dashboard taking the screen.
+          somebody opens this page between calls to find out. It is a card like
+          any other — a tap collapses it, and it scrolls away with the rest of
+          the page rather than pinning itself over the timeline.
 
           Where nobody has set a target there is nothing to draw a ring against,
           and the three bare figures lead instead — inventing a quota so the

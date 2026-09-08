@@ -1,26 +1,12 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { render } from "@/test/i18n";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { NO_QUOTA, type Quota } from "@/lib/quota";
 import { DaySnapshot, hasSnapshot } from "./DaySnapshot";
 
 const HOUR = 3_600_000;
 const quota = (over: Partial<Quota> = {}): Quota => ({ ...NO_QUOTA, ...over });
 const totals = (visits: number, workingMs = 0, activeMs = 0) => ({ visits, workingMs, activeMs });
-
-/**
- * Scrolling the window, the way the panel actually learns about it.
- *
- * The listener defers to an animation frame — one state update per frame
- * rather than per scroll event — so nothing has changed by the time this
- * returns, and every assertion after it has to be an awaited query.
- */
-function scrollTo(y: number) {
-  Object.defineProperty(window, "scrollY", { value: y, writable: true, configurable: true });
-  fireEvent.scroll(window);
-}
-
-afterEach(() => scrollTo(0));
 
 describe("the day against what it is supposed to be", () => {
   it("draws a ring per managed figure, and none for the rest", () => {
@@ -94,57 +80,45 @@ describe("today and this week", () => {
   });
 });
 
-describe("getting out of the way", () => {
+describe("collapsing on a tap, and only a tap", () => {
   const one = quota({ daily_visit_target: 8 });
 
-  it("starts open at the top of the page", () => {
+  it("starts open", () => {
     render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
     expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
   });
 
-  it("collapses once the page is scrolled past it", async () => {
-    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
-    scrollTo(400);
-    expect(await screen.findByRole("button", { expanded: false })).toBeInTheDocument();
-  });
-
-  // Collapsed is smaller, not emptier: losing the number entirely would put the
-  // target behind a scroll back to the top.
-  it("keeping the leading figure and its bar on screen", async () => {
-    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
-    scrollTo(400);
-
-    const strip = await screen.findByRole("button", { expanded: false });
-    expect(within(strip).getByText("4")).toBeInTheDocument();
-    expect(within(strip).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
-  });
-
-  it("and comes back near the top", async () => {
-    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
-    scrollTo(400);
-    expect(await screen.findByRole("button", { expanded: false })).toBeInTheDocument();
-    scrollTo(0);
-    expect(await screen.findByRole("button", { expanded: true })).toBeInTheDocument();
-  });
-
-  // An explicit choice outranks a gesture the screen inferred.
-  it("a tap shuts it and scrolling back to the top does not reopen it", async () => {
+  it("shuts on a tap of its own header", () => {
     render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
     fireEvent.click(screen.getByRole("button", { expanded: true }));
     expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
-
-    scrollTo(0);
-    expect(await screen.findByRole("button", { expanded: false })).toBeInTheDocument();
   });
 
-  it("and a tap opens it again while scrolled well down the list", async () => {
+  // Collapsed is smaller, not emptier: losing the number entirely would make
+  // shutting it the same as not having a target at all.
+  it("keeping the leading figure and its bar in the header", () => {
     render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
-    scrollTo(400);
-    fireEvent.click(await screen.findByRole("button", { expanded: false }));
-    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
 
-    scrollTo(900);
-    expect(await screen.findByRole("button", { expanded: true })).toBeInTheDocument();
+    const header = screen.getByRole("button", { expanded: false });
+    expect(within(header).getByText("4")).toBeInTheDocument();
+    expect(within(header).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+  });
+
+  it("and a second tap opens it again", () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+
+  // Nothing here reads the scroll position any more: the card scrolls with the
+  // rest of the page like any other, so there is no gesture to react to.
+  it("does not react to the page scrolling", () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    Object.defineProperty(window, "scrollY", { value: 900, writable: true, configurable: true });
+    fireEvent.scroll(window);
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
   });
 });
 

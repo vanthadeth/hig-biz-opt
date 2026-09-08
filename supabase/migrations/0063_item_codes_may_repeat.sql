@@ -1,0 +1,25 @@
+-- 0063_item_codes_may_repeat
+--
+-- Same shape as 0062, one table over: `items_code_unique` said no two items
+-- could share a code, and the item sheet does not follow that rule either —
+-- "duplicate key value violates unique constraint items_code_unique" was the
+-- next thing standing between the Item sync and actually writing anything.
+--
+-- The item sync matches on sheet_id, never on code, so this was never the
+-- lookup keeping rows straight — it was a leftover guard against typing a
+-- code in twice by hand, exactly like the category name indexes it mirrors.
+-- Two items can now share a code; they are still different rows, found by
+-- sheet_id or id as they always were.
+--
+-- One loose end this does not resolve: `sync_targets.conflict_target` for
+-- `items` is still `(lower(code)) where code is not null`, for a sync that
+-- chooses to match on "the target's key column" instead of the sheet's ID.
+-- That mode assumes a code identifies one row, which is no longer true here.
+-- Nothing configured today uses it — the Item sync matches on sheet_id — so
+-- nothing breaks by this migration; only a future sync deliberately set to
+-- match items by code would hit it, and Postgres would refuse the ON
+-- CONFLICT outright rather than write anything wrong. Left alone rather than
+-- guessed at, because there is no one obviously-right natural key to put in
+-- its place.
+
+drop index public.items_code_unique;

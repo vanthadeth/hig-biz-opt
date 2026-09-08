@@ -46,3 +46,37 @@ export function useScrollHidden(threshold = 64) {
 
   return hidden;
 }
+
+/**
+ * True once the page is scrolled past a point, and false again near the top.
+ *
+ * Deliberately not the direction hook above. Chrome that reappears on any
+ * upward flick is right for a title bar, which occupies a fixed strip; it is
+ * wrong for a panel that grows, because expanding under somebody's thumb while
+ * they read pushes the thing they were looking at off the screen. This only
+ * changes when they are actually back near the top.
+ */
+export function useScrolledPast(threshold = 120) {
+  const [past, setPast] = useState(false);
+
+  useEffect(() => {
+    let frame = 0;
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setPast(window.scrollY > threshold);
+      });
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [threshold]);
+
+  return past;
+}

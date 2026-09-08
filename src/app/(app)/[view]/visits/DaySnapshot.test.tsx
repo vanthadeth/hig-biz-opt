@@ -1,83 +1,159 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { render } from "@/test/i18n";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { NO_QUOTA, type Quota } from "@/lib/quota";
-import { DaySnapshot } from "./DaySnapshot";
+import { DaySnapshot, hasSnapshot } from "./DaySnapshot";
 
 const HOUR = 3_600_000;
 const quota = (over: Partial<Quota> = {}): Quota => ({ ...NO_QUOTA, ...over });
-const totals = (visits: number, workingMs: number, activeMs: number) =>
-  ({ visits, workingMs, activeMs });
+const totals = (visits: number, workingMs = 0, activeMs = 0) => ({ visits, workingMs, activeMs });
+
+/**
+ * Scrolling the window, the way the panel actually learns about it.
+ *
+ * The listener defers to an animation frame — one state update per frame
+ * rather than per scroll event — so nothing has changed by the time this
+ * returns, and every assertion after it has to be an awaited query.
+ */
+function scrollTo(y: number) {
+  Object.defineProperty(window, "scrollY", { value: y, writable: true, configurable: true });
+  fireEvent.scroll(window);
+}
+
+afterEach(() => scrollTo(0));
 
 describe("the day against what it is supposed to be", () => {
-  it("says both halves of the sentence on one line", () => {
+  it("draws a ring per managed figure, and none for the rest", () => {
     render(
       <DaySnapshot
-        quota={quota({ daily_visit_target: 8, daily_working_hours: 8.5 })}
-        today={totals(4, 3 * HOUR + 8 * 60_000, HOUR)}
+        quota={quota({ daily_visit_target: 8, daily_working_hours: 8 })}
+        today={totals(4, 3 * HOUR)}
         week={null}
       />,
     );
 
-    expect(screen.getByText(/Visits · 4 of 8/)).toBeInTheDocument();
-    expect(screen.getByText(/Working · 3h 8m of 8h 30m/)).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument(); // 4 of 8 visits
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.queryByText(/Active/)).not.toBeInTheDocument();
   });
 
-  it("draws a bar for a measure and none for one nobody manages", () => {
+  it("shows the figures beside the ring, not only the share", () => {
     render(
-      <DaySnapshot
-        quota={quota({ daily_visit_target: 8 })}
-        today={totals(4, 3 * HOUR, HOUR)}
-        week={null}
-      />,
+      <DaySnapshot quota={quota({ daily_visit_target: 8 })} today={totals(4)} week={null} />,
     );
-
-    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
-    expect(screen.queryByText(/Working ·/)).not.toBeInTheDocument();
+    expect(screen.getByText("/ 8")).toBeInTheDocument();
   });
 
-  it("shows nothing at all when nobody has decided anything", () => {
+  // The ring is the shape; the numbers are the record.
+  it("fills the ring at the target and keeps counting past it", () => {
+    render(
+      <DaySnapshot quota={quota({ daily_visit_target: 8 })} today={totals(9)} week={null} />,
+    );
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByText("9")).toBeInTheDocument();
+  });
+
+  it("is nothing at all where nobody has set a target", () => {
     const { container } = render(
-      <DaySnapshot quota={NO_QUOTA} today={totals(4, 3 * HOUR, HOUR)} week={null} />,
+      <DaySnapshot quota={NO_QUOTA} today={totals(4, 3 * HOUR)} week={null} />,
     );
     expect(container).toBeEmptyDOMElement();
+    expect(hasSnapshot(NO_QUOTA)).toBe(false);
+  });
+});
+
+describe("today and this week", () => {
+  const both = quota({ daily_visit_target: 8, weekly_visit_target: 44 });
+
+  it("offers one scope at a time, starting on today", () => {
+    render(<DaySnapshot quota={both} today={totals(4)} week={totals(21)} />);
+    expect(screen.getByRole("tab", { name: "Today" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("/ 8")).toBeInTheDocument();
   });
 
-  // The bar is the shape; the figures beside it are the record. Clipping the
-  // ninth call would hide the best thing that happened today.
-  it("fills the bar at the target but keeps counting past it", () => {
+  it("and switches to the week on a tap", () => {
+    render(<DaySnapshot quota={both} today={totals(4)} week={totals(21)} />);
+    fireEvent.click(screen.getByRole("tab", { name: "This week" }));
+    expect(screen.getByText("/ 44")).toBeInTheDocument();
+    expect(screen.queryByText("/ 8")).not.toBeInTheDocument();
+  });
+
+  // A tab that leads to an empty panel teaches people not to press it.
+  it("offers no choice where only one scope is managed", () => {
     render(
-      <DaySnapshot
-        quota={quota({ daily_visit_target: 8 })}
-        today={totals(9, 0, 0)}
-        week={null}
-      />,
+      <DaySnapshot quota={quota({ daily_visit_target: 8 })} today={totals(4)} week={totals(21)} />,
     );
-
-    expect(screen.getByText(/Visits · 9 of 8/)).toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   });
 
-  it("draws a day nobody has started yet at nothing, not as missing", () => {
+  it("and falls back to the scope that exists when only the week is", () => {
+    render(
+      <DaySnapshot quota={quota({ weekly_visit_target: 44 })} today={totals(4)} week={totals(21)} />,
+    );
+    expect(screen.getByText("/ 44")).toBeInTheDocument();
+  });
+});
+
+describe("getting out of the way", () => {
+  const one = quota({ daily_visit_target: 8 });
+
+  it("starts open at the top of the page", () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+
+  it("collapses once the page is scrolled past it", async () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    scrollTo(400);
+    expect(await screen.findByRole("button", { expanded: false })).toBeInTheDocument();
+  });
+
+  // Collapsed is smaller, not emptier: losing the number entirely would put the
+  // target behind a scroll back to the top.
+  it("keeping the leading figure and its bar on screen", async () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    scrollTo(400);
+
+    const strip = await screen.findByRole("button", { expanded: false });
+    expect(within(strip).getByText("4")).toBeInTheDocument();
+    expect(within(strip).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+  });
+
+  it("and comes back near the top", async () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    scrollTo(400);
+    expect(await screen.findByRole("button", { expanded: false })).toBeInTheDocument();
+    scrollTo(0);
+    expect(await screen.findByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+
+  // An explicit choice outranks a gesture the screen inferred.
+  it("a tap shuts it and scrolling back to the top does not reopen it", async () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
+
+    scrollTo(0);
+    expect(await screen.findByRole("button", { expanded: false })).toBeInTheDocument();
+  });
+
+  it("and a tap opens it again while scrolled well down the list", async () => {
+    render(<DaySnapshot quota={one} today={totals(4)} week={null} />);
+    scrollTo(400);
+    fireEvent.click(await screen.findByRole("button", { expanded: false }));
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument();
+
+    scrollTo(900);
+    expect(await screen.findByRole("button", { expanded: true })).toBeInTheDocument();
+  });
+});
+
+describe("a day nobody has started", () => {
+  it("draws every managed figure at nothing, which is the truth at eight in the morning", () => {
     render(
       <DaySnapshot quota={quota({ daily_visit_target: 8 })} today={null} week={null} />,
     );
-    expect(screen.getByText(/Visits · 0 of 8/)).toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
-  });
-
-  it("keeps the week its own section, on its own numbers", () => {
-    render(
-      <DaySnapshot
-        quota={quota({ daily_visit_target: 8, weekly_visit_target: 44 })}
-        today={totals(4, 0, 0)}
-        week={totals(21, 0, 0)}
-      />,
-    );
-
-    expect(screen.getByText("Today so far")).toBeInTheDocument();
-    expect(screen.getByText("This week")).toBeInTheDocument();
-    expect(screen.getByText(/Visits · 4 of 8/)).toBeInTheDocument();
-    expect(screen.getByText(/Visits · 21 of 44/)).toBeInTheDocument();
+    expect(screen.getByText("0%")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
   });
 });

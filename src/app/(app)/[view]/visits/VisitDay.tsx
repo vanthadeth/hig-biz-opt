@@ -12,9 +12,9 @@ import { attendanceDays, groupByWeek, hoursMinutes } from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { dayKey, longDay, timeOf, weekKey } from "@/lib/time";
-import { anyTarget, totalsOfDay, totalsOfPeriod, type Quota } from "@/lib/quota";
+import { totalsOfDay, totalsOfPeriod, type Quota } from "@/lib/quota";
 import { openVisit, shopNameOf, visitLength, visitsByDay, type VisitRow } from "@/lib/visits";
-import { DaySnapshot } from "./DaySnapshot";
+import { DaySnapshot, hasSnapshot } from "./DaySnapshot";
 import { VisitTimeline } from "./VisitTimeline";
 import { useFix } from "./useFix";
 
@@ -129,10 +129,37 @@ export function VisitDay({
   // and a call somebody made and then called off is part of that.
   const grouped = useMemo(() => visitsByDay(visits), [visits]);
   const provinceNames = useMemo(() => new Map(provinces), [provinces]);
-  const hasTargets = anyTarget(quota, "daily") || anyTarget(quota, "weekly");
+  const hasTargets = hasSnapshot(quota);
 
   return (
     <div className="space-y-5">
+      {/* The day against what it is supposed to be, first, because that is what
+          somebody opens this page between calls to find out. It collapses to a
+          line as the timeline scrolls under it, so the target stays on screen
+          without the dashboard taking the screen.
+
+          Where nobody has set a target there is nothing to draw a ring against,
+          and the three bare figures lead instead — inventing a quota so the
+          page has a chart would be the app telling the office what to manage
+          by. */}
+      {hasTargets ? (
+        <DaySnapshot
+          quota={quota}
+          today={totalsOfDay(today)}
+          week={totalsOfPeriod(week)}
+        />
+      ) : (
+        today && (
+          <Link href={`/${viewKey}/visits/reports`} className="pressable block">
+            <Card className="grid grid-cols-3 divide-x divide-line p-0">
+              <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
+              <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
+              <Figure label={t("day.visits")} value={String(today.visits)} />
+            </Card>
+          </Link>
+        )
+      )}
+
       {error && (
         <div role="alert">
           <Card className="border-danger/40 bg-danger/5 p-3 text-sm text-danger">
@@ -187,33 +214,6 @@ export function VisitDay({
                 : t("visit.findingYou")}
           </p>
         </div>
-      )}
-
-      {/* The day so far, and the two ways of showing it. Where somebody has
-          decided what a day should look like, the bars say both halves at once
-          — "3h 8m of 8h 30m" — and repeating the bare figures above them would
-          be printing the same sentence twice on a screen a rep holds in one
-          hand. Where nobody has, the figures stand on their own, because
-          inventing a target to have a bar to draw would be the app telling the
-          office what to manage by. */}
-      {hasTargets ? (
-        <Link href={`/${viewKey}/visits/reports`} className="pressable block">
-          <DaySnapshot
-            quota={quota}
-            today={totalsOfDay(today)}
-            week={totalsOfPeriod(week)}
-          />
-        </Link>
-      ) : (
-        today && (
-          <Link href={`/${viewKey}/visits/reports`} className="pressable block">
-            <Card className="grid grid-cols-3 divide-x divide-line p-0">
-              <Figure label={t("day.working")} value={hoursMinutes(today.workingMs)} />
-              <Figure label={t("day.active")} value={hoursMinutes(today.activeMs)} />
-              <Figure label={t("day.visits")} value={String(today.visits)} />
-            </Card>
-          </Link>
-        )
       )}
 
       <div className="flex gap-2">

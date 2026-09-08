@@ -520,38 +520,50 @@ the app on its owner rather than handing it to a customer. A device that was
 locked before that rule existed can still leave: the unlock pad asks whether a
 PIN exists, and offers **Leave browsing** instead of a keypad when none does.
 
-## The field app
+## HIG Footprint
 
-`/field` is a second front door onto the same building: check-in/out, and
-nothing else. Not a second product — a rep's account is exactly the account
-they already have, and the permissions that decide what it can do are the
-same `visit:add`/`visit:view` rows that decide it in the main app. There is
-no new role, no new table, no new RLS policy. What is new is a route that
-shows only that one screen and a login that stays on it.
+`/footprint` is a second front door onto the same building: check-in/out,
+and nothing else. Not a second product — a rep's account is exactly the
+account they already have, and the permissions that decide what it can do
+are the same `visit:add`/`visit:view` rows that decide it in the main app.
+There is no new role, no new table, no new RLS policy. What is new is a
+route that shows only that one screen, its own name over the door, and a
+login that stays on it.
 
-**Its own login.** `/field/login` is a separate page from `/login`, and
+**Its own login.** `/footprint/login` is a separate page from `/login`, and
 `src/lib/supabase/middleware.ts` knows about both: somebody signed out who
-reaches `/field/*` is sent to `/field/login`, not the main app's — the door
-they knocked on is the door they come back to. Signing in there lands on
-`/field`; signing in at `/login` still lands wherever `resolveEntryPath`
-sends it. One Supabase session either way, so a rep already signed into the
-main app on the same phone can open `/field` directly with nothing to type.
+reaches `/footprint/*` is sent to `/footprint/login`, not the main app's —
+the door they knocked on is the door they come back to. Signing in there
+lands on `/footprint`; signing in at `/login` still lands wherever
+`resolveEntryPath` sends it. One Supabase session either way, so a rep
+already signed into the main app on the same phone can open `/footprint`
+directly with nothing to type.
+
+The login itself lives outside the `(protected)` route group that carries
+the auth gate — a layout at `footprint/` would wrap the login page too, and
+a login page that redirects an unauthenticated visitor to itself is a
+redirect loop, not a login screen. This bit the first version of this
+feature: every request to `/footprint/login` came back a redirect to
+`/footprint/login`, forever. Login is now a sibling outside `(protected)`,
+with no gate at all — the same shape the main app's own `/login` already
+has.
 
 **The screen itself is `VisitDay`**, the same component `/[view]/visits`
 already renders — a rep's day does not become a different thing for living
-behind a different door. The one difference is `links={false}`: the field
-app has no report and no map for those two buttons to open, so `VisitDay`
-leaves them out rather than offering a route that would 404. Opening a visit
-goes to `/field/visits/[id]`, which renders the same `OpenVisitPage` /
-`VisitRecord` the main app uses, with `viewKey` fixed to `"field"` instead of
-read from the URL — there being only the one place a visit can be here.
+behind a different door. The one difference is `links={false}`: Footprint
+has no report and no map for those two buttons to open, so `VisitDay` leaves
+them out rather than offering a route that would 404. Opening a visit goes
+to `/footprint/visits/[id]`, which renders the same `OpenVisitPage` /
+`VisitRecord` the main app uses, with `viewKey` fixed to `"footprint"`
+instead of read from the URL — there being only the one place a visit can be
+here.
 
-**No permission, no screen.** `/field/layout.tsx` checks `visit:add` or
+**No permission, no screen.** `(protected)/layout.tsx` checks `visit:add` or
 `visit:view` on every request, same as the main app's `[view]/layout.tsx`
 checks a view — an account that holds neither is signed in and told so
 plainly, not shown a blank page or a button that would only fail. An account
-with no view assigned at all can still use `/field`: the two entry points do
-not depend on each other.
+with no view assigned at all can still use `/footprint`: the two entry
+points do not depend on each other.
 
 ## The cart, and what it becomes
 

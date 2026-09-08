@@ -41,9 +41,10 @@ import { useFix } from "./useFix";
  * button is replaced rather than left to fail against the RPC's own refusal.
  *
  * `links` defaults to true for the main app, where a report and a map both
- * have somewhere to go. The field app (`/field`) is check-in/out and nothing
- * else — no `/field/visits/reports`, no `/field/visits/map` — so it passes
- * `false` and gets the same screen minus the two doors that would 404 there.
+ * have somewhere to go. HIG Footprint (`/footprint`) is check-in/out and
+ * nothing else — no `/footprint/visits/reports`, no `/footprint/visits/map`
+ * — so it passes `false` and gets the same screen minus the two doors that
+ * would 404 there.
  */
 export function VisitDay({
   viewKey,
@@ -176,8 +177,8 @@ export function VisitDay({
         />
       ) : (
         today &&
-        // Only the main app has a report for this to open onto — the field
-        // app is check-in/out alone, so the same figures sit still there.
+        // Only the main app has a report for this to open onto — Footprint
+        // is check-in/out alone, so the same figures sit still there.
         (links ? (
           <Link href={`/${viewKey}/visits/reports`} className="pressable block">
             <TodayFigures today={today} t={t} />

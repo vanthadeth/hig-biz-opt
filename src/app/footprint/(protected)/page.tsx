@@ -6,10 +6,10 @@ import { NO_QUOTA, QUOTA_COLUMNS, effectiveQuota, type Quota } from "@/lib/quota
 import { VISIT_COLUMNS, type VisitRow } from "@/lib/visits";
 import { VisitDay } from "@/app/(app)/[view]/visits/VisitDay";
 
-export const metadata: Metadata = { title: "Field" };
+export const metadata: Metadata = { title: { absolute: "HIG Footprint" } };
 
 /**
- * The whole of the field app: a rep's day, check-in to check-out.
+ * The whole of HIG Footprint: a rep's day, check-in to check-out.
  *
  * The same screen the main app's `/[view]/visits` shows, reused rather than
  * rebuilt — a rep's day does not become a different thing for living behind a
@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Field" };
  * report and no map for those two buttons to open, so `VisitDay` leaves them
  * out rather than offering a route that would 404.
  */
-export default async function FieldPage() {
+export default async function FootprintPage() {
   const supabase = await createClient();
   const now = new Date();
 
@@ -54,7 +54,7 @@ export default async function FieldPage() {
 
   return (
     <VisitDay
-      viewKey="field"
+      viewKey="footprint"
       userId={userId}
       visits={rows}
       quota={quota}

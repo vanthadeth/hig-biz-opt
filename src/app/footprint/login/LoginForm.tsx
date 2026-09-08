@@ -33,7 +33,7 @@ export function LoginForm() {
       return;
     }
 
-    router.replace(params.get("next") || "/field");
+    router.replace(params.get("next") || "/footprint");
     router.refresh();
   }
 

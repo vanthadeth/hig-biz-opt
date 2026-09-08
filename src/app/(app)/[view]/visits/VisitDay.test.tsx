@@ -87,11 +87,11 @@ describe("whose day this actually is, once a subordinate's rows can arrive too",
   });
 });
 
-describe("the field app, which has nowhere for a report or a map to go", () => {
+describe("HIG Footprint, which has nowhere for a report or a map to go", () => {
   it("drops both doors when links is false, keeping the rest of the screen", () => {
     render(
       <VisitDay
-        viewKey="field"
+        viewKey="footprint"
         userId="me"
         visits={[]}
         quota={NO_QUOTA}

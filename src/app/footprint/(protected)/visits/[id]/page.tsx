@@ -14,10 +14,10 @@ import { VisitRecord } from "@/app/(app)/[view]/visits/[id]/VisitRecord";
 /**
  * The same visit record the main app's `/[view]/visits/[id]` shows — one call,
  * as it was recorded, whichever door was used to reach it. `viewKey` is fixed
- * to `"field"` rather than read from the URL, since this app has only the one
- * place a visit can be.
+ * to `"footprint"` rather than read from the URL, since this app has only
+ * the one place a visit can be.
  */
-export default async function FieldVisitPage({
+export default async function FootprintVisitPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -44,7 +44,7 @@ export default async function FieldVisitPage({
   if (row.checked_out_at === null) {
     return (
       <OpenVisitPage
-        viewKey="field"
+        viewKey="footprint"
         visit={row}
         options={visitOptions}
         customers={(customers.data ?? []) as CartCustomer[]}
@@ -58,7 +58,7 @@ export default async function FieldVisitPage({
 
   return (
     <VisitRecord
-      viewKey="field"
+      viewKey="footprint"
       visit={row}
       options={visitOptions}
       now={now}

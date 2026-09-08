@@ -5,9 +5,10 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { can, getMyPermissions, getViewer } from "@/lib/access";
 
 /**
- * The field app's whole shell: a strip with the mark and a way out, and
- * whatever the page puts under it. No side nav, no module menu, no view to
- * switch — this app does one thing, so there is nothing here to navigate.
+ * HIG Footprint's whole shell: a strip with the mark, its own name, and a way
+ * out — and whatever the page puts under it. No side nav, no module menu, no
+ * view to switch — this app does one thing, so there is nothing here to
+ * navigate.
  *
  * Entitlement is checked here, on every request, the same as the main app's
  * `[view]/layout.tsx` checks a view — not to decide whose account this is
@@ -15,13 +16,13 @@ import { can, getMyPermissions, getViewer } from "@/lib/access";
  * any part of what it may see. `visit:add` or `visit:view` is enough to be
  * let in; neither is a person this app has nothing for.
  *
- * The `(protected)` group is what keeps this off `/field/login` itself: a
- * layout at `field/` would wrap the login page too, and a login page that
+ * The `(protected)` group is what keeps this off `/footprint/login` itself: a
+ * layout at `footprint/` would wrap the login page too, and a login page that
  * redirects an unauthenticated visitor to itself is a redirect loop, not a
  * login screen. Login lives as a sibling outside this group, with no gate at
  * all — the same shape the main app's own `/login` already has.
  */
-export default async function FieldLayout({
+export default async function FootprintLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -29,7 +30,7 @@ export default async function FieldLayout({
   const viewer = await getViewer();
   // Its own login, not the main app's: somebody who lands here signed out
   // should come back to the door they knocked on, not a different app.
-  if (!viewer) redirect("/field/login");
+  if (!viewer) redirect("/footprint/login");
 
   const permissions = await getMyPermissions();
   const entitled = can(permissions, "visit", "add") || can(permissions, "visit", "view");
@@ -40,10 +41,18 @@ export default async function FieldLayout({
         className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3"
         style={{ paddingTop: "max(env(safe-area-inset-top), 0.75rem)" }}
       >
-        <Logo className="h-7" />
+        <span className="flex items-center gap-2">
+          <Logo className="h-7" />
+          {/* The mark alone still reads as the main app. This is the one
+              product where the two are meant to look like different doors,
+              so the name says so right beside it. */}
+          <span className="text-sm font-semibold tracking-tight text-muted">
+            Footprint
+          </span>
+        </span>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <SignOutButton redirectTo="/field/login" />
+          <SignOutButton redirectTo="/footprint/login" />
         </div>
       </header>
 

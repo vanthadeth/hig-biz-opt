@@ -88,29 +88,29 @@ describe("updateSession, signed out", () => {
   });
 });
 
-describe("updateSession, signed out, the field app", () => {
+describe("updateSession, signed out, HIG Footprint", () => {
   beforeEach(signedOut);
 
-  it("sends a field-app page to the field app's own login, not the main one", async () => {
-    const to = redirectedTo(await updateSession(request("/field")));
-    expect(to?.pathname).toBe("/field/login");
-    expect(to?.searchParams.get("next")).toBe("/field");
+  it("sends a Footprint page to Footprint's own login, not the main one", async () => {
+    const to = redirectedTo(await updateSession(request("/footprint")));
+    expect(to?.pathname).toBe("/footprint/login");
+    expect(to?.searchParams.get("next")).toBe("/footprint");
   });
 
   it("does the same for a visit inside it", async () => {
-    const to = redirectedTo(await updateSession(request("/field/visits/abc")));
-    expect(to?.pathname).toBe("/field/login");
+    const to = redirectedTo(await updateSession(request("/footprint/visits/abc")));
+    expect(to?.pathname).toBe("/footprint/login");
   });
 
-  it("lets the field login page through", async () => {
-    expect(redirectedTo(await updateSession(request("/field/login")))).toBeNull();
+  it("lets the Footprint login page through", async () => {
+    expect(redirectedTo(await updateSession(request("/footprint/login")))).toBeNull();
   });
 
-  it("does not treat /field/loginx as the login page itself", async () => {
+  it("does not treat /footprint/loginx as the login page itself", async () => {
     // A different route, were it ever to exist — not public, and still sent
-    // to the real /field/login rather than the main app's.
-    const to = redirectedTo(await updateSession(request("/field/loginx")));
-    expect(to?.pathname).toBe("/field/login");
+    // to the real /footprint/login rather than the main app's.
+    const to = redirectedTo(await updateSession(request("/footprint/loginx")));
+    expect(to?.pathname).toBe("/footprint/login");
   });
 });
 
@@ -135,13 +135,13 @@ describe("updateSession, signed in", () => {
     expect(redirectedTo(await updateSession(request("/")))).toBeNull();
   });
 
-  it("bounces the field login page to the field app, not the main entry point", async () => {
-    const to = redirectedTo(await updateSession(request("/field/login")));
-    expect(to?.pathname).toBe("/field");
+  it("bounces the Footprint login page to Footprint, not the main entry point", async () => {
+    const to = redirectedTo(await updateSession(request("/footprint/login")));
+    expect(to?.pathname).toBe("/footprint");
   });
 
-  it("lets a page inside the field app through", async () => {
-    expect(redirectedTo(await updateSession(request("/field/visits/abc")))).toBeNull();
+  it("lets a page inside Footprint through", async () => {
+    expect(redirectedTo(await updateSession(request("/footprint/visits/abc")))).toBeNull();
   });
 });
 

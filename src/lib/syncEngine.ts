@@ -1,15 +1,21 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { INVENTORY_BUCKET } from "@/lib/inventory";
 import { GoogleSheetsError, readSheet } from "@/lib/google/sheets";
+import { driveFileIdFrom, fetchDriveFile } from "@/lib/google/drive";
 import {
   a1Range,
   buildRows,
+  driveImagePrefix,
+  extensionFor,
   isDue,
   matchColumn,
   nextRunAt,
   skipMessage,
+  splitDriveReferences,
   SYNC_COLUMN_MAP_COLUMNS,
   SYNC_DEFINITION_COLUMNS,
   syncProblems,
+  type DriveReference,
   type SyncColumnMap,
   type SyncDefinition,
   type SyncSource,
@@ -141,20 +147,39 @@ export async function runSync(
       });
     }
 
+    // A `drive_image` column names a file, not the value it will hold — that
+    // takes a fetch `sync_apply` never does (see `sync.ts`). Pulled out here
+    // so the one statement below still writes every ordinary column in a
+    // single all-or-nothing pass.
+    const { rows: toWrite, references } = splitDriveReferences(
+      built.records,
+      mapping,
+      keyColumn,
+    );
+
     // One statement, so a sheet that is wrong halfway down leaves the table as
     // it was rather than half-updated.
     const { data: written, error } = await supabase.rpc("sync_apply", {
       p_sync: syncId,
-      p_rows: built.records,
+      p_rows: toWrite,
     });
     if (error) throw new Error(error.message);
+
+    // The pictures are a second, best-effort pass on top of a write that has
+    // already succeeded: one shop's bad Drive link should not undo a table
+    // full of correctly written rows, so a failure here is counted and
+    // reported, never thrown.
+    const driveMessage =
+      references.length > 0
+        ? await applyDriveImages(supabase, sync.target_table, target?.pk_column as string, keyColumn, references)
+        : null;
 
     return await finish({
       status: "ok",
       rowsRead: built.read,
       rowsWritten: (written as number) ?? built.records.length,
       rowsSkipped: built.skipped,
-      message: skipMessage(built),
+      message: [skipMessage(built), driveMessage].filter((m) => m).join(" "),
     });
   } catch (e) {
     const message =
@@ -207,4 +232,76 @@ export async function runDueSyncs(now = new Date()): Promise<SyncOutcome[]> {
   }
 
   return outcomes;
+}
+
+/**
+ * The second phase of a sync with a `drive_image` column: find the row
+ * `sync_apply` just wrote, fetch its picture from Drive, put it in the
+ * `inventory` bucket, and point the row at it.
+ *
+ * One reference at a time and each wrapped in its own `try`, because these
+ * are independent network calls to a service outside HIG's control — a shop
+ * whose picture Drive refuses, or whose link is simply wrong, must not cost
+ * the sheet's other ninety-nine rows their picture too. What comes back is a
+ * short count for the run's message, not a throw.
+ */
+async function applyDriveImages(
+  supabase: ReturnType<typeof createAdminClient>,
+  table: string,
+  pkColumn: string,
+  keyColumn: string,
+  references: DriveReference[],
+): Promise<string | null> {
+  let ok = 0;
+  let failed = 0;
+
+  for (const ref of references) {
+    try {
+      const { data: row } = await supabase
+        .from(table)
+        .select(pkColumn)
+        .eq(keyColumn, ref.key as string | number | boolean)
+        .maybeSingle();
+      const id = (row as Record<string, unknown> | null)?.[pkColumn];
+      if (!id) {
+        failed += 1;
+        continue;
+      }
+
+      const fileId = driveFileIdFrom(ref.reference);
+      if (!fileId) {
+        failed += 1;
+        continue;
+      }
+
+      const { bytes, contentType } = await fetchDriveFile(fileId);
+      const path = `${driveImagePrefix(table)}/${id}/${Date.now()}.${extensionFor(contentType)}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(INVENTORY_BUCKET)
+        .upload(path, bytes, { contentType, upsert: true });
+      if (uploadError) {
+        failed += 1;
+        continue;
+      }
+
+      const { error: updateError } = await supabase
+        .from(table)
+        .update({ [ref.column]: path })
+        .eq(pkColumn, id as string);
+      if (updateError) {
+        failed += 1;
+        continue;
+      }
+
+      ok += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+
+  const parts: string[] = [];
+  if (ok > 0) parts.push(`${ok} picture${ok === 1 ? "" : "s"} fetched from Drive`);
+  if (failed > 0) parts.push(`${failed} Drive picture${failed === 1 ? "" : "s"} could not be fetched`);
+  return parts.length > 0 ? parts.join(", ") : null;
 }

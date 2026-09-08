@@ -3,6 +3,8 @@ import {
   a1Range,
   buildRows,
   coerceValue,
+  driveImagePrefix,
+  extensionFor,
   fromMinutes,
   intervalLabel,
   isDue,
@@ -12,6 +14,7 @@ import {
   scheduleLabel,
   skipMessage,
   spreadsheetIdFrom,
+  splitDriveReferences,
   syncProblems,
   toMinutes,
   matchColumn,
@@ -530,5 +533,87 @@ describe("a column the sheet leaves blank", () => {
   // once somebody had already saved the mapping.
   it("is nothing at all without the text it carries", () => {
     expect(applyTransform("fallback", null, "", null)).toBeNull();
+  });
+});
+
+describe("a picture column that is really a Drive link", () => {
+  it("is handed through as trimmed text, for splitDriveReferences to find later", () => {
+    expect(applyTransform("drive_image", null, "  1AbC-XyZ  ", "1AbC-XyZ")).toBe("1AbC-XyZ");
+  });
+
+  it("is nothing when the cell is empty", () => {
+    expect(applyTransform("drive_image", null, "", null)).toBeNull();
+    expect(applyTransform("drive_image", null, null, null)).toBeNull();
+  });
+});
+
+describe("splitDriveReferences", () => {
+  const maps = [
+    map("Category ID", "sheet_id", "text", 0),
+    map("Name", "name_en", "text", 1),
+    map("Picture", "photo_path", "text", 2, null, "drive_image"),
+  ];
+
+  it("pulls the drive_image column out of every row, keyed by the match column", () => {
+    const records = [
+      { sheet_id: "C1", name_en: "Snacks", photo_path: "https://drive.google.com/file/d/abc123/view" },
+      { sheet_id: "C2", name_en: "Drinks", photo_path: "  " }, // blank after trimming
+    ];
+
+    const { rows, references } = splitDriveReferences(records, maps, "sheet_id");
+
+    // The column is gone from what still goes to sync_apply — that function
+    // has no idea what a Drive link is and must never be handed one.
+    expect(rows).toEqual([
+      { sheet_id: "C1", name_en: "Snacks" },
+      { sheet_id: "C2", name_en: "Drinks" },
+    ]);
+    expect(references).toEqual([
+      { key: "C1", column: "photo_path", reference: "https://drive.google.com/file/d/abc123/view" },
+    ]);
+  });
+
+  it("does nothing when no column is mapped as drive_image", () => {
+    const plainMaps = [map("Name", "name_en", "text", 0)];
+    const records = [{ name_en: "Snacks" }];
+    expect(splitDriveReferences(records, plainMaps, "name_en")).toEqual({
+      rows: records,
+      references: [],
+    });
+  });
+
+  it("leaves a non-string cell alone rather than treating it as a reference", () => {
+    const records = [{ sheet_id: "C1", name_en: "Snacks", photo_path: 42 }];
+    const { rows, references } = splitDriveReferences(records, maps, "sheet_id");
+    expect(rows).toEqual([{ sheet_id: "C1", name_en: "Snacks" }]);
+    expect(references).toEqual([]);
+  });
+});
+
+describe("driveImagePrefix", () => {
+  it("matches the folder the category screen itself already uploads to", () => {
+    expect(driveImagePrefix("item_categories")).toBe("categories");
+  });
+
+  it("falls back to the table's own name for anything else", () => {
+    expect(driveImagePrefix("item_variants")).toBe("item_variants");
+  });
+});
+
+describe("extensionFor", () => {
+  it("reads the common image types Drive serves", () => {
+    expect(extensionFor("image/jpeg")).toBe("jpg");
+    expect(extensionFor("image/png")).toBe("png");
+    expect(extensionFor("image/webp")).toBe("webp");
+    expect(extensionFor("image/heic")).toBe("heic");
+  });
+
+  it("ignores a trailing charset", () => {
+    expect(extensionFor("image/png; charset=binary")).toBe("png");
+  });
+
+  it("falls back to jpg for anything it does not recognise", () => {
+    expect(extensionFor("application/octet-stream")).toBe("jpg");
+    expect(extensionFor("")).toBe("jpg");
   });
 });

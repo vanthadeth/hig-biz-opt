@@ -175,7 +175,13 @@ function readNumber(raw: unknown): number | null {
  * until everything is moved over, and asking somebody to restructure it while
  * they are still working in it is asking for the data to get worse.
  */
-export type SyncTransform = "none" | "latitude" | "longitude" | "suffix" | "fallback";
+export type SyncTransform =
+  | "none"
+  | "latitude"
+  | "longitude"
+  | "suffix"
+  | "fallback"
+  | "drive_image";
 
 /**
  * One half of a "lat, long" cell.
@@ -232,6 +238,12 @@ export function applyTransform(
   // where there is not, so eighty unlabelled phone numbers become "Phone 2"
   // rather than eighty rows nobody can import.
   if (transform === "fallback") return base === "" ? (arg ?? null) : coerced;
+
+  // The cell names a Drive file, not the stored path it will end up at — that
+  // takes a fetch and an upload `sync_apply` never does. Handed through as
+  // trimmed text so `splitDriveReferences` can find it and pull it back out
+  // before the row reaches the database at all.
+  if (transform === "drive_image") return base === "" ? null : base;
 
   // A suffix on nothing is nothing: a child of a parent with no ID has no
   // identity of its own to derive.
@@ -415,6 +427,85 @@ export function buildRows(
 export function skipMessage(built: BuiltRows): string | null {
   if (built.reasons.length === 0) return null;
   return built.reasons.map((r) => `${r.count} with ${r.reason}`).join(", ");
+}
+
+/** One row's Drive file, waiting to be fetched once the row has been written. */
+export type DriveReference = {
+  /** This row's value in the sync's own match column — how the write finds it again. */
+  key: unknown;
+  /** The target column the fetched image is ultimately written into. */
+  column: string;
+  /** Whatever the cell held: a Drive link, or a bare file id. */
+  reference: string;
+};
+
+/**
+ * Pulls every `drive_image` column out of built rows before they reach
+ * `sync_apply`.
+ *
+ * `sync_apply` writes exactly the value it is handed into exactly the column
+ * it is told, nothing more — that is what makes it safe to run unattended
+ * with no session behind it (see 0036). A Drive link is not a value that
+ * column can hold; getting from the link to a stored path is a fetch and an
+ * upload, which belongs in `syncEngine.ts`, not in a database function with
+ * no network. So this is the seam between the two: what is left in `rows` is
+ * exactly what the ordinary path already sends to `sync_apply`, and
+ * `references` is the separate, smaller job of resolving each row's picture
+ * afterwards.
+ */
+export function splitDriveReferences(
+  records: Record<string, unknown>[],
+  maps: SyncColumnMap[],
+  keyColumn: string,
+): { rows: Record<string, unknown>[]; references: DriveReference[] } {
+  const driveColumns = maps
+    .filter((m) => m.transform === "drive_image" && m.target_column !== null)
+    .map((m) => m.target_column as string);
+
+  if (driveColumns.length === 0) return { rows: records, references: [] };
+
+  const references: DriveReference[] = [];
+  const rows = records.map((record) => {
+    const row = { ...record };
+    for (const column of driveColumns) {
+      const value = row[column];
+      delete row[column];
+      if (typeof value === "string" && value.trim() !== "") {
+        references.push({ key: record[keyColumn], column, reference: value.trim() });
+      }
+    }
+    return row;
+  });
+
+  return { rows, references };
+}
+
+/**
+ * Where a Drive-sourced picture goes in the `inventory` bucket.
+ *
+ * `categories/<id>` is the path the category screen itself already uploads
+ * to (see `ImageField.tsx`); a picture the sync fetches lands beside one a
+ * person uploaded by hand rather than in a folder of its own. Any other
+ * target falls back to its own table name, which is still a sensible,
+ * self-explanatory folder even though nothing uploads there today.
+ */
+const IMAGE_PREFIXES: Record<string, string> = { item_categories: "categories" };
+
+export function driveImagePrefix(table: string): string {
+  return IMAGE_PREFIXES[table] ?? table;
+}
+
+const EXTENSION_FOR_CONTENT_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+};
+
+/** A filename extension for whatever Drive says the file is, `jpg` if it says nothing useful. */
+export function extensionFor(contentType: string): string {
+  const bare = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return EXTENSION_FOR_CONTENT_TYPE[bare] ?? "jpg";
 }
 
 // Scheduling -------------------------------------------------------------------------

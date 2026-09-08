@@ -1,0 +1,22 @@
+-- 0060_drive_image_transform
+--
+-- A sub-category sheet names its item as a link into Google Drive, not a
+-- value this table can hold. Every other transform turns a cell into
+-- something `sync_apply` can write straight into a column; this one cannot —
+-- the cell names a file, and getting from that file to a stored path means a
+-- network fetch, which `sync_apply` deliberately never does (see 0036: it is
+-- the only thing that writes to a target table, and it only ever writes what
+-- it was given).
+--
+-- So `drive_image` is not applied inside the database at all. It marks a
+-- column for the sync engine to pull out *before* the row reaches
+-- `sync_apply` — see `splitDriveReferences` in `src/lib/sync.ts` — fetch
+-- separately from Drive, upload to the `inventory` bucket, and write back
+-- with a plain, scoped update once the row's real id is known. The enum
+-- value only has to exist for a column map to be tagged with it; the
+-- database does no more with it than that.
+--
+-- Its own migration because Postgres will not let a new enum value be used in
+-- the transaction that added it — the same rule 0054/0055 hit.
+
+alter type public.sync_transform add value if not exists 'drive_image';

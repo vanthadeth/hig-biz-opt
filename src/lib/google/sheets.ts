@@ -1,4 +1,11 @@
-import { createSign } from "node:crypto";
+import {
+  accessToken,
+  checkCredential as checkCredentialFor,
+  GoogleAuthError,
+  serviceAccountEmail,
+  serviceAccountStatus,
+  type ServiceAccountStatus,
+} from "./auth";
 
 /**
  * Reading a Google Sheet, and nothing else.
@@ -10,12 +17,10 @@ import { createSign } from "node:crypto";
  * error from Google, not a modified sheet. That is worth more than any amount
  * of care in the application, which is why it is a constant and not a setting.
  *
- * No SDK: this environment cannot reach the npm registry, and the whole of what
- * `googleapis` would do for us here is sign a JWT and exchange it for a token.
- * Node's crypto does that in thirty lines.
+ * The signing and token exchange behind `accessToken` are shared with Drive in
+ * `google/auth.ts` — the two APIs need the same handshake, scoped differently.
  */
 const SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
-const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 /**
@@ -37,163 +42,23 @@ export class GoogleSheetsError extends Error {
   }
 }
 
-type ServiceAccount = { client_email: string; private_key: string };
-
-/**
- * The service account, out of the environment.
- *
- * Accepts base64 as well as raw JSON because a PEM private key is full of
- * newlines, and a newline pasted into a hosting provider's environment box is
- * the single most common way this credential arrives broken.
- */
-function serviceAccount(): ServiceAccount {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
-  if (!raw) {
-    throw new GoogleSheetsError(
-      "No Google service account is configured, so no sheet can be read yet.",
-      "no_credential",
-    );
-  }
-
-  const text = raw.startsWith("{")
-    ? raw
-    : Buffer.from(raw, "base64").toString("utf8");
-
-  // Named specifically because it is the mistake this variable invites: a
-  // Google account is an address you sign in with, a service account key is a
-  // file. Telling somebody their value "is not valid JSON" when they have put
-  // their email in it explains nothing.
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
-    throw new GoogleSheetsError(
-      "GOOGLE_SERVICE_ACCOUNT_JSON holds an email address. It needs the service "
-        + "account's whole JSON key file (or the base64 of it), not an address — "
-        + "and a service account is not the Google account you sign in with.",
-      "bad_credential",
-    );
-  }
-
-  let parsed: Partial<ServiceAccount>;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new GoogleSheetsError(
-      "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON, base64 or otherwise. "
-        + "Paste the whole key file, or its base64.",
-      "bad_credential",
-    );
-  }
-
-  if (!parsed.client_email || !parsed.private_key) {
-    throw new GoogleSheetsError(
-      "GOOGLE_SERVICE_ACCOUNT_JSON has no client_email or private_key. "
-        + "That is not a service account key file.",
-      "bad_credential",
-    );
-  }
-
-  return {
-    client_email: parsed.client_email,
-    // A key that survived a single-line environment variable has literal \n in
-    // it rather than real newlines, and OpenSSL will not read that.
-    private_key: parsed.private_key.replace(/\\n/g, "\n"),
-  };
+/** `GoogleAuthError` in the type this module has always thrown. */
+function asSheetsError(e: unknown): GoogleSheetsError {
+  if (e instanceof GoogleAuthError) return new GoogleSheetsError(e.message, e.code, e.status);
+  if (e instanceof Error) return new GoogleSheetsError(e.message);
+  return new GoogleSheetsError("The sheet could not be read.");
 }
 
-const base64url = (input: string | Buffer) =>
-  Buffer.from(input).toString("base64url");
-
-/** A token lives an hour; minting one per row of a sheet would be absurd. */
-let cached: { token: string; expiresAt: number } | null = null;
-
-async function accessToken(): Promise<string> {
-  // A minute of slack, so a token that expires mid-request is not used.
-  if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
-
-  const account = serviceAccount();
-  const now = Math.floor(Date.now() / 1000);
-  const claims = {
-    iss: account.client_email,
-    scope: SCOPE,
-    aud: TOKEN_URL,
-    iat: now,
-    exp: now + 3600,
-  };
-
-  const unsigned =
-    `${base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.` +
-    `${base64url(JSON.stringify(claims))}`;
-
-  let signature: string;
+async function sheetsToken(): Promise<string> {
   try {
-    const signer = createSign("RSA-SHA256");
-    signer.update(unsigned);
-    signature = signer.sign(account.private_key, "base64url");
-  } catch {
-    throw new GoogleSheetsError(
-      "The service account's private key could not be read. It usually means the "
-        + "newlines did not survive being pasted — use the base64 form instead.",
-      "bad_credential",
-    );
-  }
-
-  const response = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: `${unsigned}.${signature}`,
-    }),
-  });
-
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || !body.access_token) {
-    throw new GoogleSheetsError(
-      `Google refused the service account: ${body.error_description ?? body.error ?? response.statusText}`,
-      "bad_credential",
-      response.status,
-    );
-  }
-
-  cached = {
-    token: body.access_token as string,
-    expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000,
-  };
-  return cached.token;
-}
-
-/** The address of the service account, for the "share the sheet with" instruction. */
-export function serviceAccountEmail(): string | null {
-  try {
-    return serviceAccount().client_email;
-  } catch {
-    return null;
-  }
-}
-
-export type ServiceAccountStatus =
-  | { state: "missing" }
-  | { state: "unreadable"; reason: string }
-  | { state: "ready"; email: string };
-
-/**
- * What the server can actually see, told apart.
- *
- * `serviceAccountEmail` returns null for every failure, which made a key that
- * was set but mangled report itself as "not configured" — sending somebody off
- * to set a variable they had already set. The three states need three different
- * answers, so they are three states.
- */
-export function serviceAccountStatus(): ServiceAccountStatus {
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) return { state: "missing" };
-  try {
-    return { state: "ready", email: serviceAccount().client_email };
+    return await accessToken(SCOPE);
   } catch (e) {
-    return {
-      state: "unreadable",
-      reason: e instanceof Error ? e.message : "The key could not be read.",
-    };
+    throw asSheetsError(e);
   }
 }
+
+export { serviceAccountEmail, serviceAccountStatus };
+export type { ServiceAccountStatus };
 
 /**
  * Ask Google for a token and throw away the answer.
@@ -203,8 +68,11 @@ export function serviceAccountStatus(): ServiceAccountStatus {
  * can pass while syncing still fails.
  */
 export async function checkCredential(): Promise<{ ok: true; email: string }> {
-  await accessToken();
-  return { ok: true, email: serviceAccount().client_email };
+  try {
+    return await checkCredentialFor(SCOPE);
+  } catch (e) {
+    throw asSheetsError(e);
+  }
 }
 
 export type SheetValues = { headers: string[]; rows: unknown[][] };
@@ -220,7 +88,7 @@ export async function readSheet(
   spreadsheetId: string,
   range: string,
 ): Promise<SheetValues> {
-  const token = await accessToken();
+  const token = await sheetsToken();
   const url =
     `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}` +
     `?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`;
@@ -257,7 +125,7 @@ export async function readSheet(
 
 /** The tabs in a file, so the screen can offer them rather than ask for typing. */
 export async function readTabs(spreadsheetId: string): Promise<string[]> {
-  const token = await accessToken();
+  const token = await sheetsToken();
   const response = await fetch(
     `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
     { headers: { authorization: `Bearer ${token}` }, cache: "no-store" },

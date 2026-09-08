@@ -30,8 +30,19 @@ import {
  * `reference` is set instead of `kind` when the column holds another table's
  * sheet ID. One control offers both, because to somebody filling this in they
  * are the same question — what is in this column?
+ *
+ * `driveImage` is its own flag rather than a third thing that control offers:
+ * it only ever applies to a picture column, and it stacks on top of whichever
+ * kind is already chosen for the column rather than replacing it, so a `text`
+ * pairing stays `text` underneath — the sync engine reads the cell as text
+ * either way, it is only what happens to that text afterwards that changes.
  */
-type Pairing = { target: string; kind: SyncValueKind; reference: string | null };
+type Pairing = {
+  target: string;
+  kind: SyncValueKind;
+  reference: string | null;
+  driveImage: boolean;
+};
 
 /**
  * Defining a sync: which tab, which table, and which column feeds which.
@@ -80,7 +91,12 @@ export function SyncForm({
     Object.fromEntries(
       maps.map((m) => [
         m.sheet_column,
-        { target: m.target_column ?? "", kind: m.value_kind, reference: m.reference_table },
+        {
+          target: m.target_column ?? "",
+          kind: m.value_kind,
+          reference: m.reference_table,
+          driveImage: m.transform === "drive_image",
+        },
       ]),
     ),
   );
@@ -151,7 +167,12 @@ export function SyncForm({
       setPairs((current) => {
         const next: Record<string, Pairing> = {};
         for (const header of found) {
-          next[header] = current[header] ?? { target: "", kind: "text", reference: null };
+          next[header] = current[header] ?? {
+            target: "",
+            kind: "text",
+            reference: null,
+            driveImage: false,
+          };
         }
         return next;
       });
@@ -169,7 +190,7 @@ export function SyncForm({
     setPairs((current) => ({
       ...current,
       [header]: {
-        ...(current[header] ?? { target: "", kind: "text", reference: null }),
+        ...(current[header] ?? { target: "", kind: "text", reference: null, driveImage: false }),
         ...patch,
       },
     }));
@@ -182,6 +203,9 @@ export function SyncForm({
       target: column,
       kind: type ? kindForType(type.data_type) : "text",
       reference: null,
+      // A picture column chosen after this one is unrelated to it; the flag
+      // is not carried across to a column it was never set for.
+      driveImage: false,
     });
   }
 
@@ -200,8 +224,9 @@ export function SyncForm({
     // The form pairs one sheet column with one target column. Splitting a cell
     // across two columns, and deriving a child's id from its parent's, are set
     // on the mapping rows themselves — see 0046 — and this draft view of them
-    // carries the plain case.
-    transform: "none" as const,
+    // carries the plain case, plus the one transform this screen does offer:
+    // a picture column read as a Drive file rather than a plain value.
+    transform: pairs[header]?.driveImage ? ("drive_image" as const) : ("none" as const),
     transform_arg: null,
     sort_order: i,
   }));
@@ -280,6 +305,7 @@ export function SyncForm({
           target_column: pairs[header]?.target || null,
           value_kind: pairs[header]?.kind ?? "text",
           reference_table: pairs[header]?.reference ?? null,
+          transform: pairs[header]?.driveImage ? "drive_image" : "none",
           sort_order: i,
         })),
       );
@@ -452,6 +478,25 @@ export function SyncForm({
                           })),
                         ]}
                       />
+                    )}
+                    {/* Only offered on a picture column: a Drive link means
+                        nothing anywhere else, and asking the question on every
+                        row would bury the one column it actually applies to. */}
+                    {chosen.endsWith("_path") && (
+                      <label className="flex min-h-11 items-center justify-between gap-3 text-sm">
+                        <span>
+                          This is a Google Drive link
+                          <span className="block text-xs text-muted">
+                            The sync fetches the file and stores its own copy.
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={pairs[header]?.driveImage ?? false}
+                          onChange={(e) => pair(header, { driveImage: e.target.checked })}
+                          className="size-5 accent-[var(--brand)]"
+                        />
+                      </label>
                     )}
                   </div>
                 </li>

@@ -259,6 +259,46 @@ phone chosen is left out; a phone with no label is refused before anything is
 written, because a contact's name is NOT NULL and a run that discovered that
 halfway would leave half a sheet imported.
 
+### A picture stored on Google Drive
+
+The sub-category tab is item categories under another name — what the sheet
+calls an item is really a group of items, and its own `Category ID` column is
+a parent id waiting to be resolved exactly like the province on the customer
+tab. Nothing new there: map `Category ID` to `parent_id` with `reference_table`
+set to *Item Categories*, the same one-level self-reference the table already
+enforces.
+
+Its picture is the part that needed something new. The sheet does not hold an
+image — it holds a link into Google Drive, and getting from that link to a
+picture this app can serve is a fetch and an upload, not a value `sync_apply`
+can write. So a column mapped to a `*_path` column (`photo_path`,
+`logo_path`) can be flagged **"This is a Google Drive link"** in the column
+pairing screen. That sets the mapping's `transform` to `drive_image`, and
+changes what happens to it:
+
+1. The ordinary write still happens first, for every other column, in the same
+   one statement as always — a bad or missing picture never blocks the row
+   it belongs to.
+2. For each row that had a Drive reference, the sync engine (not the
+   database — see `applyDriveImages` in `src/lib/syncEngine.ts`) looks up the
+   id the row was just written under, fetches the file from Drive, puts it in
+   the `inventory` bucket at the same `categories/<id>/…` path the category
+   screen itself uploads to, and updates that one column.
+
+**The service account needs sharing on Drive too**, separately from the
+sheet. Sharing a spreadsheet does not share the images linked from it —
+share the picture files themselves, or the folder holding them, with the same
+service-account address as a Viewer. `drive.readonly` is, like the sheets
+scope, a constant in `src/lib/google/drive.ts` rather than a setting: this
+code can read a file it was shared, and nothing else. Enable the **Google
+Drive API** alongside Sheets in the same Cloud project — no second service
+account, no second key.
+
+A row whose picture Drive refuses, or whose link does not parse to a file id,
+is counted and named in the run's message rather than failing the run — the
+same "report it, do not silently drop it, do not let it take the rest of the
+sheet down with it" the rest of this feature already follows.
+
 ### Clearing what a sync imported
 
 Mapping somebody else's spreadsheet is a guess, and the second guess is better.

@@ -10,10 +10,12 @@ import {
   USER_RECORD_COLUMNS,
   type UserRecord,
 } from "@/lib/users";
+import { VISIT_COLUMNS, type VisitRow } from "@/lib/visits";
 import { RemoveUserButton } from "../RemoveUserButton";
 import { StatusControls } from "../StatusControls";
 import { GeneratePassword } from "./GeneratePassword";
 import { QuotaAction } from "./QuotaAction";
+import { TeamVisits } from "./TeamVisits";
 
 export async function generateMetadata({
   params,
@@ -65,6 +67,7 @@ export default async function Page({
     viewer,
     quotaRow,
     orgQuotaRow,
+    teamVisits,
   ] = await Promise.all([
     supabase.rpc("can_edit_user", { p_user: id }),
     supabase.rpc("can_delete_user", { p_user: id }),
@@ -82,6 +85,16 @@ export default async function Page({
     requireViewer(),
     supabase.from("user_visit_quotas").select(QUOTA_COLUMNS).eq("user_id", id).maybeSingle(),
     supabase.from("app_settings").select(QUOTA_COLUMNS).maybeSingle(),
+    // The permission this reads is `visit:view:sub` -- a grant nobody could
+    // otherwise act on, since nothing pointed a manager at a subordinate's
+    // calls until now. Five is enough to say "yes, this person is out on
+    // calls" without turning a profile page into a second Visits screen.
+    supabase
+      .from("visits")
+      .select(VISIT_COLUMNS)
+      .eq("user_id", id)
+      .order("checked_in_at", { ascending: false })
+      .limit(5),
   ]);
 
   const isSelf = viewer.id === person.id;
@@ -146,6 +159,17 @@ export default async function Page({
           <StatusControls record={person} canEdit={canEdit === true} isSelf={isSelf} />
         }
       />
+
+      {/* Their own calls, not the viewer's -- so this stays off their own
+          profile, where the full Visits screen already covers it. Silent
+          for anyone the viewer holds no `visit:view` reach into: RLS
+          returned nothing, and an empty list here says nothing either. */}
+      {!isSelf && (
+        <TeamVisits
+          viewKey={view}
+          visits={(teamVisits.data ?? []) as unknown as VisitRow[]}
+        />
+      )}
 
       {/* Only a super admin, because the route behind it holds the key that
           bypasses every policy in the database. Not for yourself either: your

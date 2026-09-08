@@ -69,10 +69,10 @@ const SHOPS: CartCustomer[] = [
   },
 ];
 
-const draw = (over: Partial<VisitRow> = {}) =>
+const draw = (over: Partial<VisitRow> = {}, viewer: { isOwn?: boolean; ownerName?: string } = {}) =>
   render(
     <OpenVisitPage viewKey="sales" visit={visit(over)} options={OPTIONS}
-      customers={SHOPS} now={NOW} />,
+      customers={SHOPS} now={NOW} {...viewer} />,
   );
 
 beforeEach(() => {
@@ -304,6 +304,36 @@ describe("calling the visit off", () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("a supervisor looking in on somebody else's open call", () => {
+  it("says whose it is, up front", () => {
+    draw({}, { isOwn: false, ownerName: "Sopheak" });
+    expect(screen.getByText("Viewing Sopheak's visit")).toBeInTheDocument();
+  });
+
+  it("offers no shop picker, even with no shop named yet", () => {
+    draw({ customer_id: null, customer: null, distance_m: null }, { isOwn: false, ownerName: "Sopheak" });
+    expect(screen.queryByRole("button", { name: "Choose the shop" })).toBeNull();
+  });
+
+  it("disables the record fields and offers no save button", () => {
+    draw({}, { isOwn: false, ownerName: "Sopheak" });
+    expect(screen.getByRole("button", { name: "Ordered" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Saved" })).toBeNull();
+    expect(screen.getByText(/Only Sopheak can change it/)).toBeInTheDocument();
+  });
+
+  it("offers no cancel button", () => {
+    draw({}, { isOwn: false, ownerName: "Sopheak" });
+    expect(screen.queryByRole("button", { name: "Cancel this visit" })).toBeNull();
+  });
+
+  it("offers no way to check the visit out", () => {
+    draw({}, { isOwn: false, ownerName: "Sopheak" });
+    expect(screen.queryByRole("button", { name: "Check out" })).toBeNull();
   });
 });
 

@@ -53,17 +53,26 @@ const draftOf = (visit: VisitRow): VisitDraft => ({
  * When that day is up the fields go read-only here as well. The database is
  * still what enforces it; this only saves somebody typing for a minute before
  * being told.
+ *
+ * A closed visit that is not the viewer's own is read-only for a different
+ * reason than the clock running out: `visit:view:sub` is a look, not a
+ * write, so `isOwn` gates every action here the same way the window and the
+ * cancelled flag already do.
  */
 export function VisitRecord({
   viewKey = "",
   visit,
   options,
   now,
+  isOwn = true,
+  ownerName = "",
 }: {
   viewKey?: string;
   visit: VisitRow;
   options: VisitOption[];
   now: string;
+  isOwn?: boolean;
+  ownerName?: string;
 }) {
   const router = useRouter();
   const t = useT();
@@ -77,8 +86,9 @@ export function VisitRecord({
 
   const cancelled = visit.cancelled_at !== null;
   // A cancelled visit is finished being written to: what it says is why it was
-  // called off, and editing it afterwards would blur that.
-  const canEdit = editable(visit, nowMs) && !cancelled;
+  // called off, and editing it afterwards would blur that. Somebody else's
+  // visit is finished being written to as well, for a simpler reason.
+  const canEdit = isOwn && editable(visit, nowMs) && !cancelled;
   const left = editWindowLeft(visit, nowMs);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const note = rangeNote(visit, lang);
@@ -153,6 +163,10 @@ export function VisitRecord({
         </Link>
       )}
 
+      {!isOwn && (
+        <p className="text-xs text-muted">{t("visit.viewingWhose", { name: ownerName })}</p>
+      )}
+
       <Card className="space-y-3 p-4">
         <div className="flex items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-subtle">
@@ -214,7 +228,7 @@ export function VisitRecord({
           </>
         )}
 
-        {cancellable(visit, nowMs) && (
+        {isOwn && cancellable(visit, nowMs) && (
           <CancelVisit
             busy={busy}
             onCancel={(reason) =>
@@ -226,7 +240,7 @@ export function VisitRecord({
           />
         )}
 
-        {uncancellable(visit, nowMs) && (
+        {isOwn && uncancellable(visit, nowMs) && (
           <RestoreVisit
             busy={busy}
             onRestore={() =>
@@ -276,7 +290,11 @@ export function VisitRecord({
             </>
           ) : (
             <p className="text-center text-xs text-muted">
-              {cancelled ? t("visit.frozenCancelled") : t("visit.frozen")}
+              {!isOwn
+                ? t("visit.notYours", { name: ownerName })
+                : cancelled
+                  ? t("visit.frozenCancelled")
+                  : t("visit.frozen")}
             </p>
           )}
         </Card>

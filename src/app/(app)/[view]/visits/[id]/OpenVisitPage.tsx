@@ -51,6 +51,12 @@ const draftOf = (visit: VisitRow): VisitDraft => ({
  * Checking out asks first. It is the one irreversible thing on the screen: the
  * time it writes can never be changed afterwards, by anybody, and a thumb
  * resting on the bottom of a phone is exactly where an accidental tap lands.
+ *
+ * `isOwn` is the whole of the access story here. A supervisor's `visit:view:sub`
+ * only ever reaches `sub` — never `edit` — so once this is somebody else's
+ * call every action on the screen disappears rather than being disabled: the
+ * shop picker, the record fields, the cancel button and the check-out itself
+ * are all things only the rep standing in the shop can do.
  */
 export function OpenVisitPage({
   viewKey,
@@ -58,12 +64,16 @@ export function OpenVisitPage({
   options,
   customers,
   now,
+  isOwn = true,
+  ownerName = "",
 }: {
   viewKey: string;
   visit: VisitRow;
   options: VisitOption[];
   customers: CartCustomer[];
   now: string;
+  isOwn?: boolean;
+  ownerName?: string;
 }) {
   const router = useRouter();
   const t = useT();
@@ -206,6 +216,12 @@ export function OpenVisitPage({
         {t("visit.allVisits")}
       </Link>
 
+      {/* Whose call this is, said once and up front -- everything below is
+          read-only for anyone but {ownerName} themselves. */}
+      {!isOwn && (
+        <p className="text-xs text-muted">{t("visit.viewingWhose", { name: ownerName })}</p>
+      )}
+
       {/* When you arrived, and where ---------------------------------------
           The time leads, because it is the part that is already fixed and
           cannot be argued with. The shop comes second, because at this point
@@ -237,7 +253,7 @@ export function OpenVisitPage({
           </Chip>
         </div>
 
-        {canNameShop(visit, nowMs) ? (
+        {isOwn && canNameShop(visit, nowMs) ? (
           <ShopPicker
             customers={customers}
             fix={fix}
@@ -252,9 +268,9 @@ export function OpenVisitPage({
         )}
 
         {note && <p className="text-xs text-muted">{note}</p>}
-        {problem && <p className="text-xs text-muted">{problem}</p>}
+        {isOwn && problem && <p className="text-xs text-muted">{problem}</p>}
 
-        {cancellable(visit, nowMs) && (
+        {isOwn && cancellable(visit, nowMs) && (
           <CancelVisit busy={busy} onCancel={cancelVisit} />
         )}
       </Card>
@@ -272,66 +288,88 @@ export function OpenVisitPage({
         )}
 
         <Card className="space-y-4 p-4">
-          <VisitFields draft={draft} options={options} disabled={busy} onChange={setDraft} />
+          <VisitFields
+            draft={draft}
+            options={options}
+            disabled={!isOwn || busy}
+            onChange={setDraft}
+          />
 
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || !dirty}
-            className="pressable min-h-11 w-full rounded-xl border border-line text-sm font-medium disabled:opacity-50"
-          >
-            {dirty ? t("visit.save") : t("visit.saved")}
-          </button>
+          {isOwn ? (
+            <button
+              type="button"
+              onClick={save}
+              disabled={busy || !dirty}
+              className="pressable min-h-11 w-full rounded-xl border border-line text-sm font-medium disabled:opacity-50"
+            >
+              {dirty ? t("visit.save") : t("visit.saved")}
+            </button>
+          ) : (
+            <p className="text-center text-xs text-muted">
+              {t("visit.notYours", { name: ownerName })}
+            </p>
+          )}
         </Card>
       </div>
 
-      {/* The way out ------------------------------------------------------ */}
-      {/* Above the bottom bar on a phone, at the foot of the page from md up
-          where there is no bottom bar to clear. */}
-      <div className="sticky bottom-20 z-30 -mx-4 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur md:bottom-2 md:mx-0 md:rounded-2xl md:border">
-        <button
-          type="button"
-          onClick={() => {
-            haptic("tap");
-            setAsking(true);
-          }}
-          disabled={busy}
-          className="pressable min-h-12 w-full rounded-xl bg-brand text-base font-semibold text-brand-fg disabled:opacity-60"
-        >
-          {t("visit.checkOut")}
-        </button>
-      </div>
-
-      <Sheet open={asking} onClose={() => !busy && setAsking(false)} title={t("visit.checkOutAsk")}>
-        <div className="space-y-4 p-4">
-          <p className="text-sm text-muted">
-            {t("visit.checkOutBody", {
-              shop: shopName,
-              length: hoursMinutes(visitLength(visit, nowMs)),
-            })}
-            {dirty && t("visit.checkOutSaveFirst")}
-          </p>
-
-          <div className="flex gap-2">
+      {/* The way out -------------------------------------------------------
+          Not this viewer's way out, when it is not their visit: checking
+          somebody else out is not a thing a supervisor's read-only reach was
+          ever meant to include. */}
+      {isOwn && (
+        <>
+          {/* Above the bottom bar on a phone, at the foot of the page from md
+              up where there is no bottom bar to clear. */}
+          <div className="sticky bottom-20 z-30 -mx-4 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur md:bottom-2 md:mx-0 md:rounded-2xl md:border">
             <button
               type="button"
-              onClick={() => setAsking(false)}
+              onClick={() => {
+                haptic("tap");
+                setAsking(true);
+              }}
               disabled={busy}
-              className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium disabled:opacity-50"
+              className="pressable min-h-12 w-full rounded-xl bg-brand text-base font-semibold text-brand-fg disabled:opacity-60"
             >
-              {t("visit.notYet")}
-            </button>
-            <button
-              type="button"
-              onClick={checkOut}
-              disabled={busy}
-              className="pressable min-h-11 flex-[2] rounded-xl bg-brand text-sm font-semibold text-brand-fg disabled:opacity-60"
-            >
-              {busy ? t("visit.checkingOut") : t("visit.checkOut")}
+              {t("visit.checkOut")}
             </button>
           </div>
-        </div>
-      </Sheet>
+
+          <Sheet
+            open={asking}
+            onClose={() => !busy && setAsking(false)}
+            title={t("visit.checkOutAsk")}
+          >
+            <div className="space-y-4 p-4">
+              <p className="text-sm text-muted">
+                {t("visit.checkOutBody", {
+                  shop: shopName,
+                  length: hoursMinutes(visitLength(visit, nowMs)),
+                })}
+                {dirty && t("visit.checkOutSaveFirst")}
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAsking(false)}
+                  disabled={busy}
+                  className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium disabled:opacity-50"
+                >
+                  {t("visit.notYet")}
+                </button>
+                <button
+                  type="button"
+                  onClick={checkOut}
+                  disabled={busy}
+                  className="pressable min-h-11 flex-[2] rounded-xl bg-brand text-sm font-semibold text-brand-fg disabled:opacity-60"
+                >
+                  {busy ? t("visit.checkingOut") : t("visit.checkOut")}
+                </button>
+              </div>
+            </div>
+          </Sheet>
+        </>
+      )}
     </div>
   );
 }

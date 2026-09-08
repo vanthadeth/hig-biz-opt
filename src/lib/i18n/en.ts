@@ -98,6 +98,9 @@ export const en = {
   "visit.editLeft": "{length} left to correct this.",
   "visit.frozen": "This visit closed more than a day ago. What it says is now the record.",
   "visit.frozenCancelled": "This visit was cancelled. What it says is now the record.",
+  "visit.viewingWhose": "Viewing {name}'s visit",
+  "visit.notYours": "This is not your visit. Only {name} can change it.",
+  "visit.recent": "Recent visits",
 
   "visit.noteLeftOutside": "Checked out {distance} from the shop, outside {radius} m.",
   "visit.noteLeftOutsideUnknown": "Checked out {distance} from the shop.",

@@ -98,6 +98,9 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "visit.editLeft": "នៅសល់ {length} ដើម្បីកែតម្រូវ។",
   "visit.frozen": "ការចុះជួបនេះបានបិទលើសមួយថ្ងៃហើយ។ អ្វីដែលកត់ត្រាគឺជាកំណត់ត្រាចុងក្រោយ។",
   "visit.frozenCancelled": "ការចុះជួបនេះត្រូវបានបោះបង់។ អ្វីដែលកត់ត្រាគឺជាកំណត់ត្រាចុងក្រោយ។",
+  "visit.viewingWhose": "កំពុងមើលការចុះជួបរបស់ {name}",
+  "visit.notYours": "នេះមិនមែនជាការចុះជួបរបស់អ្នកទេ។ មានតែ {name} ប៉ុណ្ណោះដែលអាចផ្លាស់ប្តូរបាន។",
+  "visit.recent": "ការចុះជួបថ្មីៗ",
 
   "visit.noteLeftOutside": "បានចេញនៅចម្ងាយ {distance} ពីហាង ក្រៅរង្វង់ {radius} ម៉ែត្រ។",
   "visit.noteLeftOutsideUnknown": "បានចេញនៅចម្ងាយ {distance} ពីហាង។",

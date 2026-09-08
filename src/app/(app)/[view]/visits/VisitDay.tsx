@@ -56,7 +56,13 @@ export function VisitDay({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const open = useMemo(() => openVisit(visits), [visits]);
+  // A supervisor's own screen can carry a subordinate's rows too, now that
+  // `visit:view:sub` exists -- so every reading of "my day" below, starting
+  // with whether the viewer is themselves checked in, has to start from this
+  // filtered list rather than the raw, RLS-visible one.
+  const mine = useMemo(() => visits.filter((v) => v.user_id === userId), [visits, userId]);
+
+  const open = useMemo(() => openVisit(mine), [mine]);
 
   // A minute is enough: the running time is shown to the minute, and a ticking
   // second hand on a page somebody is typing into is a distraction.
@@ -99,7 +105,6 @@ export function VisitDay({
 
   // The day's figures come from the same maths the reports use, so a rep and
   // the office never see two different answers for the same day.
-  const mine = useMemo(() => visits.filter((v) => v.user_id === userId), [visits, userId]);
   const days = useMemo(
     () =>
       attendanceDays(
@@ -125,9 +130,12 @@ export function VisitDay({
     [days, nowMs],
   );
 
-  // Every visit, cancelled and open alike: the timeline is what the day was,
-  // and a call somebody made and then called off is part of that.
-  const grouped = useMemo(() => visitsByDay(visits), [visits]);
+  // Every visit of the viewer's own, cancelled and open alike: the timeline
+  // is what their day was. A supervisor's subordinate rows are real and
+  // readable now, but they belong on that person's own account page, not
+  // folded unlabelled into somebody else's "my day" -- so this stays `mine`,
+  // the same list the snapshot and the open-visit check above use.
+  const grouped = useMemo(() => visitsByDay(mine), [mine]);
   const provinceNames = useMemo(() => new Map(provinces), [provinces]);
   const hasTargets = hasSnapshot(quota);
 

@@ -91,12 +91,24 @@ export type VisitRow = {
   cancelled_at: string | null;
   cancel_reason: string | null;
   customer: PlacedShop | null;
+  /**
+   * Whose visit this is, by name. Optional so every existing test fixture
+   * built before a manager could ever read somebody else's row keeps
+   * compiling unchanged — the two screens that actually need a name (the
+   * visit detail page, for the "not yours" banner) fetch it explicitly.
+   */
+  user?: { full_name: string } | null;
 };
 
 // One literal, not a concatenation: supabase-js reads this string in the type
 // system to work out the row shape.
 export const VISIT_COLUMNS =
   "id, user_id, customer_id, checked_in_at, checked_out_at, in_latitude, in_longitude, out_latitude, out_longitude, distance_m, out_of_range, checkout_distance_m, checkout_out_of_range, radius_m, visit_type_id, visit_status_id, order_status_id, payment_status_id, next_appointment, remarks, cancelled_at, cancel_reason, customer:customers (shop_name, latitude, longitude, province_code, province_text)";
+
+/** {@link VISIT_COLUMNS}, plus the visit's own owner -- needed only where a
+ * viewer might be looking at somebody else's call, so it stays a separate
+ * constant rather than growing the shared one every screen pays for. */
+export const VISIT_DETAIL_COLUMNS = `${VISIT_COLUMNS}, user:users (full_name)`;
 
 /**
  * A visit as a report reads it: who, when, and where they stood.

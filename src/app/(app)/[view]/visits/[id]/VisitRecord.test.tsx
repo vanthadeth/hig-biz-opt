@@ -275,3 +275,39 @@ describe("taking a cancellation back", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("a supervisor looking in on somebody else's closed visit", () => {
+  it("says whose it is, up front", () => {
+    render(
+      <VisitRecord visit={visit()} options={OPTIONS} now={at(1)} isOwn={false} ownerName="Sopheak" />,
+    );
+    expect(screen.getByText("Viewing Sopheak's visit")).toBeInTheDocument();
+  });
+
+  it("is frozen even well within the correction window", () => {
+    render(
+      <VisitRecord visit={visit()} options={OPTIONS} now={at(1)} isOwn={false} ownerName="Sopheak" />,
+    );
+    expect(screen.getByRole("button", { name: "Ordered" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
+    // The reason given is "not yours", not the correction window running out
+    // -- the window has not, here, and saying so would be misleading.
+    expect(screen.getByText(/Only Sopheak can change it/)).toBeInTheDocument();
+    expect(screen.queryByText(/left to correct/)).toBeNull();
+  });
+
+  it("offers no cancel button, even while cancelling would otherwise be live", () => {
+    render(
+      <VisitRecord visit={visit()} options={OPTIONS} now={at(1)} isOwn={false} ownerName="Sopheak" />,
+    );
+    expect(screen.queryByText("Cancel this visit")).not.toBeInTheDocument();
+  });
+
+  it("offers no restore button on a cancelled visit either", () => {
+    const cancelled = visit({ cancelled_at: CLOSED, cancel_reason: "Tapped by mistake" });
+    render(
+      <VisitRecord visit={cancelled} options={OPTIONS} now={at(1)} isOwn={false} ownerName="Sopheak" />,
+    );
+    expect(screen.queryByText("Restore this visit")).not.toBeInTheDocument();
+  });
+});

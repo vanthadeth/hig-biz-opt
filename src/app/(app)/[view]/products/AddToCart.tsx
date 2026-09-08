@@ -39,7 +39,7 @@ export type LineDraft = { quantity: number; free: number; discount: Discount };
 
 export function AddToCart({
   item,
-  room,
+  available,
   alreadyInCart,
   currency,
   busy,
@@ -50,8 +50,14 @@ export function AddToCart({
   item: CatalogItem;
   /** Which of the two prices this organisation quotes in. */
   currency: Currency;
-  /** How many more of this may be taken, free ones included. */
-  room: number;
+  /**
+   * How many are actually on the shelf, this cart's own claim set aside.
+   *
+   * Shown as a warning when a line asks for more, never enforced as a limit —
+   * understock selling is allowed, so quantity and free are free to go past
+   * it. See `addableQty` in `lib/catalog.ts`.
+   */
+  available: number;
   alreadyInCart: number;
   busy: boolean;
   /**
@@ -79,15 +85,16 @@ export function AddToCart({
   const before = lineBefore(item, quantity);
   const after = lineTotals(item, quantity, discount);
   const takes = quantity + free;
+  // Not a refusal: a shop that wants more than the shelf holds is a
+  // backorder, said plainly rather than silently prevented.
+  const oversells = takes > available;
 
-  /** Keeps the two of them inside what is on the shelf. */
   function setPaid(next: number) {
-    const clamped = cleanQuantity(next, Math.max(1, room - free));
-    setQuantity(Math.max(1, clamped));
+    setQuantity(Math.max(1, cleanQuantity(next)));
   }
 
   function setGiven(next: number) {
-    setFree(cleanQuantity(next, Math.max(0, room - quantity)));
+    setFree(cleanQuantity(next));
   }
 
   return (
@@ -98,7 +105,7 @@ export function AddToCart({
         <Counter
           value={quantity}
           min={1}
-          max={Math.max(1, room - free)}
+          max={Infinity}
           disabled={busy}
           onChange={setPaid}
           label="Order quantity"
@@ -112,7 +119,7 @@ export function AddToCart({
             <button
               key={pack.key}
               type="button"
-              disabled={busy || pack.quantity > room - free}
+              disabled={busy}
               onClick={() => {
                 haptic("select");
                 setPaid(pack.quantity);
@@ -141,7 +148,7 @@ export function AddToCart({
           <Counter
             value={free}
             min={0}
-            max={Math.max(0, room - quantity)}
+            max={Infinity}
             disabled={busy}
             onChange={setGiven}
             label="Free quantity"
@@ -193,6 +200,17 @@ export function AddToCart({
         </div>
       </div>
 
+      {/* Said before the tap, not after: understock selling is allowed, so
+          this is what the rep is choosing, not what stopped them. */}
+      {oversells && (
+        <p className="flex items-start gap-2 rounded-xl bg-warn p-3 text-sm text-warn-fg">
+          <Icon name="box" className="mt-0.5 size-4 shrink-0" />
+          {available === 0
+            ? `None of this are on the shelf — all ${takes} will be on backorder.`
+            : `Only ${available} of this are on the shelf — ${takes - available} will be on backorder.`}
+        </p>
+      )}
+
       {/* What it comes to -------------------------------------------------- */}
       <div className="flex items-end justify-between gap-3 border-t border-line pt-2">
         {/* Three facts, each on its own line, because they answer three
@@ -220,7 +238,7 @@ export function AddToCart({
       <button
         type="button"
         onClick={() => onAdd(quantity, free, discount)}
-        disabled={busy || room === 0}
+        disabled={busy}
         className="pressable flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg disabled:opacity-60"
       >
         <Icon name="cart" className="size-4" />

@@ -543,27 +543,22 @@ export function Catalog({
               />
             </div>
 
-            {openRoom === 0 ? (
-              <p className="border-t border-line px-3 py-4 text-sm text-muted">
-                {open.stock_qty === 0
-                  ? "There is none of this in stock."
-                  : "Your cart already holds everything in stock."}
-              </p>
-            ) : (
-              <AddToCart
-                // Remounted per item, so yesterday's quantity and discount do
-                // not follow the rep to the next thing they open.
-                key={open.id}
-                item={open}
-                room={openRoom}
-                currency={currency}
-                alreadyInCart={inCart(open.id)}
-                busy={busy}
-                onAdd={(quantity, free, discount) =>
-                  addToCart(open, quantity, free, discount)
-                }
-              />
-            )}
+            {/* Offered regardless of stock — understock selling is allowed,
+                and the "No stock" chip above already said what is here.
+                `AddToCart` itself is what warns when a line outruns it. */}
+            <AddToCart
+              // Remounted per item, so yesterday's quantity and discount do
+              // not follow the rep to the next thing they open.
+              key={open.id}
+              item={open}
+              available={openRoom}
+              currency={currency}
+              alreadyInCart={inCart(open.id)}
+              busy={busy}
+              onAdd={(quantity, free, discount) =>
+                addToCart(open, quantity, free, discount)
+              }
+            />
           </div>
         )}
       </Sheet>
@@ -582,7 +577,7 @@ export function Catalog({
             item={editing.item}
             // One line per item per cart, so this line's own numbers are not
             // competing with another line of the same thing.
-            room={editing.item.stock_qty}
+            available={editing.item.stock_qty}
             alreadyInCart={0}
             currency={currency}
             busy={busy}

@@ -600,6 +600,15 @@ the first line disappears when it has nothing to say. A discount agreed in money
 stays money there: rewriting "two dollars off" as a percentage tells somebody
 they said something they did not.
 
+**Understock selling is allowed.** Quantity and free are never capped at what
+is on the shelf, and the item sheet is never hidden just because it reads
+zero — a shop that wants forty of something there are six of is a backorder,
+and it is the rep's call to make in front of the customer, not this screen's
+to make for them. What stock is for here is a warning, not a wall: once a
+line asks for more than `addableQty` (`src/lib/catalog.ts`) says is left, the
+panel says so plainly — "Only 6 of this are on the shelf — 4 will be on
+backorder" — and lets the line go through anyway.
+
 **Hold a line to change it.** Removing lives in the panel that opens, not under a
 thumb on the list: a row that could be deleted by moving a finger across it
 deleted things nobody meant to delete. Getting to it now takes a deliberate hold

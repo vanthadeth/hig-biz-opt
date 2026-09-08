@@ -455,11 +455,16 @@ export function cartSavings(entries: CartEntry[]): {
 }
 
 /**
- * How many of an item somebody may still add.
+ * How many of an item are still on the shelf, once what this cart already
+ * claims is set aside.
  *
- * The stock figure is the cap: a catalogue that lets a rep promise forty of
- * something there are six of has cost the company a delivery. Null means the
- * item is out of stock entirely and there is nothing to add.
+ * Informational, not a ceiling: understock selling is allowed on purpose — a
+ * shop that wants forty and the warehouse holds six is a backorder, not a
+ * refusal, and it is the rep's call to make in front of the customer, not
+ * this screen's to make for them. What this is for is the warning
+ * `AddToCart` shows when a line asks for more than this says is here; never
+ * floors it out. Never negative, because "how many are left" does not go
+ * below nothing — a line that already oversells the shelf just leaves zero.
  */
 export function addableQty(item: CatalogItem, alreadyInCart: number): number {
   return Math.max(0, item.stock_qty - alreadyInCart);

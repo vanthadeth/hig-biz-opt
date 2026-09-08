@@ -14,6 +14,12 @@ import { can, getMyPermissions, getViewer } from "@/lib/access";
  * (that is still Supabase's own session), but whether the visits module is
  * any part of what it may see. `visit:add` or `visit:view` is enough to be
  * let in; neither is a person this app has nothing for.
+ *
+ * The `(protected)` group is what keeps this off `/field/login` itself: a
+ * layout at `field/` would wrap the login page too, and a login page that
+ * redirects an unauthenticated visitor to itself is a redirect loop, not a
+ * login screen. Login lives as a sibling outside this group, with no gate at
+ * all — the same shape the main app's own `/login` already has.
  */
 export default async function FieldLayout({
   children,

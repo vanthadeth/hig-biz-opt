@@ -24,6 +24,7 @@ import {
 } from "@/lib/customers";
 import { formatDate } from "@/lib/users";
 import { CustomerStatusControls } from "../CustomerStatusControls";
+import { CheckInAction } from "./CheckInAction";
 import { CustomerTabs } from "./CustomerTabs";
 import { PictureManager } from "../PictureManager";
 import { Receivables } from "../Receivables";
@@ -96,6 +97,10 @@ export default async function Page({
   // the policy's business, and a refused write says so with an empty result —
   // so the button is a courtesy and the policy is the rule.
   const canEdit = can(mine, "customer", "edit");
+  // Check-in has its own courtesy check on top: a banned or inactive shop
+  // never appears on the nearby-customer screen at all, so its own record
+  // should not offer the one action that screen exists to make easy.
+  const canCheckIn = can(mine, "visit", "add") && customer.status === "active";
 
   const where = addressLine({
     street_address: customer.street_address,
@@ -146,12 +151,17 @@ export default async function Page({
           </div>
         </div>
 
-        {(canEdit || map) && (
+        {(canCheckIn || canEdit || map) && (
           <div className="mt-4 flex gap-2">
+            {/* Leads, brand-filled: the field rep opening this record is here
+                to call on the shop far more often than to correct it. */}
+            {canCheckIn && <CheckInAction viewKey={view} customerId={customer.id} />}
             {canEdit && (
               <Link
                 href={`/${view}/customers/${customer.id}/edit`}
-                className="pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand text-sm font-medium text-brand-fg"
+                className={`pressable flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-medium ${
+                  canCheckIn ? "border border-line text-fg" : "bg-brand text-brand-fg"
+                }`}
               >
                 <Icon name="pencil" className="size-4" />
                 Edit customer

@@ -57,6 +57,8 @@ export const en = {
   "visit.checkOutBody":
     "This closes the visit to {shop}, {length} after checking in. The time it writes cannot be changed afterwards.",
   "visit.checkOutSaveFirst": " Anything you have typed will be saved first.",
+  "visit.checkOutFarWarning":
+    "You appear to be {distance} from the shop. Checking out from here will flag this visit.",
   "visit.notYet": "Not yet",
   "visit.save": "Save",
   "visit.saved": "Saved",
@@ -87,8 +89,6 @@ export const en = {
   "visit.noteNoShop": "This visit is not to a shop, so there is no distance to measure.",
   "visit.noteNoFix": "No location was recorded at check-in, so there is no distance.",
   "visit.noteNoPin": "The shop has no location saved yet.",
-  "visit.noteNamedLater":
-    "The shop was named after the check-in, so no distance was measured.",
   "visit.noteOutside": "Checked in {distance} from the shop, outside {radius} m.",
   "visit.noteOutsideUnknown":
     "Checked in {distance} from the shop, outside the allowed distance.",

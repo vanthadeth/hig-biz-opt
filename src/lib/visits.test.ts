@@ -120,9 +120,8 @@ describe("what to say about the distance", () => {
     })).toBe("The shop has no location saved yet.");
   });
 
-  it("and a shop named afterwards is nobody's: it was not there to measure against", () => {
-    expect(rangeNoteEn({ ...base, distance_m: null }))
-      .toBe("The shop was named after the check-in, so no distance was measured.");
+  it("says nothing for a named shop with a real pin and a real fix -- that combination now always has a distance (0059)", () => {
+    expect(rangeNoteEn({ ...base, distance_m: null })).toBeNull();
   });
 });
 
@@ -145,27 +144,24 @@ describe("what a visit calls where it was", () => {
 });
 
 describe("whether a shop can still be named", () => {
-  const closed = "2026-09-03T02:00:00Z";
-  const at = (h: number) => Date.parse(closed) + h * 3_600_000;
-
   it("yes, while a shopless visit is still open", () => {
-    expect(canNameShop({ customer_id: null, checked_out_at: null, cancelled_at: null }, at(1000))).toBe(true);
+    expect(canNameShop({ customer_id: null, checked_out_at: null, cancelled_at: null })).toBe(true);
   });
 
-  it("and for the day after it closes", () => {
-    expect(canNameShop({ customer_id: null, checked_out_at: closed, cancelled_at: null }, at(23))).toBe(true);
-    expect(canNameShop({ customer_id: null, checked_out_at: closed, cancelled_at: null }, at(25))).toBe(false);
+  it("never once it has closed — naming a shop is not a same-day correction", () => {
+    expect(canNameShop({
+      customer_id: null, checked_out_at: "2026-09-03T02:00:00Z", cancelled_at: null,
+    })).toBe(false);
   });
 
   it("never once the visit has been called off", () => {
     expect(canNameShop(
       { customer_id: null, checked_out_at: null, cancelled_at: "2026-09-03T02:30:00Z" },
-      at(1),
     )).toBe(false);
   });
 
   it("never when the visit already names one — that would be a swap", () => {
-    expect(canNameShop({ customer_id: "c1", checked_out_at: null, cancelled_at: null }, at(1))).toBe(false);
+    expect(canNameShop({ customer_id: "c1", checked_out_at: null, cancelled_at: null })).toBe(false);
   });
 });
 

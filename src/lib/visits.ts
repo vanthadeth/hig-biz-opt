@@ -207,21 +207,31 @@ export function shopNameOf(
   return visit.customer?.shop_name ?? translate(lang, "visit.shopRemoved");
 }
 
-/** Whether a shop can still be filled in: never had one, and still correctable. */
+/**
+ * Whether a shop can still be filled in: never had one, and the visit is
+ * still open.
+ *
+ * Narrower than the 24-hour window everything else on the record gets (0059):
+ * naming a shop is a claim about where the rep was standing, not a note about
+ * how the call went, so it belongs at the same moment the position itself was
+ * recorded rather than sometime in the following day.
+ */
 export function canNameShop(
   visit: Pick<VisitRow, "customer_id" | "checked_out_at" | "cancelled_at">,
-  nowMs: number,
 ): boolean {
   if (visit.cancelled_at !== null) return false;
-  return visit.customer_id === null && editable(visit, nowMs);
+  return visit.customer_id === null && visit.checked_out_at === null;
 }
 
 /**
  * What to say about the distance, when there is something to say.
  *
- * Null distance has four different causes and they need four different
- * sentences, because three of them are somebody's to fix and the fourth is
- * nobody's. Saying "unknown" to all of them tells a rep nothing about whether
+ * Null distance has three causes now, all somebody's to fix rather than
+ * nobody's: no shop at all, no fix from the phone, or a shop with no pin.
+ * A shop named after an anonymous check-in used to be a fourth cause — 0059
+ * closed it, computing the distance at naming time from the position already
+ * on the row, so a named shop with a real pin and a real fix always has one.
+ * Saying "unknown" to the remaining three tells a rep nothing about whether
  * to turn location on, pin the shop, or leave it alone.
  *
  * A check-in inside the radius says nothing at all. Silence is the good case,
@@ -242,10 +252,7 @@ export function rangeNote(
   if (visit.distance_m === null) {
     if (visit.in_latitude === null) return translate(lang, "visit.noteNoFix");
     if (visit.customer?.latitude == null) return translate(lang, "visit.noteNoPin");
-    // The shop was attached after the fact. It was not there to be measured
-    // against at the time, and computing it now from today's coordinates
-    // would be inventing evidence.
-    return translate(lang, "visit.noteNamedLater");
+    return null;
   }
   if (!visit.out_of_range) return null;
   return visit.radius_m === null

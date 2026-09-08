@@ -17,7 +17,10 @@
 -- warehouse, is working time; refusing to record it does not stop it happening,
 -- it stops the check-in. So the shop is optional — and may be filled in once,
 -- afterwards, and never swapped, because "we went to A" becoming "we went to B"
--- is falsification while "we went somewhere, and it was A" is not.
+-- is falsification while "we went somewhere, and it was A" is not. Naming a
+-- shop late computes its distance late, too (0059) — from the position
+-- already on the row, which was real the moment it was recorded, against the
+-- shop just chosen. What still cannot move is that position itself.
 --
 -- The third is whether a visit made by mistake can be undone without lying.
 -- The check-in now fires on one tap, so that the time and the position are the
@@ -56,7 +59,7 @@
 --
 -- Success looks like an error, because the rollback is what forces it:
 --
---     ERROR:  VISITS OK - 103 assertions passed (rls: ran)
+--     ERROR:  VISITS OK - 112 assertions passed (rls: ran)
 --
 -- Anything else is a real failure and names the assertion that broke.
 
@@ -341,11 +344,19 @@ begin
         v_visit.in_latitude::text, v_near_lat::text);
 
       -- The ordinary case: checked in at a prospect, who becomes a customer
-      -- an hour later.
-      update public.visits set customer_id = v_cus where id = v_visit.id;
+      -- an hour later. Slipping a distance into the same statement is the
+      -- attempt this is really testing: the position was real, so now there
+      -- is a real distance to compute, and it is computed here, not trusted
+      -- from whatever the client sent alongside the shop.
+      update public.visits set customer_id = v_cus, distance_m = 99999
+       where id = v_visit.id;
       perform pg_temp.eq('a shop can be filled in afterwards',
         (select customer_id::text from public.visits where id = v_visit.id),
         v_cus::text);
+      perform pg_temp.ok('naming it now computes the real distance, not the one sent',
+        (select distance_m between 80 and 120 from public.visits where id = v_visit.id));
+      perform pg_temp.eq('a hundred metres up the road is inside the radius',
+        (select out_of_range::text from public.visits where id = v_visit.id), 'false');
 
       -- But not swapped, and not cleared in order to swap on the next write.
       perform pg_temp.rejects('and then never moved to a different shop',
@@ -353,14 +364,44 @@ begin
       perform pg_temp.rejects('nor cleared back to nothing',
         format('update public.visits set customer_id = null where id = %L', v_visit.id));
 
-      -- Attaching a shop cannot manufacture a distance that was never measured.
-      perform pg_temp.ok('and attaching it does not invent a distance',
-        (select distance_m is null from public.visits where id = v_visit.id));
-      perform pg_temp.rejects('which cannot be written in by hand either',
+      -- The distance just computed is exactly as fixed as one measured at
+      -- check-in: naming the shop was the one write that could set it, and
+      -- that write has already happened.
+      perform pg_temp.rejects('and now it cannot be written in by hand either',
         format('update public.visits set distance_m = 10 where id = %L', v_visit.id));
+      perform pg_temp.rejects('nor where the rep was standing when they arrived',
+        format('update public.visits set in_latitude = 0 where id = %L', v_visit.id));
 
-      perform pg_temp.ok('closing the shopless visit',
+      perform pg_temp.ok('closing the visit',
         (public.check_out(v_visit.id, v_near_lat, v_near_lng)).id is not null);
+
+      -- A shop with no pin still gives no distance, named late or not.
+      v_visit := public.check_in(null, v_near_lat, v_near_lng);
+      update public.visits set customer_id = v_blind where id = v_visit.id;
+      perform pg_temp.ok('an unpinned shop named afterwards is still no distance',
+        (select distance_m is null from public.visits where id = v_visit.id));
+      perform pg_temp.eq('unknown, not out of range',
+        (select out_of_range::text from public.visits where id = v_visit.id), 'false');
+      perform pg_temp.ok('closing it',
+        (public.check_out(v_visit.id, v_near_lat, v_near_lng)).id is not null);
+
+      -- And a shop named late can still turn out to be a long way off.
+      v_visit := public.check_in(null, v_near_lat, v_near_lng);
+      update public.visits set customer_id = v_far where id = v_visit.id;
+      perform pg_temp.ok('a shop named late can still be flagged out of range',
+        (select distance_m > 9000 from public.visits where id = v_visit.id));
+      perform pg_temp.eq('and it is', (select out_of_range::text from public.visits
+        where id = v_visit.id), 'true');
+      perform pg_temp.ok('closing it too',
+        (public.check_out(v_visit.id, v_near_lat, v_near_lng)).id is not null);
+
+      -- But not once the visit itself has closed -- naming a shop is a claim
+      -- about where the rep was standing, and that belongs at the same
+      -- moment the position was recorded, not sometime in the correction day.
+      v_visit := public.check_in(null, v_near_lat, v_near_lng);
+      v_visit := public.check_out(v_visit.id, v_near_lat, v_near_lng);
+      perform pg_temp.rejects('a shop may no longer be chosen once checked out',
+        format('update public.visits set customer_id = %L where id = %L', v_cus, v_visit.id));
 
       execute 'reset role';
     exception when insufficient_privilege then

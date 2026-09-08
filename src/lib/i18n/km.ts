@@ -59,6 +59,8 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "visit.checkOutBody":
     "នេះនឹងបិទការចុះជួប {shop} ក្រោយពេលចូល {length}។ ម៉ោងដែលកត់ត្រាមិនអាចកែបានទៀតទេ។",
   "visit.checkOutSaveFirst": " អ្វីដែលអ្នកបានវាយបញ្ចូលនឹងត្រូវរក្សាទុកជាមុនសិន។",
+  "visit.checkOutFarWarning":
+    "អ្នកហាក់ដូចជានៅឆ្ងាយ {distance} ពីហាង។ ការចេញនៅទីនេះនឹងសម្គាល់ការចុះជួបនេះថាមានបញ្ហា។",
   "visit.notYet": "មិនទាន់",
   "visit.save": "រក្សាទុក",
   "visit.saved": "បានរក្សាទុក",
@@ -89,7 +91,6 @@ export const km: Partial<Record<keyof typeof en, string>> = {
   "visit.noteNoShop": "ការចុះជួបនេះមិនមែនទៅហាងទេ ដូច្នេះគ្មានចម្ងាយត្រូវវាស់។",
   "visit.noteNoFix": "គ្មានទីតាំងកត់ត្រាពេលចូល ដូច្នេះគ្មានចម្ងាយ។",
   "visit.noteNoPin": "ហាងនេះមិនទាន់មានទីតាំងរក្សាទុកទេ។",
-  "visit.noteNamedLater": "ហាងត្រូវបានដាក់ឈ្មោះក្រោយពេលចូល ដូច្នេះគ្មានការវាស់ចម្ងាយ។",
   "visit.noteOutside": "បានចូលនៅចម្ងាយ {distance} ពីហាង ក្រៅពី {radius} ម។",
   "visit.noteOutsideUnknown": "បានចូលនៅចម្ងាយ {distance} ពីហាង ក្រៅចម្ងាយកំណត់។",
   "visit.arrived": "ម៉ោងចូល",

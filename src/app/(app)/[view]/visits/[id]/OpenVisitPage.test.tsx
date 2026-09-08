@@ -30,10 +30,12 @@ vi.mock("@/lib/supabase/client", () => ({
 }));
 
 // The phone refuses to say where it is, which is the case that must not block
-// anything. A granted fix is exercised in the browser pass instead.
-vi.mock("../useFix", () => ({
-  useFix: () => ({ fix: null, problem: "Location is switched off for this site." }),
-}));
+// anything, by default -- overridden per test for the checkout-distance
+// warning, which needs a real fix to preview against.
+let fixResult: { fix: { latitude: number; longitude: number; accuracy: number | null } | null; problem: string | null } = {
+  fix: null, problem: "Location is switched off for this site.",
+};
+vi.mock("../useFix", () => ({ useFix: () => fixResult }));
 
 const OPTIONS: VisitOption[] = [
   { id: "t1", kind: "visit_type", label: "Sales call", sort_order: 1, active: true },
@@ -79,6 +81,7 @@ beforeEach(() => {
   push.mockClear(); refresh.mockClear(); update.mockClear(); rpc.mockClear();
   updateResult = { data: [{ id: "v1" }], error: null };
   rpcResult = { data: null, error: null };
+  fixResult = { fix: null, problem: "Location is switched off for this site." };
 });
 
 describe("the check-in screen", () => {
@@ -207,6 +210,50 @@ describe("checking out asks first", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("That visit is not open"));
     expect(push).not.toHaveBeenCalled();
+  });
+});
+
+describe("a warning before the tap that would flag the visit", () => {
+  it("says nothing when the phone is right where the shop is", () => {
+    fixResult = { fix: { latitude: 11.5564, longitude: 104.9282, accuracy: 10 }, problem: null };
+    draw();
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
+    expect(within(screen.getByRole("dialog")).queryByText(/appear to be/)).toBeNull();
+  });
+
+  it("warns when the phone is well outside the radius", () => {
+    fixResult = { fix: { latitude: 11.6564, longitude: 104.9282, accuracy: 10 }, problem: null };
+    draw();
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
+
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByText(/appear to be.*from the shop/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/will flag this visit/)).toBeInTheDocument();
+  });
+
+  it("says nothing without a fix to preview from", () => {
+    draw(); // default mock: no fix
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
+    expect(within(screen.getByRole("dialog")).queryByText(/appear to be/)).toBeNull();
+  });
+
+  it("says nothing for a visit with no shop -- nothing to measure against", () => {
+    fixResult = { fix: { latitude: 11.6564, longitude: 104.9282, accuracy: 10 }, problem: null };
+    draw({ customer_id: null, customer: null, distance_m: null });
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
+    expect(within(screen.getByRole("dialog")).queryByText(/appear to be/)).toBeNull();
+  });
+
+  it("is only ever a preview -- the real check-out still sends the phone's own reading", async () => {
+    fixResult = { fix: { latitude: 11.6564, longitude: 104.9282, accuracy: 10 }, problem: null };
+    draw();
+    fireEvent.click(screen.getByRole("button", { name: "Check out" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Check out" }));
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith("check_out", {
+        p_visit: "v1", p_latitude: 11.6564, p_longitude: 104.9282,
+      }));
   });
 });
 

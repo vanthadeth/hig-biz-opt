@@ -13,12 +13,13 @@ import { hoursMinutes } from "@/lib/attendance";
 import { haptic } from "@/lib/haptics";
 import { createClient } from "@/lib/supabase/client";
 import { timeOf } from "@/lib/time";
-import type { CartCustomer } from "@/lib/catalog";
+import { distanceMetres, type CartCustomer } from "@/lib/catalog";
 import {
   cancelChange,
   canNameShop,
   cancellable,
   distanceLabel,
+  distanceOnly,
   rangeNote,
   shopNameOf,
   visitLength,
@@ -51,6 +52,10 @@ const draftOf = (visit: VisitRow): VisitDraft => ({
  * Checking out asks first. It is the one irreversible thing on the screen: the
  * time it writes can never be changed afterwards, by anybody, and a thumb
  * resting on the bottom of a phone is exactly where an accidental tap lands.
+ * That same confirmation is where a rep standing well away from the shop
+ * finds out before the tap, not after: `checkoutFarBy` previews what
+ * `check_out()` is about to measure and flag for real, so nobody discovers
+ * their own visit was flagged only by reading it back later.
  *
  * `isOwn` is the whole of the access story here. A supervisor's `visit:view:sub`
  * only ever reaches `sub` — never `edit` — so once this is somebody else's
@@ -90,6 +95,20 @@ export function OpenVisitPage({
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const note = rangeNote(visit, lang);
 
+  // A preview of what check_out() is about to measure, so the warning comes
+  // before the tap that flags the visit rather than after. The RPC re-measures
+  // this itself against the shop's coordinates at the moment of the actual
+  // write, so this figure is only ever a heads-up, never the record.
+  const shop = visit.customer;
+  const checkoutPreview =
+    fix && shop && shop.latitude != null && shop.longitude != null
+      ? distanceMetres(fix, shop)
+      : null;
+  const checkoutFarBy =
+    checkoutPreview !== null && visit.radius_m !== null && checkoutPreview > visit.radius_m
+      ? checkoutPreview
+      : null;
+
   // A minute is enough: the time is shown to the minute, and a ticking second
   // hand on a page somebody is typing into is a distraction.
   useEffect(() => {
@@ -123,6 +142,11 @@ export function OpenVisitPage({
    * Naming the shop, once. The database refuses a second one — moving a visit
    * from one shop to another is falsification — so this is a one-way write and
    * the picker disappears after it.
+   *
+   * Only the shop is sent; the distance is not. The trigger fills it in
+   * server-side, from the position already recorded at check-in against the
+   * shop just chosen (0059) — the same reason nothing here ever computes a
+   * distance itself. `router.refresh()` is what shows it once it lands.
    */
   async function nameShop(customer: CartCustomer) {
     setBusy(true);
@@ -253,7 +277,7 @@ export function OpenVisitPage({
           </Chip>
         </div>
 
-        {isOwn && canNameShop(visit, nowMs) ? (
+        {isOwn && canNameShop(visit) ? (
           <ShopPicker
             customers={customers}
             fix={fix}
@@ -347,6 +371,16 @@ export function OpenVisitPage({
                 })}
                 {dirty && t("visit.checkOutSaveFirst")}
               </p>
+
+              {/* Said before the tap that flags it, not after. The database
+                  measures this for real once the tap lands (0059/0053) --
+                  this is only ever a warning, never what gets written. */}
+              {checkoutFarBy !== null && (
+                <p className="flex items-start gap-2 rounded-xl bg-warn p-3 text-sm text-warn-fg">
+                  <Icon name="pin" className="mt-0.5 size-4 shrink-0" />
+                  {t("visit.checkOutFarWarning", { distance: distanceOnly(checkoutFarBy, lang) })}
+                </p>
+              )}
 
               <div className="flex gap-2">
                 <button

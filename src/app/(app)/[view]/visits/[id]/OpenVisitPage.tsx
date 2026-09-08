@@ -71,6 +71,7 @@ export function OpenVisitPage({
   now,
   isOwn = true,
   ownerName = "",
+  canAddCustomer = false,
 }: {
   viewKey: string;
   visit: VisitRow;
@@ -79,6 +80,9 @@ export function OpenVisitPage({
   now: string;
   isOwn?: boolean;
   ownerName?: string;
+  /** Whether this viewer holds `customer:add` -- gates the shop picker's
+   * "not on the list" option the same way any other write is gated. */
+  canAddCustomer?: boolean;
 }) {
   const router = useRouter();
   const t = useT();
@@ -283,6 +287,7 @@ export function OpenVisitPage({
             fix={fix}
             busy={busy}
             onChoose={nameShop}
+            canCreate={canAddCustomer}
           />
         ) : (
           <p className="flex items-center gap-2 text-sm font-medium">

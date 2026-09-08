@@ -12,6 +12,7 @@ import {
   nearestCustomers,
   type CartCustomer,
 } from "@/lib/catalog";
+import { createClient } from "@/lib/supabase/client";
 import { distanceLabel, type Fix } from "@/lib/visits";
 
 /**
@@ -23,24 +24,39 @@ import { distanceLabel, type Fix } from "@/lib/visits";
  * standing in.
  *
  * The distances are this device's arithmetic and only sort the list. They are
- * never written to the visit: the recorded distance is the database's, taken
- * at the check-in, and a shop named afterwards has no such measurement.
+ * shown here for choosing between them, and separately fed into the visit's
+ * own recorded distance once a shop is picked (0059) — that one is the
+ * database's own measurement, taken against the position already on the row.
+ *
+ * A shop that isn't in the list yet can be added right here, without leaving
+ * the flow: `canCreate` gates it the same way every other write in this app
+ * is gated, on the permission that would actually let it through. Creating one
+ * saves it with whatever position the phone has right now — the same "close
+ * enough" this whole screen already runs on — and immediately hands it back
+ * to `onChoose`, so adding a shop and naming the visit to it is one motion,
+ * not two.
  */
 export function ShopPicker({
   customers,
   fix,
   busy,
   onChoose,
+  canCreate,
 }: {
   customers: CartCustomer[];
   fix: Fix | null;
   busy: boolean;
   onChoose: (customer: CartCustomer) => void;
+  canCreate: boolean;
 }) {
   const t = useT();
   const { lang } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const sorted = useMemo(() => nearestCustomers(customers, fix), [customers, fix]);
   const matches = useMemo(() => {
@@ -57,6 +73,40 @@ export function ShopPicker({
     return list.slice(0, 40);
   }, [sorted, query]);
 
+  function startCreating() {
+    haptic("tap");
+    setName(query);
+    setCreateError(null);
+    setCreating(true);
+  }
+
+  /** Saves the new shop and, on success, hands it straight to `onChoose` --
+   * adding it and naming the visit to it are one tap, not two. */
+  async function createAndChoose() {
+    const shopName = name.trim();
+    if (!shopName) return;
+    setSaving(true);
+    setCreateError(null);
+
+    const { data, error } = await createClient()
+      .from("customers")
+      .insert({ shop_name: shopName, latitude: fix?.latitude ?? null, longitude: fix?.longitude ?? null })
+      .select("id, shop_name, street_address, province_text, district_text, latitude, longitude")
+      .single();
+
+    setSaving(false);
+    if (error || !data) {
+      haptic("error");
+      setCreateError(error?.message ?? "That shop was not saved.");
+      return;
+    }
+    haptic("success");
+    setOpen(false);
+    setCreating(false);
+    setName("");
+    onChoose(data as CartCustomer);
+  }
+
   return (
     <>
       <button
@@ -65,6 +115,7 @@ export function ShopPicker({
         onClick={() => {
           haptic("tap");
           setQuery("");
+          setCreating(false);
           setOpen(true);
         }}
         className="pressable flex min-h-11 w-full items-center gap-2 rounded-xl border border-dashed border-brand px-3 text-sm font-medium text-brand disabled:opacity-60"
@@ -73,7 +124,7 @@ export function ShopPicker({
         {t("visit.chooseShop")}
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title={t("visit.whichShop")}>
+      <Sheet open={open} onClose={() => !saving && setOpen(false)} title={t("visit.whichShop")}>
         <div className="space-y-3 p-4">
           <div className="relative">
             <Icon
@@ -127,6 +178,53 @@ export function ShopPicker({
               })}
             </ul>
           )}
+
+          {canCreate &&
+            (creating ? (
+              <div className="space-y-2 rounded-xl border border-line p-3">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t("visit.newShopName")}
+                  aria-label={t("visit.newShopName")}
+                  autoFocus
+                  className="min-h-11 w-full rounded-xl border border-line bg-bg px-3 text-sm outline-none focus:border-brand"
+                />
+                {createError && (
+                  <p role="alert" className="text-xs text-danger">
+                    {createError}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCreating(false)}
+                    disabled={saving}
+                    className="pressable min-h-11 flex-1 rounded-xl border border-line text-sm font-medium disabled:opacity-50"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={createAndChoose}
+                    disabled={saving || !name.trim()}
+                    className="pressable min-h-11 flex-[2] rounded-xl bg-brand text-sm font-semibold text-brand-fg disabled:opacity-60"
+                  >
+                    {saving ? t("visit.addingShop") : t("visit.addShop")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={startCreating}
+                className="pressable flex min-h-11 w-full items-center gap-2 rounded-xl border border-dashed border-line px-3 text-sm font-medium text-muted"
+              >
+                <Icon name="plus" className="size-4" />
+                {t("visit.addNewShop")}
+              </button>
+            ))}
         </div>
       </Sheet>
     </>

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { can, getMyPermissions } from "@/lib/access";
 import { createClient } from "@/lib/supabase/server";
 import { CART_CUSTOMER_COLUMNS, type CartCustomer } from "@/lib/catalog";
 import {
@@ -30,11 +31,12 @@ export default async function Page({
   const { view, id } = await params;
   const supabase = await createClient();
 
-  const [visit, options, customers, me] = await Promise.all([
+  const [visit, options, customers, me, permissions] = await Promise.all([
     supabase.from("visits").select(VISIT_DETAIL_COLUMNS).eq("id", id).maybeSingle(),
     supabase.from("visit_options").select(OPTION_COLUMNS),
     supabase.from("customers").select(CART_CUSTOMER_COLUMNS).eq("status", "active"),
     supabase.auth.getUser(),
+    getMyPermissions(),
   ]);
 
   if (!visit.data) notFound();
@@ -58,6 +60,7 @@ export default async function Page({
         now={now}
         isOwn={isOwn}
         ownerName={ownerName}
+        canAddCustomer={can(permissions, "customer", "add")}
       />
     );
   }

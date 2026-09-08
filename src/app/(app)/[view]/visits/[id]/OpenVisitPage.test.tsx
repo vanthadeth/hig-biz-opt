@@ -10,8 +10,10 @@ const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 
 const update = vi.fn();
+const insert = vi.fn();
 const rpc = vi.fn();
 let updateResult: { data: unknown; error: unknown } = { data: [{ id: "v1" }], error: null };
+let insertResult: { data: unknown; error: unknown } = { data: null, error: null };
 let rpcResult: { data: unknown; error: unknown } = { data: null, error: null };
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -20,6 +22,10 @@ vi.mock("@/lib/supabase/client", () => ({
       update: (patch: unknown) => {
         update(patch);
         return { eq: () => ({ select: async () => updateResult }) };
+      },
+      insert: (row: unknown) => {
+        insert(row);
+        return { select: () => ({ single: async () => insertResult }) };
       },
     }),
     rpc: async (name: string, args: unknown) => {
@@ -71,15 +77,19 @@ const SHOPS: CartCustomer[] = [
   },
 ];
 
-const draw = (over: Partial<VisitRow> = {}, viewer: { isOwn?: boolean; ownerName?: string } = {}) =>
+const draw = (
+  over: Partial<VisitRow> = {},
+  viewer: { isOwn?: boolean; ownerName?: string; canAddCustomer?: boolean } = {},
+) =>
   render(
     <OpenVisitPage viewKey="sales" visit={visit(over)} options={OPTIONS}
       customers={SHOPS} now={NOW} {...viewer} />,
   );
 
 beforeEach(() => {
-  push.mockClear(); refresh.mockClear(); update.mockClear(); rpc.mockClear();
+  push.mockClear(); refresh.mockClear(); update.mockClear(); insert.mockClear(); rpc.mockClear();
   updateResult = { data: [{ id: "v1" }], error: null };
+  insertResult = { data: null, error: null };
   rpcResult = { data: null, error: null };
   fixResult = { fix: null, problem: "Location is switched off for this site." };
 });
@@ -300,6 +310,58 @@ describe("naming the shop afterwards", () => {
 
     await waitFor(() => expect(update).toHaveBeenCalled());
     expect(update.mock.calls[0][0]).not.toHaveProperty("distance_m");
+  });
+});
+
+describe("adding a shop that isn't on the list yet", () => {
+  it("offers nothing of the kind without customer:add", () => {
+    draw({ customer_id: null, customer: null, distance_m: null }, { canAddCustomer: false });
+    fireEvent.click(screen.getByRole("button", { name: "Choose the shop" }));
+    expect(within(screen.getByRole("dialog")).queryByText(/Add it/)).toBeNull();
+  });
+
+  it("opens a name field, carrying over whatever was already typed in search", () => {
+    draw({ customer_id: null, customer: null, distance_m: null }, { canAddCustomer: true });
+    fireEvent.click(screen.getByRole("button", { name: "Choose the shop" }));
+
+    const sheet = screen.getByRole("dialog");
+    fireEvent.change(within(sheet).getByLabelText("Find a shop"), { target: { value: "New Prospect" } });
+    fireEvent.click(within(sheet).getByText(/Add it/));
+
+    expect(within(sheet).getByLabelText("Shop name")).toHaveValue("New Prospect");
+  });
+
+  it("saves the new shop and names the visit to it in one motion", async () => {
+    insertResult = { data: { id: "c9", shop_name: "New Prospect" }, error: null };
+    draw({ customer_id: null, customer: null, distance_m: null }, { canAddCustomer: true });
+    fireEvent.click(screen.getByRole("button", { name: "Choose the shop" }));
+
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByText(/Add it/));
+    fireEvent.change(within(sheet).getByLabelText("Shop name"), { target: { value: "New Prospect" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Add and choose" }));
+
+    await waitFor(() =>
+      expect(insert).toHaveBeenCalledWith({
+        shop_name: "New Prospect", latitude: null, longitude: null,
+      }));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({ customer_id: "c9" }));
+  });
+
+  it("reports what the database said when the save is refused", async () => {
+    insertResult = { data: null, error: { message: "That shop was not saved." } };
+    draw({ customer_id: null, customer: null, distance_m: null }, { canAddCustomer: true });
+    fireEvent.click(screen.getByRole("button", { name: "Choose the shop" }));
+
+    const sheet = screen.getByRole("dialog");
+    fireEvent.click(within(sheet).getByText(/Add it/));
+    fireEvent.change(within(sheet).getByLabelText("Shop name"), { target: { value: "New Prospect" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Add and choose" }));
+
+    await waitFor(() =>
+      expect(within(sheet).getByRole("alert")).toHaveTextContent("That shop was not saved."));
+    expect(update).not.toHaveBeenCalled();
   });
 });
 
